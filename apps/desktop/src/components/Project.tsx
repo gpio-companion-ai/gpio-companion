@@ -849,7 +849,11 @@ export default function Project() {
 			)}
 
 			{loading || !configured ? null : (
-				<Paper className="workbench-control-rail" sx={{ p: 2 }} elevation={0}>
+				<Paper
+					className="workbench-control-rail"
+					sx={{ p: 2, width: "86%", margin: "0 auto" }}
+					elevation={0}
+				>
 					<Stack spacing={2}>
 						{canCreate ? (
 							<Stack spacing={empty ? 1 : 2}>
@@ -962,10 +966,11 @@ export default function Project() {
 													>
 														<TableCell>{repo.name}</TableCell>
 														<TableCell>{repo.owner}</TableCell>
-														<TableCell>
+														<TableCell sx={{ width: "51%" }}>
 															<Button
 																variant="text"
 																size="small"
+																sx={{ marginRight: 1.6 }}
 																onClick={(event) => {
 																	event.stopPropagation();
 																	void openExternal(repo.html_url);
@@ -974,7 +979,7 @@ export default function Project() {
 																{t("nav.github")}
 															</Button>
 															<Button
-																variant="text"
+																variant="outlined"
 																size="small"
 																color="error"
 																onClick={(event) => {
