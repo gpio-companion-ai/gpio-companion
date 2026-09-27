@@ -5,6 +5,7 @@ import Stack from "@shpaw415/mui-lite/Stack";
 import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { translateError } from "gpio-companion-i18n";
+import { parseWifiBleStatus } from "gpio-companion-wifi";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	bleScan,
@@ -51,15 +52,22 @@ export default function Wifi({ onBack }: { onBack: () => void }) {
 	const [psk, setPsk] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
 	const [status, setStatus] = useState("");
+	const [result, setResult] = useState("");
 	const [error, setError] = useState("");
 	const [scanning, setScanning] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const scanRef = useRef(0);
+	const holdStatus = useRef(false);
 	const shown = translateError(t, error || devicesError);
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
-		void onBleStatus(setStatus).then((fn) => {
+		void onBleStatus((message) => {
+			if (holdStatus.current) {
+				return;
+			}
+			setStatus(message);
+		}).then((fn) => {
 			unlisten = fn;
 		});
 		return () => unlisten?.();
@@ -159,6 +167,8 @@ export default function Wifi({ onBack }: { onBack: () => void }) {
 		}
 		setBusy(true);
 		setError("");
+		setResult("");
+		holdStatus.current = false;
 		try {
 			const raw = await bleWifi({
 				uuid,
@@ -166,10 +176,17 @@ export default function Wifi({ onBack }: { onBack: () => void }) {
 				psk,
 				id: boardId === "auto" ? savedId : boardId,
 			});
+			holdStatus.current = true;
+			setStatus("");
+			const parsed = parseWifiBleStatus(raw);
+			if (!parsed.ok) {
+				setError(parsed.message);
+				return;
+			}
 			if (boardId !== "auto") {
 				void rememberBleMac(uuid, boardId);
 			}
-			setStatus(raw || t("wifi.sent"));
+			setResult(t("wifi.connectedTo", { ssid: parsed.ssid || trimmedSsid }));
 			try {
 				await wifiRememberNetwork(trimmedSsid, psk);
 				const next = await wifiKnownNetworks();
@@ -281,6 +298,7 @@ export default function Wifi({ onBack }: { onBack: () => void }) {
 				{showPassword ? t("wifi.hidePassword") : t("wifi.showPassword")}
 			</Button>
 			{status ? <Typography>{status}</Typography> : null}
+			{result ? <Alert severity="success">{result}</Alert> : null}
 			{shown ? <Alert severity="error">{shown}</Alert> : null}
 			{shown ? <DebugLog error={shown} /> : null}
 			<Button

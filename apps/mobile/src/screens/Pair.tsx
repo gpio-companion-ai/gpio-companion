@@ -1,4 +1,6 @@
+import { pairClaimNotice } from "gpio-companion-pairing";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Text } from "react-native";
 import { NearbyPicker } from "../components/NearbyPicker.tsx";
 import {
 	Busy,
@@ -23,12 +25,14 @@ import {
 } from "../lib/ble.ts";
 import { looksLikeMac } from "../lib/ble-frame.ts";
 import { saveLocalBleId } from "../lib/ble-ids.ts";
+import { useColors } from "../lib/color-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { translateError, useT } from "../lib/locale.tsx";
 
 export default function Pair() {
 	const auth = useAuth();
 	const t = useT();
+	const colors = useColors();
 	const { setTab } = useDeviceHub();
 	const { refetch: refetchBoards } = useUserBoards();
 	const [boards, setBoards] = useState<NearbyRadio[]>([]);
@@ -38,6 +42,7 @@ export default function Pair() {
 	const [busy, setBusy] = useState(false);
 	const [scanning, setScanning] = useState(false);
 	const [paired, setPaired] = useState(false);
+	const [notice, setNotice] = useState("");
 	const scanRef = useRef(0);
 
 	const scan = useCallback(async () => {
@@ -96,6 +101,7 @@ export default function Pair() {
 		}
 		setBusy(true);
 		setPaired(false);
+		setNotice("");
 		setError("");
 		try {
 			const loss = createBoardLoss();
@@ -119,12 +125,29 @@ export default function Pair() {
 					throw new Error("device did not return pairing credentials");
 				}
 				setStatus(t("pair.claiming"));
-				await claimDevice(auth.token, {
+				const claimed = await claimDevice(auth.token, {
 					uuid: creds.uuid,
 					key: creds.key,
 					deviceUrl: creds.deviceUrl || info.deviceUrl,
 					bleMac: looksLikeMac(boardId) ? boardId : undefined,
 				});
+				const noticeKind = pairClaimNotice(claimed);
+				if (noticeKind === "yours") {
+					await saveLocalBleId(creds.uuid, boardId).catch(() => undefined);
+					await refetchBoards({ force: true }).catch(() => undefined);
+					setStatus("");
+					setNotice(t("pair.alreadyYours"));
+					return;
+				}
+				if (noticeKind) {
+					setStatus("");
+					setNotice(
+						noticeKind === "other-pending"
+							? t("pair.alreadyOther")
+							: t("pair.alreadyOtherUnknown"),
+					);
+					return;
+				}
 				await saveLocalBleId(creds.uuid, boardId).catch(() => undefined);
 				await refetchBoards({ force: true }).catch(() => undefined);
 				setStatus(t("pair.paired"));
@@ -149,7 +172,8 @@ export default function Pair() {
 				scanning={scanning}
 				disabled={busy}
 			/>
-			<Muted>{status || t("pair.readyToScan")}</Muted>
+			<Muted>{status || (notice ? "" : t("pair.readyToScan"))}</Muted>
+			{notice ? <Text style={{ color: colors.warning }}>{notice}</Text> : null}
 			<ErrorText>{translateError(t, error)}</ErrorText>
 			<Busy show={busy || scanning} />
 			{paired ? (

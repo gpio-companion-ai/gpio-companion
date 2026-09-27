@@ -380,12 +380,12 @@ export {
 	type FlashPut,
 	type FlashResult,
 	type FlashStatus,
+	type FlashTarget,
+	type FlashTargetHint,
 	isFlashPath,
 	parseArduinoBoardList,
 	parseFlashPut,
 	pickFlashTarget,
-	type FlashTarget,
-	type FlashTargetHint,
 } from "./flash.ts";
 export {
 	createGithubAppJwt,
@@ -549,10 +549,12 @@ export {
 export {
 	emptyPairingState,
 	loginFromEmail,
+	type PairClaimNotice,
 	type PairingClaim,
 	type PairingCredentials,
 	type PairingPublic,
 	type PairingState,
+	pairClaimNotice,
 	pairingCredentials,
 	parsePairingClaim,
 	parsePairingUnpair,
@@ -706,9 +708,11 @@ export {
 } from "./voice.ts";
 export {
 	classifyWifiConnectError,
+	parseWifiBleStatus,
 	parseWifiConfig,
 	publicWifiFailure,
 	publicWifiStatus,
+	type WifiBleStatus,
 	type WifiConfig,
 	WifiConnectError,
 	type WifiConnectReason,

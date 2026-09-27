@@ -12,6 +12,29 @@ export type PairingPublic = {
 	login: string;
 };
 
+export type PairClaimNotice = "yours" | "other" | "other-pending";
+
+export function pairClaimNotice(body: unknown): PairClaimNotice | null {
+	if (!body || typeof body !== "object") {
+		return null;
+	}
+	const record = body as {
+		alreadyYours?: unknown;
+		pending?: unknown;
+		alreadyPaired?: unknown;
+	};
+	if (record.alreadyYours === true) {
+		return "yours";
+	}
+	if (record.pending === true) {
+		return "other-pending";
+	}
+	if (record.alreadyPaired === "other") {
+		return "other";
+	}
+	return null;
+}
+
 export type PairingState = {
 	uuid: string;
 	key: string;

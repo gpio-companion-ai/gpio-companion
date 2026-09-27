@@ -19,6 +19,14 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/i18n/index.ts",
 			),
+			"gpio-companion-wifi": path.resolve(
+				repoRoot,
+				"packages/core/src/wifi.ts",
+			),
+			"gpio-companion-pairing": path.resolve(
+				repoRoot,
+				"packages/core/src/pairing.ts",
+			),
 		},
 	},
 	clearScreen: false,

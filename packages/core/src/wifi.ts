@@ -116,6 +116,46 @@ export function publicWifiFailure(ssid: string, reason: WifiConnectReason) {
 	};
 }
 
+export type WifiBleStatus = {
+	ok: boolean;
+	ssid?: string;
+	message: string;
+};
+
+export function parseWifiBleStatus(raw: string): WifiBleStatus {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return { ok: false, message: "wifi connect failed" };
+	}
+	if (!parsed || typeof parsed !== "object") {
+		return { ok: false, message: "wifi connect failed" };
+	}
+	const body = parsed as {
+		error?: unknown;
+		ssid?: unknown;
+		connected?: unknown;
+		reason?: unknown;
+	};
+	const ssid = typeof body.ssid === "string" ? body.ssid : undefined;
+	if (typeof body.error === "string" && body.error.trim()) {
+		return { ok: false, ssid, message: body.error };
+	}
+	if (body.connected === false) {
+		const reason = body.reason;
+		const message =
+			typeof reason === "string" && reason in WIFI_CONNECT_MESSAGES
+				? wifiConnectMessage(reason as WifiConnectReason)
+				: "wifi connect failed";
+		return { ok: false, ssid, message };
+	}
+	if (body.connected === true) {
+		return { ok: true, ssid, message: "" };
+	}
+	return { ok: false, ssid, message: "wifi connect failed" };
+}
+
 function requiredString(value: unknown, field: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw new Error(`${field} is required`);

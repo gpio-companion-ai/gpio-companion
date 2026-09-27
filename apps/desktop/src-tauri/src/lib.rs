@@ -320,8 +320,22 @@ async fn ble_pair(app: AppHandle, id: String) -> Result<Value, String> {
 		})),
 	)
 	.await?;
-	emit_status(&app, "Paired");
+	if !claim_is_notice(&claimed) {
+		emit_status(&app, "Paired");
+	}
 	Ok(claimed)
+}
+
+fn claim_is_notice(claimed: &Value) -> bool {
+	claimed
+		.get("alreadyYours")
+		.and_then(Value::as_bool)
+		.unwrap_or(false)
+		|| claimed
+			.get("pending")
+			.and_then(Value::as_bool)
+			.unwrap_or(false)
+		|| claimed.get("alreadyPaired").and_then(Value::as_str).is_some()
 }
 
 #[tauri::command]

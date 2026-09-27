@@ -418,6 +418,10 @@ export const en = {
 		statusPairing: "pairing…",
 		statusWaitingOwner:
 			"waiting for the current owner to accept in Notifications",
+		alreadyYours: "This board is already paired with your account.",
+		alreadyOther:
+			"This board is already paired with someone else. Waiting for the owner to accept in Notifications.",
+		alreadyOtherUnknown: "This board is already paired with someone else.",
 		statusClaimCopied:
 			"claim copied — paste in LightBlue or nRF Connect to finish on the Pi",
 		statusPaired: "paired",
@@ -852,6 +856,9 @@ export const en = {
 		logsFailed: "logs failed",
 		flashFailed: "flash failed",
 		wifiFailed: "wifi failed",
+		wifiNetworkNotFound: "WiFi network not found",
+		wifiPasswordIncorrect: "WiFi password incorrect",
+		wifiAdapterUnavailable: "WiFi adapter not available",
 		scanFailed: "scan failed",
 		pairFailed: "pair failed",
 		unpairFailed: "unpair failed",

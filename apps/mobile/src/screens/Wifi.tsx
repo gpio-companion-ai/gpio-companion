@@ -1,3 +1,4 @@
+import { parseWifiBleStatus } from "gpio-companion-wifi";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert, Linking, Platform, Pressable, Text, View } from "react-native";
 import { NearbyPicker } from "../components/NearbyPicker.tsx";
@@ -58,6 +59,7 @@ export default function Wifi() {
 	const [psk, setPsk] = useState("");
 	const [showPassword, setShowPassword] = useState(false);
 	const [status, setStatus] = useState("");
+	const [result, setResult] = useState("");
 	const [error, setError] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [scanning, setScanning] = useState(false);
@@ -171,6 +173,7 @@ export default function Wifi() {
 		}
 		setBusy(true);
 		setError("");
+		setResult("");
 		try {
 			setStatus(t("wifi.connecting"));
 			const paired = await openPairedBoard(uuid, {
@@ -190,7 +193,14 @@ export default function Wifi() {
 					envelope,
 					paired.loss,
 				);
-				setStatus(raw || t("wifi.sent"));
+				const parsed = parseWifiBleStatus(raw);
+				if (!parsed.ok) {
+					setStatus("");
+					setError(parsed.message);
+					return;
+				}
+				setStatus("");
+				setResult(t("wifi.connectedTo", { ssid: parsed.ssid || ssid.trim() }));
 				try {
 					const next = await rememberNetwork(ssid.trim(), psk);
 					setNetworks(next);
@@ -298,6 +308,7 @@ export default function Wifi() {
 				onPress={() => setShowPassword((current) => !current)}
 			/>
 			{status ? <Muted>{status}</Muted> : null}
+			{result ? <Text style={{ color: colors.success }}>{result}</Text> : null}
 			<ErrorText>{translateError(t, error || loadError || "")}</ErrorText>
 			<Busy show={busy || scanning} />
 			<PrimaryButton

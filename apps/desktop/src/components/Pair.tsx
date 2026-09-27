@@ -4,6 +4,7 @@ import Select from "@shpaw415/mui-lite/Select";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { translateError } from "gpio-companion-i18n";
+import { pairClaimNotice } from "gpio-companion-pairing";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
 	blePair,
@@ -26,7 +27,9 @@ export default function Pair({ onBack }: { onBack: () => void }) {
 	const [scanning, setScanning] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [paired, setPaired] = useState(false);
+	const [notice, setNotice] = useState("");
 	const scanRef = useRef(0);
+	const holdStatus = useRef(false);
 	const { refetch: refetchBoards } = useUserBoards();
 	const shown = translateError(t, error);
 
@@ -36,7 +39,12 @@ export default function Pair({ onBack }: { onBack: () => void }) {
 
 	useEffect(() => {
 		let unlisten: (() => void) | undefined;
-		void onBleStatus(setStatus).then((fn) => {
+		void onBleStatus((message) => {
+			if (holdStatus.current) {
+				return;
+			}
+			setStatus(message);
+		}).then((fn) => {
 			unlisten = fn;
 		});
 		return () => unlisten?.();
@@ -46,6 +54,8 @@ export default function Pair({ onBack }: { onBack: () => void }) {
 		const generation = ++scanRef.current;
 		setScanning(true);
 		setError("");
+		setNotice("");
+		holdStatus.current = false;
 		try {
 			const next = await bleScan();
 			if (scanRef.current !== generation) {
@@ -79,8 +89,12 @@ export default function Pair({ onBack }: { onBack: () => void }) {
 		}
 		setBusy(true);
 		setError("");
+		setNotice("");
+		holdStatus.current = false;
 		try {
 			const claimed = await blePair(selected);
+			holdStatus.current = true;
+			const noticeKind = pairClaimNotice(claimed);
 			const pairedUuid =
 				claimed &&
 				typeof claimed === "object" &&
@@ -88,6 +102,26 @@ export default function Pair({ onBack }: { onBack: () => void }) {
 				typeof claimed.uuid === "string"
 					? claimed.uuid
 					: "";
+			if (noticeKind === "yours") {
+				if (pairedUuid) {
+					void rememberBleMac(pairedUuid, selected);
+				}
+				setPaired(false);
+				setStatus("");
+				setNotice(t("pair.alreadyYours"));
+				void refetchBoards({ force: true }).catch(() => undefined);
+				return;
+			}
+			if (noticeKind) {
+				setPaired(false);
+				setStatus("");
+				setNotice(
+					noticeKind === "other-pending"
+						? t("pair.alreadyOther")
+						: t("pair.alreadyOtherUnknown"),
+				);
+				return;
+			}
 			if (pairedUuid) {
 				void rememberBleMac(pairedUuid, selected);
 			}
@@ -119,7 +153,8 @@ export default function Pair({ onBack }: { onBack: () => void }) {
 					</option>
 				))}
 			</Select>
-			<Typography>{status || t("pair.readyToScan")}</Typography>
+			<Typography>{status || (notice ? "" : t("pair.readyToScan"))}</Typography>
+			{notice ? <Alert severity="info">{notice}</Alert> : null}
 			{shown ? <Alert severity="error">{shown}</Alert> : null}
 			{shown ? <DebugLog error={shown} /> : null}
 			<Button

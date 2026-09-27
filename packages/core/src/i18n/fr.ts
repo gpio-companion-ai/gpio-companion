@@ -430,6 +430,10 @@ export const fr = {
 		statusPairing: "association…",
 		statusWaitingOwner:
 			"en attente de l’acceptation du propriétaire actuel dans Demandes",
+		alreadyYours: "Cette carte est déjà associée à votre compte.",
+		alreadyOther:
+			"Cette carte est déjà associée à quelqu’un d’autre. En attente de l’acceptation du propriétaire dans Demandes.",
+		alreadyOtherUnknown: "Cette carte est déjà associée à quelqu’un d’autre.",
 		statusClaimCopied:
 			"réclamation copiée — collez dans LightBlue ou nRF Connect pour terminer sur le Pi",
 		statusPaired: "associé",
@@ -872,6 +876,9 @@ export const fr = {
 		logsFailed: "journaux échoués",
 		flashFailed: "gravure échouée",
 		wifiFailed: "wifi échoué",
+		wifiNetworkNotFound: "Réseau WiFi introuvable",
+		wifiPasswordIncorrect: "Mot de passe WiFi incorrect",
+		wifiAdapterUnavailable: "Adaptateur WiFi indisponible",
 		scanFailed: "scan échoué",
 		pairFailed: "association échouée",
 		unpairFailed: "dissociation échouée",

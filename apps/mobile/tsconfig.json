@@ -7,7 +7,9 @@
 		"paths": {
 			"openauthster": ["./modules/openauthster/index.ts"],
 			"gpio-companion-i18n": ["../../packages/core/src/i18n/index.ts"],
-			"gpio-companion-embed": ["../../packages/core/src/breadboard-embed.ts"]
+			"gpio-companion-embed": ["../../packages/core/src/breadboard-embed.ts"],
+			"gpio-companion-wifi": ["../../packages/core/src/wifi.ts"],
+			"gpio-companion-pairing": ["../../packages/core/src/pairing.ts"]
 		}
 	},
 	"include": ["**/*.ts", "**/*.tsx"],

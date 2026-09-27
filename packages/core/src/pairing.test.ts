@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	emptyPairingState,
 	loginFromEmail,
+	pairClaimNotice,
 	pairingCredentials,
 	parsePairingClaim,
 	publicPairing,
@@ -35,5 +36,16 @@ describe("pairing", () => {
 		expect(creds.key).toBe("k1");
 		expect(creds.deviceUrl).toBe("https://api-u1.gpio-companion.com");
 		expect(creds.userId).toBe("user-1");
+	});
+
+	test("claim notice distinguishes self and other owner", () => {
+		expect(pairClaimNotice({ alreadyYours: true, uuid: "u1" })).toBe("yours");
+		expect(
+			pairClaimNotice({ pending: true, alreadyPaired: "other", uuid: "u1" }),
+		).toBe("other-pending");
+		expect(pairClaimNotice({ alreadyPaired: "other", pending: false })).toBe(
+			"other",
+		);
+		expect(pairClaimNotice({ ok: true, pending: false })).toBeNull();
 	});
 });

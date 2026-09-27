@@ -30,6 +30,8 @@ export type PagesEnv = {
 	GPIO_COMPANION_DEVICE_KEY_ID?: string;
 };
 
+const UNPAIR_DEVICE_TIMEOUT_MS = 4_000;
+
 export type PendingPairing = {
 	uuid: string;
 	key: string;
@@ -99,7 +101,33 @@ export async function claimDevice(
 			inbox.push(pending.uuid);
 			await env.DYNAMIC_PAGE_KV.put(inboxKey, JSON.stringify(inbox));
 		}
-		return { pending: true as const, uuid: pending.uuid };
+		return {
+			pending: true as const,
+			alreadyPaired: "other" as const,
+			uuid: pending.uuid,
+		};
+	}
+	if (ownerId === identity.id) {
+		const trimmed = input.uuid.trim();
+		const existing = (await loadDevices(env.DYNAMIC_PAGE_KV, identity.id)).find(
+			(device) => device.uuid === trimmed,
+		);
+		await upsertDevice(env.DYNAMIC_PAGE_KV, {
+			userId: identity.id,
+			uuid: trimmed,
+			key: input.key,
+			deviceUrl: origin || existing?.deviceUrl || "",
+			login,
+			email: identity.email ?? existing?.email ?? "",
+			claimedAt: existing?.claimedAt ?? new Date().toISOString(),
+			label: existing?.label ?? "",
+			bleMac: parseStoredBleMac(input.bleMac) || existing?.bleMac || "",
+		});
+		return {
+			alreadyYours: true as const,
+			pending: false as const,
+			uuid: trimmed,
+		};
 	}
 	let needsBle = false;
 	if (origin) {
@@ -114,6 +142,13 @@ export async function claimDevice(
 				}),
 			);
 		} catch (error) {
+			if (error instanceof Error && error.message === "already paired") {
+				return {
+					alreadyPaired: "other" as const,
+					pending: false as const,
+					uuid: input.uuid.trim(),
+				};
+			}
 			if (typedOrigin) {
 				throw error;
 			}
@@ -187,15 +222,20 @@ export async function unpairDevice(
 		return { ok: true as const };
 	}
 	if (device.deviceUrl) {
-		await readDeviceJson(
-			await signedDeviceFetch(
-				env,
-				device.deviceUrl,
-				"POST",
-				"/v1/pairing/unpair",
-				{ uuid: device.uuid, key: device.key },
-			),
-		).catch(() => undefined);
+		try {
+			await readDeviceJson(
+				await signedDeviceFetch(
+					env,
+					device.deviceUrl,
+					"POST",
+					"/v1/pairing/unpair",
+					{ uuid: device.uuid, key: device.key },
+					{ timeoutMs: UNPAIR_DEVICE_TIMEOUT_MS },
+				),
+			);
+		} catch {
+			// Offline or rejected boards still lose the dashboard claim.
+		}
 	}
 	await removeDevice(env.DYNAMIC_PAGE_KV, userId, device.uuid);
 	return { ok: true as const };

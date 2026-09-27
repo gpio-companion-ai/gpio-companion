@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	classifyWifiConnectError,
+	parseWifiBleStatus,
 	parseWifiConfig,
 	publicWifiFailure,
 	WifiConnectError,
@@ -103,6 +104,41 @@ describe("WifiConnectError", () => {
 			connected: false,
 			reason: "ssid-not-found",
 			error: "wifi network not found",
+		});
+	});
+});
+
+describe("parseWifiBleStatus", () => {
+	test("success is text, not the raw body", () => {
+		expect(parseWifiBleStatus('{"ssid":"lab","connected":true}')).toEqual({
+			ok: true,
+			ssid: "lab",
+			message: "",
+		});
+	});
+
+	test("failure uses the public reason string", () => {
+		expect(
+			parseWifiBleStatus(
+				'{"ssid":"lab","connected":false,"reason":"password","error":"wifi password incorrect"}',
+			),
+		).toEqual({
+			ok: false,
+			ssid: "lab",
+			message: "wifi password incorrect",
+		});
+		expect(
+			parseWifiBleStatus('{"connected":false,"reason":"ssid-not-found"}'),
+		).toEqual({
+			ok: false,
+			message: "wifi network not found",
+		});
+	});
+
+	test("non-json is a generic failure", () => {
+		expect(parseWifiBleStatus("not json")).toEqual({
+			ok: false,
+			message: "wifi connect failed",
 		});
 	});
 });

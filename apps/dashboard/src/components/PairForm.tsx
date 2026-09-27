@@ -14,6 +14,7 @@ import {
 	BLE_CMD_UUID,
 	BLE_DEVICE_NAME,
 	envelopeToPasteText,
+	pairClaimNotice,
 	publicDeviceUrl,
 	tunnelHostnames,
 } from "gpio-companion";
@@ -52,6 +53,7 @@ export default function PairForm({
 	const [uuid, setUuid] = useState("");
 	const [key, setKey] = useState("");
 	const [status, setStatus] = useState("");
+	const [notice, setNotice] = useState("");
 	const [error, setError] = useState("");
 	const [paired, setPaired] = useState("");
 	const [devices, setDevices] = useState<StoredPairing[]>([]);
@@ -158,6 +160,7 @@ export default function PairForm({
 			return;
 		}
 		setError("");
+		setNotice("");
 		setStatus(t("pair.statusPairing"));
 		try {
 			const body = unwrapAction(
@@ -167,9 +170,21 @@ export default function PairForm({
 					key,
 				}),
 			);
-			if ("pending" in body && body.pending) {
-				setStatus(t("pair.statusWaitingOwner"));
+			const noticeKind = pairClaimNotice(body);
+			if (noticeKind) {
+				setStatus("");
 				setKey("");
+				setNotice(
+					noticeKind === "yours"
+						? t("pair.alreadyYours")
+						: noticeKind === "other-pending"
+							? t("pair.alreadyOther")
+							: t("pair.alreadyOtherUnknown"),
+				);
+				if (noticeKind === "yours") {
+					const listing = await run(getPairing());
+					applyDevices(listing?.devices ?? []);
+				}
 				return;
 			}
 			if ("needsBle" in body && body.needsBle && "envelope" in body) {
@@ -193,7 +208,7 @@ export default function PairForm({
 					return;
 				}
 			}
-			if ("login" in body) {
+			if ("login" in body && typeof body.login === "string") {
 				setPaired(body.login);
 			}
 			const nextUrl =
@@ -355,6 +370,7 @@ export default function PairForm({
 					uuid={t3Uuid || undefined}
 					autoStart={t3AutoStart}
 				/>
+				{notice ? <Alert severity="info">{notice}</Alert> : null}
 				{status ? <Typography color="secondary">{status}</Typography> : null}
 				{error ? <Alert severity="error">{error}</Alert> : null}
 			</Stack>

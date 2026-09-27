@@ -10,6 +10,7 @@ import {
 	BLE_CMD_UUID,
 	BLE_DEVICE_NAME,
 	envelopeToPasteText,
+	parseWifiBleStatus,
 	WIFI_PATH,
 } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
@@ -146,23 +147,14 @@ export default function WifiBleForm() {
 			);
 			const raw = await ble.sendEnvelope(envelope);
 			ble.disconnect();
-			let ok = true;
-			try {
-				const parsed = JSON.parse(raw) as {
-					error?: string;
-					ssid?: string;
-					connected?: boolean;
-				};
-				if (parsed.error || parsed.connected === false) {
-					ok = false;
-					setMessage(translateError(t, parsed.error || "wifi connect failed"));
-				} else {
-					setMessage(t("wifi.connectedTo", { ssid: parsed.ssid || ssid }));
-				}
-			} catch {
-				setMessage(raw);
+			const parsed = parseWifiBleStatus(raw);
+			if (parsed.ok) {
+				setMessage(t("wifi.connectedTo", { ssid: parsed.ssid || ssid }));
+				setStatus("success");
+			} else {
+				setMessage(translateError(t, parsed.message));
+				setStatus("error");
 			}
-			setStatus(ok ? "success" : "error");
 			setPsk("");
 		} catch (error) {
 			setStatus("error");
