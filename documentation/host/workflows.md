@@ -7,13 +7,33 @@
 3. GitHub Actions builds Windows / Linux / macOS and publishes `desktop-v<version>` on the repo Releases page
 4. If that tag already exists, the workflow skips (safe rerun)
 
-Unsigned macOS artifacts may need a right-click Open until Apple signing is configured.
+Unsigned macOS artifacts may need a right-click Open until Apple signing is configured. A non-empty `apps/desktop/release-notes/v<version>.md` becomes the release notes; a hyphen in the version marks the release as a prerelease.
+
+## Ship a mobile companion release
+
+1. Set the same version (not `0.0.0`) in `apps/mobile/package.json` and `apps/mobile/app.json` `expo.version`
+2. Optional notes: `apps/mobile/release-notes/v<version>.md` (non-empty). A hyphen in the version marks a prerelease
+3. Merge to `main` (or run **Release mobile and dashboard** via `workflow_dispatch`)
+4. GitHub Actions builds an Android arm64 APK and publishes `mobile-v<version>` on the repo Releases page
+5. If that tag already exists, the workflow skips (safe rerun)
+
+The APK is debug-signed for sideload. iOS is not published until Apple signing is configured. `android/` and `ios/` stay gitignored; CI runs `expo prebuild`.
+
+## Ship a dashboard release
+
+1. Set `apps/dashboard/package.json` `version` (not `0.0.0`)
+2. Optional notes: `apps/dashboard/release-notes/v<version>.md`
+3. Merge to `main` (or `workflow_dispatch`)
+4. GitHub Actions builds the production site and publishes `dashboard-v<version>` with a zip of `.frame-master/build`
+5. If that tag already exists, the workflow skips
+
+The live site still deploys from the push to `main` through Cloudflare. The release workflow does not run `wrangler`.
 
 ## Ship a dashboard change
 
 1. Implement in `apps/dashboard` (and `packages/core` if signing/BLE envelope changed)
 2. `bun test` and `bun run typecheck`
-3. `bun run deploy:dashboard`
+3. Push to `main`. Cloudflare deploys from that push. Do not run `wrangler deploy` or `bun run deploy:dashboard`
 4. Public-key rotation does **not** need a git commit; boards fetch `GET /api/device-public-key` on the next updater run (or `sudo gpio-companion-update`)
 
 ## Rotate device signing keys

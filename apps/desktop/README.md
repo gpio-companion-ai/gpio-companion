@@ -26,4 +26,4 @@ OpenAuthster already allows `http://127.0.0.1` / `http://localhost` redirects fo
 
 ## GitHub Release
 
-Bump **both** `package.json` and `src-tauri/tauri.conf.json` to the same version (not `0.0.0`) on `main`. `.github/workflows/release-desktop.yml` then builds Windows / Linux / macOS and publishes [GitHub Releases](https://github.com/shpaw415/gpio-companion/releases) as `desktop-v<version>`. Reruns skip a version that already has a release. `workflow_dispatch` is available; unsigned macOS downloads may be quarantined until Apple signing is added.
+Bump **both** `package.json` and `src-tauri/tauri.conf.json` to the same version (not `0.0.0`) on `main`. `.github/workflows/release-desktop.yml` then builds Windows / Linux / macOS and publishes [GitHub Releases](https://github.com/shpaw415/gpio-companion/releases) as `desktop-v<version>`. Reruns skip a version that already has a release. `workflow_dispatch` is available; unsigned macOS downloads may be quarantined until Apple signing is added. A non-empty `release-notes/v<version>.md` is the release body. A hyphen in the version marks a prerelease.

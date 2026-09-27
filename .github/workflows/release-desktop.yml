@@ -17,6 +17,7 @@ jobs:
     outputs:
       version: ${{ steps.meta.outputs.version }}
       release: ${{ steps.meta.outputs.release }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - id: meta
@@ -33,6 +34,11 @@ jobs:
           if [ "$VERSION" = "0.0.0" ]; then
             echo "release=false" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
           fi
           if gh release view "desktop-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "release=false" >> "$GITHUB_OUTPUT"
@@ -81,6 +87,25 @@ jobs:
         working-directory: apps/desktop
         run: bun install --frozen-lockfile
 
+      - name: release notes
+        id: notes
+        shell: bash
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+        run: |
+          FILE="apps/desktop/release-notes/v${VERSION}.md"
+          DELIM="GPIOC_RELEASE_NOTES_END"
+          {
+            echo "body<<${DELIM}"
+            if [ -s "$FILE" ]; then
+              cat "$FILE"
+              echo
+            else
+              echo "Windows, Linux, and macOS BLE companion. Project, Keys, and Credits stay on the web dashboard."
+            fi
+            echo "${DELIM}"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -88,7 +113,7 @@ jobs:
           projectPath: apps/desktop
           tagName: desktop-v__VERSION__
           releaseName: gpio-companion desktop v__VERSION__
-          releaseBody: Windows, Linux, and macOS BLE companion. Project, Keys, and Credits stay on the web dashboard.
+          releaseBody: ${{ steps.notes.outputs.body }}
           releaseDraft: false
-          prerelease: false
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           args: ${{ matrix.args }}

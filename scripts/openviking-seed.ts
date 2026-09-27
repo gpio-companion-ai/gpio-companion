@@ -116,7 +116,7 @@ for (const file of seedFiles("core")) {
 
 let added = 0;
 for (const target of targets) {
-	run(["rm", target.uri]);
+		run(["rm", target.uri, "--recursive"]);
 	const result = run([
 		"add-resource",
 		target.file,
@@ -125,6 +125,8 @@ for (const target of targets) {
 		"--wait",
 		"--timeout",
 		OV_TIMEOUT,
+		"--processing-mode",
+		"vectors_only",
 	]);
 	if (result.code !== 0) {
 		fail(`could not seed ${target.uri}: ${result.output}`);

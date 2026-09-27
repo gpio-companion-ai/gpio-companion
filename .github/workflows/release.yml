@@ -1,0 +1,257 @@
+name: Release mobile and dashboard
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/mobile/package.json
+      - apps/mobile/app.json
+      - apps/dashboard/package.json
+  workflow_dispatch:
+    inputs:
+      app:
+        description: App to release
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - mobile
+          - dashboard
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-apps-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  mobile-version:
+    if: github.event_name != 'workflow_dispatch' || inputs.app == 'all' || inputs.app == 'mobile'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      release: ${{ steps.meta.outputs.release }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./apps/mobile/package.json').version")
+          APP=$(node -p "require('./apps/mobile/app.json').expo.version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" != "$APP" ]; then
+            echo "apps/mobile/package.json version ($VERSION) does not match app.json expo.version ($APP)" >&2
+            exit 1
+          fi
+          if [ "$VERSION" = "0.0.0" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          if gh release view "mobile-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  mobile-publish:
+    needs: mobile-version
+    if: needs.mobile-version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: install Android SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager --install "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;27.1.12297006" "cmake;3.22.1"
+
+      - name: install dependencies
+        working-directory: apps/mobile
+        run: bun install --frozen-lockfile
+
+      - name: set Android versionCode
+        env:
+          VERSION: ${{ needs.mobile-version.outputs.version }}
+        run: |
+          node <<'EOF'
+          const fs = require("fs");
+          const version = process.env.VERSION;
+          const [major, minor, patch] = version.split("-")[0].split(".").map((part) => Number(part) || 0);
+          const versionCode = major * 10000 + minor * 100 + patch;
+          if (versionCode < 1) {
+            console.error(`versionCode ${versionCode} must be >= 1`);
+            process.exit(1);
+          }
+          const appPath = "apps/mobile/app.json";
+          const app = JSON.parse(fs.readFileSync(appPath, "utf8"));
+          app.expo.android = app.expo.android || {};
+          app.expo.android.versionCode = versionCode;
+          fs.writeFileSync(appPath, JSON.stringify(app, null, "\t") + "\n");
+          EOF
+
+      - name: prebuild Android
+        working-directory: apps/mobile
+        env:
+          CI: true
+          EXPO_NO_TELEMETRY: "1"
+        run: bunx expo prebuild --platform android --no-install
+
+      - name: build release APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a
+
+      - name: publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.mobile-version.outputs.version }}
+          PRERELEASE: ${{ needs.mobile-version.outputs.prerelease }}
+        run: |
+          APK=$(find apps/mobile/android/app/build/outputs/apk/release -name '*.apk' -print -quit)
+          if [ -z "$APK" ]; then
+            echo "release APK not found" >&2
+            exit 1
+          fi
+          ASSET="$RUNNER_TEMP/gpio-companion-mobile-${VERSION}-android-arm64.apk"
+          cp "$APK" "$ASSET"
+          NOTES="$RUNNER_TEMP/mobile-notes.md"
+          FILE="apps/mobile/release-notes/v${VERSION}.md"
+          if [ -s "$FILE" ]; then
+            cp "$FILE" "$NOTES"
+          else
+            {
+              echo "gpio-companion mobile v${VERSION}"
+              echo
+              echo "Android arm64 APK for sideload. Signed with the debug keystore until a release keystore is configured. iOS is not included."
+              echo
+              git log -20 --pretty=format:'- %s' -- apps/mobile
+              echo
+            } > "$NOTES"
+          fi
+          FLAGS=()
+          if [ "$PRERELEASE" = "true" ]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "mobile-v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "gpio-companion mobile v${VERSION}" \
+            --notes-file "$NOTES" \
+            "${FLAGS[@]}" \
+            "$ASSET"
+
+  dashboard-version:
+    if: github.event_name != 'workflow_dispatch' || inputs.app == 'all' || inputs.app == 'dashboard'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      release: ${{ steps.meta.outputs.release }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./apps/dashboard/package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" = "0.0.0" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          if gh release view "dashboard-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  dashboard-publish:
+    needs: dashboard-version
+    if: needs.dashboard-version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: build dashboard
+        working-directory: apps/dashboard
+        run: bun run build
+
+      - name: publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.dashboard-version.outputs.version }}
+          PRERELEASE: ${{ needs.dashboard-version.outputs.prerelease }}
+        run: |
+          BUILD="apps/dashboard/.frame-master/build"
+          if [ ! -d "$BUILD" ]; then
+            echo "dashboard build output missing: $BUILD" >&2
+            exit 1
+          fi
+          ASSET="$RUNNER_TEMP/gpio-companion-dashboard-${VERSION}.zip"
+          (cd "$BUILD" && zip -r "$ASSET" .)
+          NOTES="$RUNNER_TEMP/dashboard-notes.md"
+          FILE="apps/dashboard/release-notes/v${VERSION}.md"
+          if [ -s "$FILE" ]; then
+            cp "$FILE" "$NOTES"
+          else
+            {
+              echo "gpio-companion dashboard v${VERSION}"
+              echo
+              echo "Production build snapshot. The live site still deploys from main through Cloudflare. This workflow does not run wrangler."
+              echo
+              git log -20 --pretty=format:'- %s' -- apps/dashboard packages/core
+              echo
+            } > "$NOTES"
+          fi
+          FLAGS=()
+          if [ "$PRERELEASE" = "true" ]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "dashboard-v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "gpio-companion dashboard v${VERSION}" \
+            --notes-file "$NOTES" \
+            "${FLAGS[@]}" \
+            "$ASSET"

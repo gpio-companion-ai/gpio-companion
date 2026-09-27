@@ -1479,7 +1479,7 @@ run_openviking_seed() {
 		echo "gpio-companion openviking: bun missing, skipping seed" >&2
 		return 1
 	fi
-	OPENVIKING_OV_BIN="$venv_bin/ov" run_as_gpio_user bun "$SCRIPT_DIR/openviking-seed.ts"
+	run_as_gpio_user env OPENVIKING_OV_BIN="$venv_bin/ov" bun "$SCRIPT_DIR/openviking-seed.ts"
 }
 
 write_opencode_openviking_plugin() {
