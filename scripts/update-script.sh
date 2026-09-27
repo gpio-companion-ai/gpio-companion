@@ -20,9 +20,38 @@ BIN_DIR="${GPIO_COMPANION_BIN_DIR:-/usr/local/bin}"
 LIB_DIR="${GPIO_COMPANION_LIB_DIR:-/usr/local/lib/gpio-companion}"
 BIN_REV_FILE="${GPIO_COMPANION_BIN_REV:-$CONFIG_DIR/bin.rev}"
 FORCE=0
-if [[ "${1:-}" == "--force" || "${GPIO_COMPANION_UPDATE_FORCE:-}" == "1" ]]; then
+CF_API_KEY="${GPIO_COMPANION_CF_API_KEY:-}"
+if [[ "${GPIO_COMPANION_UPDATE_FORCE:-}" == "1" ]]; then
 	FORCE=1
 fi
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+	--force)
+		FORCE=1
+		shift
+		;;
+	--cf-api-key)
+		if [[ -z "${2:-}" || "$2" == --* ]]; then
+			echo "gpio-companion update: --cf-api-key needs a Cloudflare API token" >&2
+			exit 1
+		fi
+		CF_API_KEY="$2"
+		shift 2
+		;;
+	--cf-api-key=*)
+		CF_API_KEY="${1#*=}"
+		if [[ -z "$CF_API_KEY" ]]; then
+			echo "gpio-companion update: --cf-api-key is empty" >&2
+			exit 1
+		fi
+		shift
+		;;
+	*)
+		echo "gpio-companion update: unknown argument: $1" >&2
+		exit 1
+		;;
+	esac
+done
 
 ensure_root
 
@@ -169,15 +198,22 @@ fi
 
 write_opencode_ai_provider
 
+sync_local_pairing_with_dashboard
+
 if openviking_enabled; then
 	write_openviking_ai_loopback
 	write_opencode_openviking_plugin
 	if paths_changed '^(opencode/memory/|scripts/openviking-seed)'; then
-		echo "gpio-companion update: openviking seed data changed, reseeding"
-		run_openviking_seed || echo "gpio-companion update: openviking reseed failed" >&2
+		if [[ -n "$CF_API_KEY" ]]; then
+			echo "gpio-companion update: openviking reseed via Cloudflare API token"
+			openviking_seed_with_cf_api_key "$CF_API_KEY" || echo "gpio-companion update: openviking reseed failed" >&2
+		elif ! local_pairing_claimed; then
+			echo "gpio-companion update: openviking reseed skipped (board is not paired; pass --cf-api-key to seed anyway)" >&2
+		else
+			echo "gpio-companion update: openviking seed data changed, reseeding"
+			run_openviking_seed || echo "gpio-companion update: openviking reseed failed" >&2
+		fi
 	fi
 fi
-
-sync_local_pairing_with_dashboard
 
 echo "gpio-companion update: done"

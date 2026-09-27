@@ -1479,7 +1479,142 @@ run_openviking_seed() {
 		echo "gpio-companion openviking: bun missing, skipping seed" >&2
 		return 1
 	fi
-	run_as_gpio_user env OPENVIKING_OV_BIN="$venv_bin/ov" bun "$SCRIPT_DIR/openviking-seed.ts"
+	run_as_gpio_user env \
+		OPENVIKING_OV_BIN="$venv_bin/ov" \
+		OPENVIKING_SEED_SKIP_EMBED_CHECK="${OPENVIKING_SEED_SKIP_EMBED_CHECK:-}" \
+		bun "$SCRIPT_DIR/openviking-seed.ts"
+}
+
+openviking_conf_path() {
+	printf '%s\n' "$(gpio_user_home)/.openviking/ov.conf"
+}
+
+wait_openviking_healthy() {
+	local port="${GPIO_COMPANION_OPENVIKING_PORT:-1933}" i
+	for i in $(seq 1 120); do
+		if curl -fsS "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+			return 0
+		fi
+		sleep 1
+	done
+	return 1
+}
+
+cf_account_id_for_token() {
+	local key="$1" account body
+	account="${GPIO_COMPANION_CF_ACCOUNT_ID:-}"
+	if [[ -n "$account" ]]; then
+		printf '%s\n' "$account"
+		return 0
+	fi
+	body="$(
+		curl -fsS --max-time 20 \
+			-H "Authorization: Bearer ${key}" \
+			-H "content-type: application/json" \
+			"https://api.cloudflare.com/client/v4/accounts" 2>/dev/null
+	)" || {
+		echo "gpio-companion openviking: Cloudflare account list failed; set GPIO_COMPANION_CF_ACCOUNT_ID" >&2
+		return 1
+	}
+	account="$(
+		BODY="$body" python3 - <<'PY'
+import json, os, sys
+data = json.loads(os.environ["BODY"])
+rows = data.get("result") or []
+ids = [row.get("id") for row in rows if row.get("id")]
+if len(ids) == 1:
+    print(ids[0])
+    raise SystemExit(0)
+print("gpio-companion openviking: Cloudflare token sees %s accounts; set GPIO_COMPANION_CF_ACCOUNT_ID" % len(ids), file=sys.stderr)
+raise SystemExit(1)
+PY
+	)" || return 1
+	printf '%s\n' "$account"
+}
+
+openviking_embedding_model() {
+	local conf
+	conf="$(openviking_conf_path)"
+	python3 - "$conf" <<'PY'
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    data = json.load(handle)
+dense = (data.get("embedding") or {}).get("dense") or {}
+print(dense.get("model") or "@cf/qwen/qwen3-embedding-0.6b")
+PY
+}
+
+apply_openviking_cf_embed() {
+	local base="$1" key="$2" conf
+	conf="$(openviking_conf_path)"
+	GPIO_OV_CONF="$conf" GPIO_AI_URL="$base" GPIO_AI_KEY="$key" python3 - <<'PY'
+import json, os
+from pathlib import Path
+path = Path(os.environ["GPIO_OV_CONF"])
+data = json.loads(path.read_text())
+base = os.environ["GPIO_AI_URL"]
+key = os.environ["GPIO_AI_KEY"]
+for section in ("embedding", "vlm"):
+    block = data.get(section)
+    if not isinstance(block, dict):
+        continue
+    targets = [block]
+    dense = block.get("dense")
+    if isinstance(dense, dict):
+        targets.append(dense)
+    for target in targets:
+        if "api_base" not in target and "api_key" not in target:
+            continue
+        target["api_base"] = base
+        target["api_key"] = key
+path.write_text(json.dumps(data, indent="\t") + "\n")
+path.chmod(0o600)
+PY
+	if [[ "$GPIO_USER" != "root" ]]; then
+		chown "$GPIO_USER:$GPIO_USER" "$conf"
+	fi
+}
+
+restore_openviking_loopback() {
+	write_openviking_ai_loopback >/dev/null
+	systemctl restart gpio-companion-openviking.service || true
+}
+
+openviking_seed_with_cf_api_key() {
+	local key="$1" account base model status=0 body code
+	account="$(cf_account_id_for_token "$key")" || return 1
+	base="https://api.cloudflare.com/client/v4/accounts/${account}/ai/v1"
+	model="$(openviking_embedding_model)" || return 1
+	body="$(mktemp)"
+	code="$(
+		curl -sS --max-time 30 -o "$body" -w "%{http_code}" \
+			-H "Authorization: Bearer ${key}" \
+			-H "content-type: application/json" \
+			-d "$(MODEL="$model" python3 -c 'import json,os; print(json.dumps({"model": os.environ["MODEL"], "input": "ping"}))')" \
+			"${base}/embeddings" || true
+	)"
+	if [[ "$code" != "200" ]]; then
+		echo "gpio-companion openviking: Cloudflare embeddings rejected (HTTP ${code})" >&2
+		python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).read_text()[:400])' "$body" >&2 || true
+		rm -f "$body"
+		return 1
+	fi
+	rm -f "$body"
+	apply_openviking_cf_embed "$base" "$key"
+	if ! systemctl restart gpio-companion-openviking.service; then
+		restore_openviking_loopback
+		return 1
+	fi
+	if ! wait_openviking_healthy; then
+		echo "gpio-companion openviking: server did not become healthy with Cloudflare embeddings" >&2
+		journalctl -u gpio-companion-openviking.service -n 40 --no-pager >&2 || true
+		restore_openviking_loopback
+		return 1
+	fi
+	OPENVIKING_SEED_SKIP_EMBED_CHECK=1 run_openviking_seed || status=$?
+	restore_openviking_loopback
+	wait_openviking_healthy || true
+	return "$status"
 }
 
 write_opencode_openviking_plugin() {

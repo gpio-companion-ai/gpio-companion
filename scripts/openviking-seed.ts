@@ -114,9 +114,49 @@ for (const file of seedFiles("core")) {
 	});
 }
 
+function assertEmbeddings(): void {
+	const child = Bun.spawnSync(
+		[
+			"curl",
+			"-sS",
+			"-m",
+			"20",
+			"-o",
+			"/tmp/gpio-ov-embed.json",
+			"-w",
+			"%{http_code}",
+			"http://127.0.0.1:4150/v1/ai/embeddings",
+			"-H",
+			"content-type: application/json",
+			"-H",
+			"authorization: Bearer local",
+			"-d",
+			JSON.stringify({ input: "ping" }),
+		],
+		{ stdout: "pipe", stderr: "pipe" },
+	);
+	const status = child.stdout?.toString().trim() ?? "";
+	if (status === "200") {
+		return;
+	}
+	let body = child.stderr?.toString() ?? "";
+	try {
+		body = readFileSync("/tmp/gpio-ov-embed.json", "utf8");
+	} catch {
+		body = body.trim();
+	}
+	fail(
+		`embeddings unavailable (HTTP ${status || child.exitCode}); pair this board before seeding. ${body.trim()}`,
+	);
+}
+
+if (process.env.OPENVIKING_SEED_SKIP_EMBED_CHECK !== "1") {
+	assertEmbeddings();
+}
+
 let added = 0;
 for (const target of targets) {
-		run(["rm", target.uri, "--recursive"]);
+	run(["rm", target.uri, "--recursive"]);
 	const result = run([
 		"add-resource",
 		target.file,
