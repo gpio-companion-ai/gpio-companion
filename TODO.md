@@ -9,3 +9,5 @@
 
 - when unpairing a device, the DELETE request to the web dashboard fail ( bug found in the desktop dashboard version )
 - script `scripts/first-setup.sh` open-vicking installing part, it crash. ( bug found on a rasberry pi 4 model b rev1.5 ).
+
+## marketplace
