@@ -11,3 +11,7 @@
 - script `scripts/first-setup.sh` open-vicking installing part, it crash. ( bug found on a rasberry pi 4 model b rev1.5 ).
 
 ## marketplace
+
+### community share (seliing point)
+
+- customer can publish there work on the marketplace community platform for selling it. gpio-comapnion keep a poucentage out of a sell.
