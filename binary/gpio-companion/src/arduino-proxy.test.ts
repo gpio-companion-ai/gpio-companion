@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { constants, mkdirSync, writeFileSync } from "node:fs";
+import {
+	constants,
+	lstatSync,
+	mkdirSync,
+	unlinkSync,
+	utimesSync,
+	writeFileSync,
+} from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -9,7 +16,10 @@ import {
 	listUsbSerialPorts,
 	memoryArduinoProxy,
 	openTtyReadStream,
+	serialWatchDir,
 	TTY_NOCTTY_FLAGS,
+	usbSerialStamp,
+	watchUsbSerialPorts,
 } from "./arduino-proxy.ts";
 import { memoryFlash } from "./flash.ts";
 import { filePairingStore } from "./pairing.ts";
@@ -295,6 +305,83 @@ describe("live handshake", () => {
 		expect(opens).toBe(2);
 	});
 
+	test("probe retries while the port is still present", async () => {
+		let opens = 0;
+		const proxy = createArduinoProxy({
+			probeMs: 40,
+			reconnectDelaysMs: [15, 15],
+			listPorts: async () =>
+				JSON.stringify({
+					detected_ports: [
+						{
+							port: { address: "/dev/ttyACM0", protocol: "serial" },
+						},
+					],
+				}),
+			openSerial: (_port, _baud, onData) => {
+				opens += 1;
+				if (opens < 3) {
+					throw new Error("port not ready");
+				}
+				return {
+					write() {
+						onData(Uint8Array.from([0xf0, 0x79, 2, 5, 0xf7]));
+					},
+					close() {
+						undefined;
+					},
+				};
+			},
+		});
+		const status = await proxy.probe();
+		expect(status.connected).toBe(true);
+		expect(opens).toBeGreaterThanOrEqual(3);
+	});
+
+	test("probe rescans if called again during an empty listing", async () => {
+		let release: () => void = () => undefined;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		let phase = 0;
+		let opens = 0;
+		const proxy = createArduinoProxy({
+			probeMs: 40,
+			reconnectDelaysMs: [],
+			listPorts: async () => {
+				phase += 1;
+				if (phase === 1) {
+					await gate;
+					return JSON.stringify({ detected_ports: [] });
+				}
+				return JSON.stringify({
+					detected_ports: [
+						{
+							port: { address: "/dev/ttyACM0", protocol: "serial" },
+						},
+					],
+				});
+			},
+			openSerial: (_port, _baud, onData) => {
+				opens += 1;
+				return {
+					write() {
+						onData(Uint8Array.from([0xf0, 0x79, 2, 5, 0xf7]));
+					},
+					close() {
+						undefined;
+					},
+				};
+			},
+		});
+		const pending = proxy.probe();
+		const again = proxy.probe();
+		release();
+		expect((await pending).connected).toBe(true);
+		expect((await again).connected).toBe(true);
+		expect(opens).toBe(1);
+	});
+
 	test("serial close does not throw while connected", async () => {
 		let onClose: () => void = () => undefined;
 		const proxy = createArduinoProxy({
@@ -369,6 +456,45 @@ describe("tty open flags", () => {
 });
 
 describe("listUsbSerialPorts", () => {
+	test("stamp changes when the same tty name is recreated", () => {
+		const root = join(tmpdir(), `usb-stamp-${Date.now()}`);
+		mkdirSync(root);
+		const port = join(root, "ttyACM0");
+		writeFileSync(port, "");
+		const first = usbSerialStamp(root);
+		expect(first).toContain(`${port}:${lstatSync(port).ino}:`);
+		unlinkSync(port);
+		writeFileSync(port, "");
+		utimesSync(port, new Date(), new Date(Date.now() + 5_000));
+		expect(usbSerialStamp(root)).not.toBe(first);
+	});
+
+	test("watches serial/by-id when that directory exists", () => {
+		const root = join(tmpdir(), `usb-byid-${Date.now()}`);
+		mkdirSync(join(root, "serial", "by-id"), { recursive: true });
+		expect(serialWatchDir(root)).toBe(join(root, "serial", "by-id"));
+	});
+
+	test("watch fires when a tty node is recreated", async () => {
+		const root = join(tmpdir(), `usb-watch-${Date.now()}`);
+		mkdirSync(root);
+		const port = join(root, "ttyACM0");
+		writeFileSync(port, "");
+		let hits = 0;
+		const stop = watchUsbSerialPorts(
+			() => {
+				hits += 1;
+			},
+			{ devDir: root, intervalMs: 40 },
+		);
+		unlinkSync(port);
+		writeFileSync(port, "");
+		utimesSync(port, new Date(), new Date(Date.now() + 5_000));
+		await Bun.sleep(150);
+		stop();
+		expect(hits).toBeGreaterThan(0);
+	});
+
 	test("finds ttyACM and ttyUSB only", () => {
 		const root = join(tmpdir(), `usb-serial-${Date.now()}`);
 		mkdirSync(root);

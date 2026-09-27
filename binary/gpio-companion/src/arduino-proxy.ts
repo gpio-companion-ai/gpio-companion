@@ -3,6 +3,7 @@ import {
 	createReadStream,
 	createWriteStream,
 	existsSync,
+	lstatSync,
 	openSync,
 	type ReadStream,
 	readdirSync,
@@ -68,11 +69,14 @@ export type ArduinoProxyOptions = {
 		onClose: () => void,
 	) => ProxySerial;
 	probeMs?: number;
+	reconnectDelaysMs?: number[];
 	onChange?: (status: ArduinoProxyStatus) => void;
 };
 
 const PROBE_MS = 3_500;
 const QUERY_EVERY_MS = 250;
+const RECONNECT_DELAYS_MS = [800, 2_000, 5_000];
+const SERIAL_OPEN_MS = 1_000;
 export const TTY_NOCTTY_FLAGS = constants.O_NOCTTY;
 
 export function openTtyReadStream(port: string): ReadStream {
@@ -98,15 +102,33 @@ export function listUsbSerialPorts(devDir = "/dev"): string[] {
 	}
 }
 
+export function usbSerialStamp(devDir = "/dev"): string {
+	return listUsbSerialPorts(devDir)
+		.map((port) => {
+			try {
+				const st = lstatSync(port);
+				return `${port}:${st.ino}:${Math.trunc(st.mtimeMs)}`;
+			} catch {
+				return `${port}:missing`;
+			}
+		})
+		.join("\n");
+}
+
+export function serialWatchDir(devDir = "/dev"): string {
+	const byId = join(devDir, "serial", "by-id");
+	return existsSync(byId) ? byId : devDir;
+}
+
 export function watchUsbSerialPorts(
 	onChange: () => void,
 	options?: { intervalMs?: number; devDir?: string },
 ): () => void {
 	const devDir = options?.devDir ?? "/dev";
 	const intervalMs = options?.intervalMs ?? 2_000;
-	let last = listUsbSerialPorts(devDir).join("\n");
+	let last = usbSerialStamp(devDir);
 	function check() {
-		const next = listUsbSerialPorts(devDir).join("\n");
+		const next = usbSerialStamp(devDir);
 		if (next === last) {
 			return;
 		}
@@ -116,7 +138,7 @@ export function watchUsbSerialPorts(
 	const timer = setInterval(check, intervalMs);
 	let watcher: ReturnType<typeof watch> | null = null;
 	try {
-		watcher = watch(devDir, { persistent: false }, check);
+		watcher = watch(serialWatchDir(devDir), { persistent: false }, check);
 	} catch {
 		watcher = null;
 	}
@@ -145,7 +167,8 @@ export function createArduinoProxy(
 	let serial: ProxySerial | null = null;
 	let held = false;
 	let probing: Promise<ArduinoProxyStatus> | null = null;
-	const parser = createFirmataParser();
+	let again = false;
+	let parser = createFirmataParser();
 	const listPorts =
 		options.listPorts ??
 		(async () =>
@@ -223,6 +246,17 @@ export function createArduinoProxy(
 		}
 	}
 
+	async function listedPorts(): Promise<FlashPort[] | null> {
+		if (options.listPorts) {
+			try {
+				return parseArduinoBoardList(await listPorts());
+			} catch {
+				return null;
+			}
+		}
+		return listUsbSerialPorts().map((address) => ({ address }));
+	}
+
 	function requireSerial(): ProxySerial {
 		if (!status.connected || !serial) {
 			throw new ArduinoProxyError("arduino-proxy not connected");
@@ -237,6 +271,7 @@ export function createArduinoProxy(
 		if (held) {
 			return status;
 		}
+		parser = createFirmataParser();
 		const board =
 			arduinoProxyBoard(fqbn || "") || arduinoProxyBoard("arduino:avr:uno");
 		if (!board) {
@@ -264,8 +299,14 @@ export function createArduinoProxy(
 				}
 			},
 		);
-		if (serial.ready) {
-			await serial.ready;
+		try {
+			if (serial.ready) {
+				await serial.ready;
+			}
+		} catch {
+			serial?.close();
+			serial = null;
+			throw new ArduinoProxyError("arduino-proxy not detected");
 		}
 		serial.write(encodeSystemReset());
 		const probeMs = options.probeMs ?? PROBE_MS;
@@ -386,45 +427,52 @@ export function createArduinoProxy(
 				return status;
 			}
 			if (probing) {
+				again = true;
 				return probing;
 			}
+			const delays = options.reconnectDelaysMs ?? RECONNECT_DELAYS_MS;
 			probing = (async () => {
-				if (held) {
-					return status;
-				}
-				let ports: FlashPort[] = [];
-				if (options.listPorts) {
-					try {
-						ports = parseArduinoBoardList(await listPorts());
-					} catch {
+				let retries = 0;
+				while (!held) {
+					again = false;
+					const ports = await listedPorts();
+					if (ports === null || held) {
 						return status;
 					}
-				} else {
-					ports = listUsbSerialPorts().map((address) => ({ address }));
-				}
-				if (held) {
-					return status;
-				}
-				if (status.connected && serial) {
-					if (
-						status.port &&
-						ports.some((item) => item.address === status.port)
-					) {
+					if (status.connected && serial) {
+						if (
+							status.port &&
+							ports.some((item) => item.address === status.port)
+						) {
+							return status;
+						}
+						disconnect();
+					}
+					for (const port of ports) {
+						if (held || again) {
+							break;
+						}
+						if (!port.address) {
+							continue;
+						}
+						try {
+							await handshake(port.address, port.fqbn);
+							return status;
+						} catch {}
+					}
+					if (status.connected || held) {
 						return status;
 					}
-					disconnect();
-				}
-				for (const port of ports) {
-					if (held) {
-						return status;
-					}
-					if (!port.address) {
+					if (again) {
 						continue;
 					}
-					try {
-						return await handshake(port.address, port.fqbn);
-					} catch {
-						continue;
+					if (retries >= delays.length || ports.length === 0) {
+						return status;
+					}
+					const delay = delays[retries] ?? 0;
+					retries += 1;
+					if (delay > 0) {
+						await Bun.sleep(delay);
 					}
 				}
 				return status;
@@ -584,8 +632,10 @@ function liveOpenSerial(
 	let writer: WriteStream | null = null;
 	const pending: Uint8Array[] = [];
 	let resolveReady: () => void = () => undefined;
-	const ready = new Promise<void>((resolve) => {
+	let rejectReady: (error: Error) => void = () => undefined;
+	const ready = new Promise<void>((resolve, reject) => {
 		resolveReady = resolve;
+		rejectReady = reject;
 	});
 	void (async () => {
 		const proc = Bun.spawn(
@@ -606,8 +656,17 @@ function liveOpenSerial(
 			],
 			{ stdout: "pipe", stderr: "pipe" },
 		);
-		if ((await proc.exited) !== 0 || closed) {
-			resolveReady();
+		const opened = await Promise.race([
+			proc.exited,
+			Bun.sleep(SERIAL_OPEN_MS).then(() => -1),
+		]);
+		if (opened !== 0 || closed) {
+			try {
+				proc.kill();
+			} catch {
+				undefined;
+			}
+			rejectReady(new Error("serial open failed"));
 			onClose();
 			return;
 		}
@@ -624,8 +683,10 @@ function liveOpenSerial(
 					onClose();
 				}
 			});
-		} catch {
-			resolveReady();
+		} catch (error) {
+			rejectReady(
+				error instanceof Error ? error : new Error("serial open failed"),
+			);
 			onClose();
 			return;
 		}
