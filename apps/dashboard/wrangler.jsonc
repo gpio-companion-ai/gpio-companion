@@ -7,7 +7,7 @@
 		"nodejs_compat"
 	],
 	"vars": {
-		"BUN_VERSION": "1.4.0",
+		"BUN_VERSION": "1.4.2",
 		"SKIP_DEPENDENCY_INSTALL": "true",
 		"PUBLIC_AUTH_CLIENT_ID": "__gpio_companion_927ffcf9",
 		"PUBLIC_AUTH_ISSUER": "https://c138e26ec90148fd88735d42f445004c-auth.webcreas.com",
