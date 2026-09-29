@@ -1,6 +1,114 @@
+import {
+	DEFAULT_AI_MODEL,
+	opencodeProviderModels,
+	type ReasoningEffort,
+} from "./ai-pricing.ts";
 import { isOpencodeProxyPath, OPENCODE_PROXY_PATH } from "./opencode-server.ts";
 
 export const OPENCODE_REPO_HEADER = "x-gpio-opencode-repo";
+export const OPENCODE_PROVIDER_ID = "gpio-companion";
+export const OPENCODE_MODEL_KEY = "gpio-companion-code-model";
+export const OPENCODE_EFFORT_KEY = "gpio-companion-code-effort";
+export const CODE_DEFAULT_MODEL = "muse-spark-1.3-contributor-free";
+export const CODE_NAV_STATE = "gpio-code";
+
+export type CodeNav = {
+	mode: "home" | "draft" | "session";
+	sessionID: string;
+};
+
+export function readCodeNav(search: string): CodeNav {
+	const session = new URLSearchParams(search).get("session") ?? "";
+	if (session === "draft") {
+		return { mode: "draft", sessionID: "" };
+	}
+	if (session) {
+		return { mode: "session", sessionID: session };
+	}
+	return { mode: "home", sessionID: "" };
+}
+
+export function codeNavHref(current: string, nav: CodeNav): string {
+	const url = new URL(current, "http://gpio-companion.local");
+	if (nav.mode === "session" && nav.sessionID) {
+		url.searchParams.set("session", nav.sessionID);
+	} else if (nav.mode === "draft") {
+		url.searchParams.set("session", "draft");
+	} else {
+		url.searchParams.delete("session");
+	}
+	return `${url.pathname}${url.search}${url.hash}`;
+}
+
+function browserHistory(): History | null {
+	if (
+		typeof window === "undefined" ||
+		typeof window.addEventListener !== "function" ||
+		typeof window.history?.pushState !== "function"
+	) {
+		return null;
+	}
+	return window.history;
+}
+
+export function pushCodeNav(nav: CodeNav): void {
+	const history = browserHistory();
+	if (!history) {
+		return;
+	}
+	const href = codeNavHref(window.location.href, nav);
+	const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+	if (href === here) {
+		return;
+	}
+	history.pushState({ [CODE_NAV_STATE]: true }, "", href);
+}
+
+export function replaceCodeNav(nav: CodeNav): void {
+	const history = browserHistory();
+	if (!history) {
+		return;
+	}
+	history.replaceState(
+		nav.mode === "home" ? null : { [CODE_NAV_STATE]: true },
+		"",
+		codeNavHref(window.location.href, nav),
+	);
+}
+
+export function codeNavBack(): boolean {
+	const history = browserHistory();
+	if (!history || typeof history.back !== "function") {
+		return false;
+	}
+	const state = history.state as { [CODE_NAV_STATE]?: boolean } | null;
+	if (!state?.[CODE_NAV_STATE]) {
+		return false;
+	}
+	history.back();
+	return true;
+}
+
+const CODE_ZEN_MODELS: Record<
+	string,
+	{ name: string; reasoning: boolean; providerID: string }
+> = {
+	[CODE_DEFAULT_MODEL]: {
+		name: "Muse Spark 1.3 Free",
+		reasoning: true,
+		providerID: "opencode",
+	},
+};
+
+export type { ReasoningEffort };
+export { DEFAULT_AI_MODEL };
+
+export type OpencodeModelChoice = {
+	id: string;
+	name: string;
+	provider: string;
+	reasoning: boolean;
+};
 
 const ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 const REPO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -16,19 +124,22 @@ export type OpencodeClientCall = {
 		| "messages"
 		| "prompt"
 		| "abort"
+		| "delete"
 		| "permission"
 		| "question";
 	sessionID?: string;
 	permissionID?: string;
 	requestID?: string;
 	text?: string;
+	model?: string;
+	variant?: ReasoningEffort;
 	response?: OpencodePermissionResponse;
 	answers?: string[][];
 	reject?: boolean;
 };
 
 export type OpencodeUpstreamCall = {
-	method: "GET" | "POST";
+	method: "GET" | "POST" | "DELETE";
 	path: string;
 	body?: unknown;
 };
@@ -47,7 +158,13 @@ export type OpencodePart = {
 	text: string;
 	tool: string;
 	status: OpencodeToolStatus;
+	input?: string;
+	output?: string;
 };
+
+export type OpencodeTurnBlock =
+	| { type: "text"; id: string; text: string }
+	| { type: "tools"; id: string; parts: OpencodePart[] };
 
 export type OpencodeTurn = {
 	id: string;
@@ -98,6 +215,108 @@ export type OpencodeSseEvent = {
 	id: string;
 	data: unknown;
 };
+
+function modelProviderLabel(id: string): string {
+	if (CODE_ZEN_MODELS[id]) {
+		return "OpenCode";
+	}
+	const org = id.split("/")[1] ?? "";
+	if (!org) {
+		return "Workers AI";
+	}
+	return org
+		.split("-")
+		.map((part) =>
+			part.toLowerCase() === "ai"
+				? "AI"
+				: part.charAt(0).toUpperCase() + part.slice(1),
+		)
+		.join(" ");
+}
+
+export function opencodeModelChoices(): OpencodeModelChoice[] {
+	const zen = Object.entries(CODE_ZEN_MODELS).map(([id, model]) => ({
+		id,
+		name: model.name,
+		provider: modelProviderLabel(id),
+		reasoning: model.reasoning,
+	}));
+	const workers = Object.entries(opencodeProviderModels()).map(
+		([id, model]) => ({
+			id,
+			name: model.name,
+			provider: modelProviderLabel(id),
+			reasoning: model.reasoning === true,
+		}),
+	);
+	return [...zen, ...workers].sort(
+		(a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+	);
+}
+
+export function opencodeStoredModel(raw: string | null | undefined): string {
+	const id = raw?.trim() ?? "";
+	if (CODE_ZEN_MODELS[id] || opencodeProviderModels()[id]) {
+		return id;
+	}
+	return CODE_DEFAULT_MODEL;
+}
+
+export function opencodeStoredEffort(
+	raw: string | null | undefined,
+): ReasoningEffort {
+	if (raw === "low" || raw === "medium" || raw === "high") {
+		return raw;
+	}
+	return "medium";
+}
+
+export function opencodePromptFields(
+	model: string,
+	variant: ReasoningEffort,
+): { model: string; variant?: ReasoningEffort } {
+	const id = opencodeStoredModel(model);
+	if (!codeModelReasoning(id)) {
+		return { model: id };
+	}
+	return { model: id, variant: opencodeStoredEffort(variant) };
+}
+
+function opencodePromptModel(call: OpencodeClientCall): {
+	model?: { providerID: string; modelID: string };
+	variant?: ReasoningEffort;
+} {
+	const id = call.model?.trim() ?? "";
+	if (!id) {
+		return {};
+	}
+	if (!CODE_ZEN_MODELS[id] && !opencodeProviderModels()[id]) {
+		throw new Error("invalid model");
+	}
+	const model = { providerID: codeModelProvider(id), modelID: id };
+	if (!codeModelReasoning(id) || call.variant === undefined) {
+		return { model };
+	}
+	if (
+		call.variant !== "low" &&
+		call.variant !== "medium" &&
+		call.variant !== "high"
+	) {
+		throw new Error("invalid effort");
+	}
+	return { model, variant: call.variant };
+}
+
+function codeModelProvider(id: string): string {
+	return CODE_ZEN_MODELS[id]?.providerID ?? OPENCODE_PROVIDER_ID;
+}
+
+function codeModelReasoning(id: string): boolean {
+	return (
+		CODE_ZEN_MODELS[id]?.reasoning === true ||
+		opencodeProviderModels()[id]?.reasoning === true
+	);
+}
 
 export function opencodeRepoName(raw: string): string {
 	const name = raw.trim();
@@ -201,9 +420,17 @@ export function opencodeClientRequest(
 			return {
 				method: "POST",
 				path: `/session/${opencodeId(call.sessionID, "session")}/prompt_async`,
-				body: { parts: [{ type: "text", text }] },
+				body: {
+					parts: [{ type: "text", text }],
+					...opencodePromptModel(call),
+				},
 			};
 		}
+		case "delete":
+			return {
+				method: "DELETE",
+				path: `/session/${opencodeId(call.sessionID, "session")}`,
+			};
 		case "abort":
 			return {
 				method: "POST",
@@ -342,6 +569,39 @@ function toolStatus(value: unknown): OpencodeToolStatus {
 	return "running";
 }
 
+const TOOL_INPUT_CAP = 2_000;
+const TOOL_OUTPUT_CAP = 4_000;
+
+function clipStart(value: string, cap: number): string {
+	const text = value.trim();
+	if (text.length <= cap) {
+		return text;
+	}
+	return `${text.slice(0, cap)}…`;
+}
+
+function clipEnd(value: string, cap: number): string {
+	const text = value.trim();
+	if (text.length <= cap) {
+		return text;
+	}
+	return `…${text.slice(text.length - cap)}`;
+}
+
+function asToolText(value: unknown): string {
+	if (typeof value === "string") {
+		return value;
+	}
+	if (value == null) {
+		return "";
+	}
+	try {
+		return JSON.stringify(value, null, 2);
+	} catch {
+		return "";
+	}
+}
+
 function toolDetail(record: Record<string, unknown>): string {
 	const state = asRecord(record.state);
 	const title = typeof state?.title === "string" ? state.title.trim() : "";
@@ -356,6 +616,74 @@ function toolDetail(record: Record<string, unknown>): string {
 		}
 	}
 	return "";
+}
+
+function toolBody(state: Record<string, unknown> | null): {
+	input?: string;
+	output?: string;
+} {
+	const input = clipStart(asToolText(state?.input), TOOL_INPUT_CAP);
+	const output = clipEnd(
+		[asToolText(state?.output), asToolText(state?.error)]
+			.filter(Boolean)
+			.join("\n"),
+		TOOL_OUTPUT_CAP,
+	);
+	return {
+		...(input ? { input } : {}),
+		...(output ? { output } : {}),
+	};
+}
+
+function toolPart(id: string, record: Record<string, unknown>): OpencodePart {
+	const state = asRecord(record.state);
+	return {
+		id,
+		type: "tool",
+		text: toolDetail(record),
+		tool: typeof record.tool === "string" ? record.tool : "",
+		status: toolStatus(state?.status),
+		...toolBody(state),
+	};
+}
+
+export function opencodeToolStacks(parts: OpencodePart[]): OpencodeTurnBlock[] {
+	const blocks: OpencodeTurnBlock[] = [];
+	let text: OpencodePart[] = [];
+	let tools: OpencodePart[] = [];
+	const flushText = () => {
+		const joined = text
+			.map((part) => part.text)
+			.filter(Boolean)
+			.join("\n");
+		const id = text[0]?.id;
+		text = [];
+		if (joined && id) {
+			blocks.push({ type: "text", id, text: joined });
+		}
+	};
+	const flushTools = () => {
+		const id = tools[0]?.id;
+		const grouped = tools;
+		tools = [];
+		if (grouped.length > 0 && id) {
+			blocks.push({ type: "tools", id, parts: grouped });
+		}
+	};
+	for (const part of parts) {
+		if (part.type === "tool") {
+			flushText();
+			tools.push(part);
+			continue;
+		}
+		flushTools();
+		if (part.text) {
+			text.push(part);
+		}
+	}
+	flushText();
+	flushTools();
+	return blocks;
 }
 
 function textOf(parts: OpencodePart[]): string {
@@ -394,14 +722,7 @@ function partsFrom(raw: unknown[]): OpencodePart[] {
 			continue;
 		}
 		if (record.type === "tool" && typeof record.tool === "string") {
-			const state = asRecord(record.state);
-			parts.push({
-				id,
-				type: "tool",
-				text: toolDetail(record),
-				tool: record.tool,
-				status: toolStatus(state?.status),
-			});
+			parts.push(toolPart(id, record));
 		}
 	}
 	return parts;
@@ -738,17 +1059,18 @@ export function applyOpencodeEvent(
 				};
 			}
 			if (part.type === "tool" && typeof part.tool === "string") {
-				const state = asRecord(part.state);
 				return {
 					...view,
 					busy: true,
-					turns: upsertPart(view.turns, messageID, "assistant", {
-						id: typeof part.id === "string" ? part.id : `${messageID}:tool`,
-						type: "tool",
-						text: toolDetail(part),
-						tool: part.tool,
-						status: toolStatus(state?.status),
-					}),
+					turns: upsertPart(
+						view.turns,
+						messageID,
+						"assistant",
+						toolPart(
+							typeof part.id === "string" ? part.id : `${messageID}:tool`,
+							part,
+						),
+					),
 				};
 			}
 			return view;

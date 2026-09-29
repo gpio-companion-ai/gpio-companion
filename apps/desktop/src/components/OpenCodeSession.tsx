@@ -1,21 +1,42 @@
 import {
 	applyOpencodeEvent,
+	CODE_DEFAULT_MODEL,
+	codeNavBack,
 	emptyOpencodeView,
+	OPENCODE_EFFORT_KEY,
+	OPENCODE_MODEL_KEY,
 	type OpencodeClientCall,
 	type OpencodeInline,
 	type OpencodeMarkdown,
+	type OpencodePart,
 	type OpencodePermissionResponse,
 	type OpencodeTurn,
 	type OpencodeView,
+	opencodeModelChoices,
+	opencodePromptFields,
 	opencodeSessionBucket,
 	opencodeSessions,
+	opencodeStoredEffort,
+	opencodeStoredModel,
+	opencodeToolStacks,
 	opencodeTurns,
 	parseOpencodeMarkdown,
 	pendingOpencodeTurn,
+	pushCodeNav,
+	type ReasoningEffort,
+	readCodeNav,
 	readOpencodeEventStream,
+	replaceCodeNav,
 	settleOpencodeTurns,
 } from "gpio-companion-opencode";
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	Fragment,
+	type ReactNode,
+	useEffect,
+	useLayoutEffect,
+	useRef,
+	useState,
+} from "react";
 import {
 	listProjects,
 	opencodeCall,
@@ -230,26 +251,112 @@ function MdBlock({ block }: { block: OpencodeMarkdown }) {
 	);
 }
 
+function stackStatus(parts: OpencodePart[]): "running" | "error" | "done" {
+	if (parts.some((part) => part.status === "running")) {
+		return "running";
+	}
+	if (parts.some((part) => part.status === "error")) {
+		return "error";
+	}
+	return "done";
+}
+
+function toolInfo(
+	part: OpencodePart,
+	inputLabel: string,
+	outputLabel: string,
+): string {
+	const chunks: string[] = [];
+	if (part.input) {
+		chunks.push(`${inputLabel}\n${part.input}`);
+	}
+	if (part.output) {
+		chunks.push(`${outputLabel}\n${part.output}`);
+	}
+	return chunks.join("\n\n");
+}
+
+function ToolStack({ parts }: { parts: OpencodePart[] }) {
+	const t = useT();
+	const running = parts.some((part) => part.status === "running");
+	const touched = useRef(false);
+	const [open, setOpen] = useState(running);
+	const [info, setInfo] = useState("");
+	useEffect(() => {
+		if (!touched.current) {
+			setOpen(running);
+		}
+	}, [running]);
+	const names = [
+		...new Set(parts.map((part) => part.tool).filter(Boolean)),
+	].join(", ");
+	const label =
+		parts.length === 1
+			? names
+			: t("code.toolStack", { n: parts.length, names });
+	return (
+		<div className={`oc-tools is-${stackStatus(parts)}`}>
+			<button
+				type="button"
+				className="oc-tools-toggle"
+				aria-expanded={open}
+				onClick={() => {
+					touched.current = true;
+					setOpen((value) => !value);
+				}}
+			>
+				<i className="oc-mark" />
+				<strong>{label}</strong>
+				<span aria-hidden="true">{open ? "▾" : "▸"}</span>
+			</button>
+			{open
+				? parts.map((part) => {
+						const body = toolInfo(
+							part,
+							t("code.toolInput"),
+							t("code.toolOutput"),
+						);
+						return (
+							<div key={part.id}>
+								<button
+									type="button"
+									className={`oc-tool is-${part.status}`}
+									aria-expanded={info === part.id}
+									onClick={() =>
+										setInfo((current) => (current === part.id ? "" : part.id))
+									}
+								>
+									<i className="oc-mark" />
+									<strong>{part.tool}</strong>
+									{part.text ? <span>{part.text}</span> : null}
+								</button>
+								{info === part.id && body ? (
+									<pre className="oc-code oc-tool-info">{body}</pre>
+								) : null}
+							</div>
+						);
+					})
+				: null}
+		</div>
+	);
+}
+
 function TurnView({ turn, caret }: { turn: OpencodeTurn; caret: boolean }) {
+	const blocks =
+		turn.role === "assistant" ? opencodeToolStacks(turn.parts) : [];
 	return (
 		<article className="oc-turn">
 			{turn.role === "user" ? (
 				<p className="oc-user">{turn.text}</p>
 			) : (
-				<Blocks text={turn.text} />
+				blocks.map((block) =>
+					block.type === "text" ? (
+						<Blocks key={block.id} text={block.text} />
+					) : (
+						<ToolStack key={block.id} parts={block.parts} />
+					),
+				)
 			)}
-			{turn.parts
-				.filter((part) => part.type === "tool")
-				.map((part) => (
-					<div
-						key={part.id}
-						className={`oc-tool is-${part.status === "error" ? "error" : part.status}`}
-					>
-						<i className="oc-mark" />
-						<strong>{part.tool}</strong>
-						{part.text ? <span>{part.text}</span> : null}
-					</div>
-				))}
 			{caret ? <span className="oc-caret" /> : null}
 		</article>
 	);
@@ -274,6 +381,9 @@ export default function OpenCodeSession({
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [answers, setAnswers] = useState<Record<string, string>>({});
+	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
+	const [effort, setEffort] = useState<ReasoningEffort>("medium");
+	const [modelMenu, setModelMenu] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
 
@@ -290,6 +400,20 @@ export default function OpenCodeSession({
 			.catch((caught) => {
 				setError(caught instanceof Error ? caught.message : "request failed");
 			});
+	}, []);
+
+	useEffect(() => {
+		try {
+			setModel(
+				opencodeStoredModel(window.localStorage.getItem(OPENCODE_MODEL_KEY)),
+			);
+			setEffort(
+				opencodeStoredEffort(window.localStorage.getItem(OPENCODE_EFFORT_KEY)),
+			);
+		} catch {
+			setModel(CODE_DEFAULT_MODEL);
+			setEffort("medium");
+		}
 	}, []);
 
 	useEffect(() => {
@@ -316,15 +440,101 @@ export default function OpenCodeSession({
 
 	function remember(name: string) {
 		selectRepo(name);
-		setMode("home");
 		setQuery("");
+		leaveChat();
 	}
 
-	useEffect(() => {
-		if (selected) {
-			setMode("home");
+	function openSession(sessionID: string) {
+		setQuery("");
+		setView((current) => ({
+			...current,
+			sessionID,
+			turns: [],
+		}));
+		setMode("session");
+		pushCodeNav({ mode: "session", sessionID });
+	}
+
+	async function removeSession(sessionID: string) {
+		if (!window.confirm(t("code.deleteConfirm"))) {
+			return;
 		}
+		const removed = await run({ repo, op: "delete", sessionID });
+		if (!removed) {
+			return;
+		}
+		setView((current) => ({
+			...current,
+			sessions: current.sessions.filter((item) => item.id !== sessionID),
+			sessionID: current.sessionID === sessionID ? "" : current.sessionID,
+			turns: current.sessionID === sessionID ? [] : current.turns,
+		}));
+		if (mode === "session" && view.sessionID === sessionID) {
+			setMode("home");
+			replaceCodeNav({ mode: "home", sessionID: "" });
+		}
+	}
+
+	function openDraft() {
+		setPrompt("");
+		setMode("draft");
+		pushCodeNav({ mode: "draft", sessionID: "" });
+	}
+
+	function leaveChat() {
+		if (codeNavBack()) {
+			return;
+		}
+		setMode("home");
+		replaceCodeNav({ mode: "home", sessionID: "" });
+	}
+
+	function selectModel(id: string) {
+		const next = opencodeStoredModel(id);
+		setModel(next);
+		try {
+			window.localStorage.setItem(OPENCODE_MODEL_KEY, next);
+		} catch {
+			return;
+		}
+	}
+
+	function selectEffort(value: string) {
+		const next = opencodeStoredEffort(value);
+		setEffort(next);
+		try {
+			window.localStorage.setItem(OPENCODE_EFFORT_KEY, next);
+		} catch {
+			return;
+		}
+	}
+
+	const boardRef = useRef(selected);
+	useEffect(() => {
+		if (boardRef.current === selected) {
+			return;
+		}
+		boardRef.current = selected;
+		setMode("home");
+		replaceCodeNav({ mode: "home", sessionID: "" });
 	}, [selected]);
+
+	useEffect(() => {
+		function applyNav() {
+			const next = readCodeNav(window.location.search);
+			setMode(next.mode);
+			if (next.sessionID) {
+				setView((current) => ({
+					...current,
+					sessionID: next.sessionID,
+					turns: current.sessionID === next.sessionID ? current.turns : [],
+				}));
+			}
+		}
+		applyNav();
+		window.addEventListener("popstate", applyNav);
+		return () => window.removeEventListener("popstate", applyNav);
+	}, []);
 
 	useEffect(() => {
 		if (!selected || !repo) {
@@ -431,12 +641,21 @@ export default function OpenCodeSession({
 		(view.turns.at(-1)?.text.length ?? 0) +
 		view.permissions.length +
 		view.questions.length;
-	useEffect(() => {
-		if (scrollKey < 0) {
+	useLayoutEffect(() => {
+		if (mode !== "session" || !view.sessionID || scrollKey < 0) {
 			return;
 		}
-		scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
-	}, [scrollKey]);
+		const node = scroller.current;
+		if (!node) {
+			return;
+		}
+		const stick = () => {
+			node.scrollTop = node.scrollHeight;
+		};
+		stick();
+		const frame = requestAnimationFrame(stick);
+		return () => cancelAnimationFrame(frame);
+	}, [mode, view.sessionID, scrollKey]);
 
 	async function run(call: Omit<OpencodeClientCall, "uuid">) {
 		setError("");
@@ -477,13 +696,20 @@ export default function OpenCodeSession({
 				busy: false,
 			}));
 			setMode("session");
+			replaceCodeNav({ mode: "session", sessionID });
 		}
 		setView((current) => ({
 			...current,
 			busy: true,
 			turns: [...current.turns, pendingOpencodeTurn(text)],
 		}));
-		const sent = await run({ repo, op: "prompt", sessionID, text });
+		const sent = await run({
+			repo,
+			op: "prompt",
+			sessionID,
+			text,
+			...opencodePromptFields(model, effort),
+		});
 		if (!sent) {
 			setView((current) => ({ ...current, busy: false }));
 		}
@@ -544,6 +770,67 @@ export default function OpenCodeSession({
 		(item) => item.sessionID === view.sessionID,
 	);
 	const lastTurn = view.turns.at(-1)?.id;
+
+	function modelSelects() {
+		const choices = opencodeModelChoices();
+		const chosen = choices.find((item) => item.id === model);
+		const reasoning = chosen?.reasoning === true;
+		return (
+			<>
+				<div className={`oc-model${modelMenu ? " is-open" : ""}`}>
+					<button
+						type="button"
+						className="oc-chip"
+						aria-label={t("code.model")}
+						aria-expanded={modelMenu}
+						onClick={() => setModelMenu((open) => !open)}
+					>
+						<span>{t("code.model")}</span>
+						<span>{chosen?.name ?? model}</span>
+						<span className="oc-model-provider">{chosen?.provider}</span>
+					</button>
+					{modelMenu ? (
+						<div
+							className="oc-model-menu"
+							role="listbox"
+							aria-label={t("code.model")}
+						>
+							{choices.map((item) => (
+								<button
+									key={item.id}
+									type="button"
+									role="option"
+									aria-selected={item.id === model}
+									className={item.id === model ? "is-on" : undefined}
+									onClick={() => {
+										selectModel(item.id);
+										setModelMenu(false);
+									}}
+								>
+									<span>{item.name}</span>
+									<span className="oc-model-provider">{item.provider}</span>
+								</button>
+							))}
+						</div>
+					) : null}
+				</div>
+				{reasoning ? (
+					<label className="oc-chip">
+						{t("code.effort")}
+						<select
+							value={effort}
+							aria-label={t("code.effort")}
+							onChange={(event) => selectEffort(event.target.value)}
+						>
+							<option value="low">{t("code.effortLow")}</option>
+							<option value="medium">{t("code.effortMedium")}</option>
+							<option value="high">{t("code.effortHigh")}</option>
+						</select>
+					</label>
+				) : null}
+			</>
+		);
+	}
 
 	function composer(disabled: boolean) {
 		return (
@@ -658,10 +945,7 @@ export default function OpenCodeSession({
 									type="button"
 									className="oc-ghost"
 									disabled={!repo}
-									onClick={() => {
-										setPrompt("");
-										setMode("draft");
-									}}
+									onClick={openDraft}
 								>
 									{t("code.newSession")}
 								</button>
@@ -671,25 +955,27 @@ export default function OpenCodeSession({
 											<p className="oc-muted">{t("code.searchEmpty")}</p>
 										) : (
 											matches.map((session) => (
-												<button
-													key={session.id}
-													type="button"
-													className="oc-row"
-													onMouseDown={(event) => event.preventDefault()}
-													onClick={() => {
-														setQuery("");
-														setView((current) => ({
-															...current,
-															sessionID: session.id,
-															turns: [],
-														}));
-														setMode("session");
-													}}
-												>
-													<span className="oc-session-title">
-														{session.title}
-													</span>
-												</button>
+												<div key={session.id} className="oc-row">
+													<button
+														type="button"
+														className="oc-session-open"
+														onMouseDown={(event) => event.preventDefault()}
+														onClick={() => openSession(session.id)}
+													>
+														<span className="oc-session-title">
+															{session.title}
+														</span>
+													</button>
+													<button
+														type="button"
+														className="oc-session-delete"
+														aria-label={t("code.deleteSession")}
+														onMouseDown={(event) => event.preventDefault()}
+														onClick={() => void removeSession(session.id)}
+													>
+														{t("code.delete")}
+													</button>
+												</div>
 											))
 										)}
 									</div>
@@ -708,7 +994,7 @@ export default function OpenCodeSession({
 											type="button"
 											className="oc-neutral"
 											disabled={!repo}
-											onClick={() => setMode("draft")}
+											onClick={openDraft}
 										>
 											{t("code.newSession")}
 										</button>
@@ -718,31 +1004,38 @@ export default function OpenCodeSession({
 										<div key={group.id}>
 											<div className="oc-group">{group.title}</div>
 											{group.sessions.map((session) => (
-												<button
+												<div
 													key={session.id}
-													type="button"
 													className={`oc-row${session.id === view.sessionID ? " is-active" : ""}`}
-													onClick={() => {
-														setView((current) => ({
-															...current,
-															sessionID: session.id,
-															turns: [],
-														}));
-														setMode("session");
-													}}
 												>
-													<span className="oc-session-title">
-														{session.title}
-													</span>
-													{session.updated ? (
-														<time
-															className="oc-session-time"
-															dateTime={new Date(session.updated).toISOString()}
-														>
-															{formatSessionTime(session.updated)}
-														</time>
-													) : null}
-												</button>
+													<button
+														type="button"
+														className="oc-session-open"
+														onClick={() => openSession(session.id)}
+													>
+														<span className="oc-session-title">
+															{session.title}
+														</span>
+														{session.updated ? (
+															<time
+																className="oc-session-time"
+																dateTime={new Date(
+																	session.updated,
+																).toISOString()}
+															>
+																{formatSessionTime(session.updated)}
+															</time>
+														) : null}
+													</button>
+													<button
+														type="button"
+														className="oc-session-delete"
+														aria-label={t("code.deleteSession")}
+														onClick={() => void removeSession(session.id)}
+													>
+														{t("code.delete")}
+													</button>
+												</div>
 											))}
 										</div>
 									))
@@ -754,11 +1047,7 @@ export default function OpenCodeSession({
 				{mode === "draft" ? (
 					<div className="oc-draft">
 						<div className="oc-session-bar">
-							<button
-								type="button"
-								className="oc-back"
-								onClick={() => setMode("home")}
-							>
+							<button type="button" className="oc-back" onClick={leaveChat}>
 								<BackIcon />
 								{t("code.back")}
 							</button>
@@ -777,34 +1066,33 @@ export default function OpenCodeSession({
 								</p>
 							) : null}
 							{composer(!repo)}
-							<label className="oc-chip">
-								{t("code.project")}
-								<select
-									value={repo}
-									aria-label={t("code.project")}
-									onChange={(event) => selectRepo(event.target.value)}
-								>
-									{repos.map((item) => (
-										<option
-											key={`${item.owner}/${item.name}`}
-											value={item.name}
-										>
-											{item.name}
-										</option>
-									))}
-								</select>
-							</label>
+							<div className="oc-chips">
+								<label className="oc-chip">
+									{t("code.project")}
+									<select
+										value={repo}
+										aria-label={t("code.project")}
+										onChange={(event) => selectRepo(event.target.value)}
+									>
+										{repos.map((item) => (
+											<option
+												key={`${item.owner}/${item.name}`}
+												value={item.name}
+											>
+												{item.name}
+											</option>
+										))}
+									</select>
+								</label>
+								{modelSelects()}
+							</div>
 						</div>
 					</div>
 				) : null}
 				{mode === "session" ? (
 					<div className="oc-session">
 						<div className="oc-session-bar">
-							<button
-								type="button"
-								className="oc-back"
-								onClick={() => setMode("home")}
-							>
+							<button type="button" className="oc-back" onClick={leaveChat}>
 								<BackIcon />
 								{t("code.back")}
 							</button>
@@ -945,6 +1233,7 @@ export default function OpenCodeSession({
 								</div>
 							</div>
 						) : null}
+						<div className="oc-chips">{modelSelects()}</div>
 						{composer(Boolean(permission || question))}
 					</div>
 				) : null}

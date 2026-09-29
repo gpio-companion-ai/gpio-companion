@@ -8381,6 +8381,32 @@ mark {
   color: rgb(var(--text-main));
   font-weight: 530;
 }
+.oc-session-open {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  align-items: center;
+  gap: 8px;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.oc-session-delete {
+  flex: none;
+  border: 0;
+  background: transparent;
+  padding: 4px 0;
+  color: rgba(var(--text-main), 0.55);
+  cursor: pointer;
+  font-size: 12px;
+}
+.oc-session-delete:hover,
+.oc-session-delete:focus-visible {
+  color: rgb(var(--text-error, 180, 40, 40));
+}
 .oc-sessions {
   display: flex;
   flex-direction: column;
@@ -8771,16 +8797,97 @@ mark {
   background: rgb(var(--text-main));
   color: rgb(var(--bg-surface));
 }
+button.oc-chip,
 .oc-chip {
   display: inline-flex;
   width: fit-content;
   align-items: center;
   gap: 6px;
+  border: 1px solid rgba(var(--text-main), 0.22);
+  color: rgba(var(--text-main), 0.72);
+  cursor: pointer;
+}
+.oc-chip:hover,
+.oc-chip:focus-within,
+.oc-model.is-open > .oc-chip {
+  border-color: rgb(var(--text-main));
+  background: rgba(var(--text-main), 0.14);
+  color: rgb(var(--text-main));
+}
+.oc-chip:active {
+  transform: translateY(1px);
+}
+.oc-chip::after {
+  content: "";
+  width: 0.35rem;
+  height: 0.35rem;
+  flex: none;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+}
+.oc-model.is-open > .oc-chip::after {
+  transform: translateY(2px) rotate(225deg);
+}
+.oc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: min(640px, calc(100% - 32px));
+  margin: 0 auto 8px;
+}
+.oc-model {
+  position: relative;
+}
+.oc-model-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 50;
+  display: flex;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(320px, 46dvh);
+  flex-direction: column;
+  overflow: auto;
+  border: 1px solid rgba(var(--text-main), 0.12);
+  border-radius: 10px;
+  background: rgb(var(--bg-surface));
+  padding: 4px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+.oc-model-menu button,
+.oc-model-row {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  padding: 8px;
+  text-align: left;
+  color: rgb(var(--text-main));
+}
+.oc-model-menu button {
+  cursor: pointer;
+}
+.oc-model-menu button:hover,
+.oc-model-menu button:focus-visible,
+.oc-model-menu button.is-on {
+  background: rgba(var(--text-main), 0.08);
+}
+.oc-model-provider {
+  flex: none;
   color: rgba(var(--text-main), 0.55);
+  font-size: 12px;
 }
 .oc-chip select {
+  max-width: 14rem;
   border: 0;
   background: transparent;
+  color: rgb(var(--text-main));
   outline: 0;
 }
 .oc-composer {

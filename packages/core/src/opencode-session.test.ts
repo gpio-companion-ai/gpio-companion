@@ -1,22 +1,55 @@
 import { describe, expect, test } from "bun:test";
+import { DEFAULT_AI_MODEL } from "./ai-pricing.ts";
 import {
 	applyOpencodeEvent,
+	CODE_DEFAULT_MODEL,
+	codeNavHref,
 	emptyOpencodeView,
 	opencodeClientRequest,
+	opencodeModelChoices,
 	opencodeProjectDirectory,
+	opencodePromptFields,
 	opencodeProxyAllows,
 	opencodeRepoNameFromSelection,
 	opencodeSessionBucket,
 	opencodeSessions,
+	opencodeStoredEffort,
+	opencodeStoredModel,
+	opencodeToolStacks,
 	opencodeTurns,
 	parseOpencodeMarkdown,
 	parseOpencodeSse,
 	pendingOpencodeTurn,
+	readCodeNav,
 	scopeOpencodeSearch,
 	settleOpencodeTurns,
 } from "./opencode-session.ts";
 
 describe("opencode session client", () => {
+	test("registers a session in the code URL", () => {
+		expect(readCodeNav("")).toEqual({ mode: "home", sessionID: "" });
+		expect(readCodeNav("?session=draft")).toEqual({
+			mode: "draft",
+			sessionID: "",
+		});
+		expect(readCodeNav("?session=ses_1")).toEqual({
+			mode: "session",
+			sessionID: "ses_1",
+		});
+		expect(
+			codeNavHref("https://gpio-companion.com/devices/code", {
+				mode: "session",
+				sessionID: "ses_1",
+			}),
+		).toBe("/devices/code?session=ses_1");
+		expect(
+			codeNavHref("https://gpio-companion.com/devices/code?session=ses_1", {
+				mode: "home",
+				sessionID: "",
+			}),
+		).toBe("/devices/code");
+	});
+
 	test("scopes a repo under the projects root and rejects escape", () => {
 		expect(
 			opencodeProjectDirectory("/home/companion/projects", "blink-led"),
@@ -32,6 +65,7 @@ describe("opencode session client", () => {
 
 	test("allowlists session, event, and permission routes only", () => {
 		expect(opencodeProxyAllows("/v1/opencode/session")).toBe(true);
+		expect(opencodeProxyAllows("/v1/opencode/session/ses_1")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/event")).toBe(true);
 		expect(
 			opencodeProxyAllows("/v1/opencode/session/ses_1/permissions/per_1"),
@@ -61,12 +95,116 @@ describe("opencode session client", () => {
 			opencodeClientRequest({
 				uuid: "board",
 				repo: "blink-led",
+				op: "prompt",
+				sessionID: "ses_1",
+				text: "blink the LED",
+				model: DEFAULT_AI_MODEL,
+				variant: "high",
+			}).body,
+		).toEqual({
+			parts: [{ type: "text", text: "blink the LED" }],
+			model: {
+				providerID: "gpio-companion",
+				modelID: DEFAULT_AI_MODEL,
+			},
+			variant: "high",
+		});
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "prompt",
+				sessionID: "ses_1",
+				text: "blink the LED",
+				model: "@cf/meta/llama-3.2-1b-instruct",
+				variant: "high",
+			}).body,
+		).toEqual({
+			parts: [{ type: "text", text: "blink the LED" }],
+			model: {
+				providerID: "gpio-companion",
+				modelID: "@cf/meta/llama-3.2-1b-instruct",
+			},
+		});
+		expect(() =>
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "prompt",
+				sessionID: "ses_1",
+				text: "blink the LED",
+				model: "gpt-4",
+			}),
+		).toThrow("invalid model");
+		expect(() =>
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "prompt",
+				sessionID: "ses_1",
+				text: "blink the LED",
+				model: DEFAULT_AI_MODEL,
+				variant: "max" as "low",
+			}),
+		).toThrow("invalid effort");
+		expect(opencodeStoredModel("nope")).toBe(CODE_DEFAULT_MODEL);
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "prompt",
+				sessionID: "ses_1",
+				text: "blink the LED",
+				model: CODE_DEFAULT_MODEL,
+				variant: "medium",
+			}).body,
+		).toEqual({
+			parts: [{ type: "text", text: "blink the LED" }],
+			model: {
+				providerID: "opencode",
+				modelID: CODE_DEFAULT_MODEL,
+			},
+			variant: "medium",
+		});
+		expect(opencodeStoredEffort("nope")).toBe("medium");
+		expect(opencodePromptFields(DEFAULT_AI_MODEL, "low")).toEqual({
+			model: DEFAULT_AI_MODEL,
+			variant: "low",
+		});
+		expect(
+			opencodeModelChoices().some(
+				(item) => item.id === DEFAULT_AI_MODEL && item.reasoning,
+			),
+		).toBe(true);
+		expect(
+			opencodeModelChoices().find((item) => item.id === CODE_DEFAULT_MODEL)
+				?.provider,
+		).toBe("OpenCode");
+		expect(
+			opencodeModelChoices().find((item) => item.id === DEFAULT_AI_MODEL)
+				?.provider,
+		).toBe("Zai Org");
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
 				op: "permission",
 				sessionID: "ses_1",
 				permissionID: "per_1",
 				response: "once",
 			}).path,
 		).toBe("/session/ses_1/permissions/per_1");
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "delete",
+				sessionID: "ses_1",
+			}),
+		).toEqual({
+			method: "DELETE",
+			path: "/session/ses_1",
+		});
 		expect(() =>
 			opencodeClientRequest({
 				uuid: "board",
@@ -178,6 +316,93 @@ describe("opencode session client", () => {
 		expect(view.turns[0]?.parts).toHaveLength(1);
 		expect(view.turns[0]?.parts[0]?.tool).toBe("bash");
 		expect(view.turns[0]?.parts[0]?.status).toBe("done");
+	});
+
+	test("keeps capped tool input and output", () => {
+		const view = applyOpencodeEvent(
+			{ ...emptyOpencodeView(), sessionID: "ses_1" },
+			{
+				type: "message.part.updated",
+				properties: {
+					sessionID: "ses_1",
+					part: {
+						id: "prt_1",
+						messageID: "msg_2",
+						type: "tool",
+						tool: "bash",
+						state: {
+							status: "error",
+							input: { command: "ls" },
+							output: "x".repeat(5_000),
+							error: "failed",
+						},
+					},
+				},
+			},
+		);
+		const part = view.turns[0]?.parts[0];
+		expect(part?.input).toContain('"command": "ls"');
+		expect(part?.output?.startsWith("…")).toBe(true);
+		expect(part?.output?.length).toBe(4_001);
+		expect(part?.output).toContain("failed");
+	});
+
+	test("batches adjacent tool calls and keeps text between stacks", () => {
+		expect(
+			opencodeToolStacks([
+				{
+					id: "t1",
+					type: "text",
+					text: "See",
+					tool: "",
+					status: "done",
+				},
+				{
+					id: "a",
+					type: "tool",
+					text: "ls",
+					tool: "bash",
+					status: "done",
+				},
+				{
+					id: "b",
+					type: "tool",
+					text: "pin",
+					tool: "read",
+					status: "running",
+				},
+				{
+					id: "t2",
+					type: "text",
+					text: "Done",
+					tool: "",
+					status: "done",
+				},
+			]),
+		).toEqual([
+			{ type: "text", id: "t1", text: "See" },
+			{
+				type: "tools",
+				id: "a",
+				parts: [
+					{
+						id: "a",
+						type: "tool",
+						text: "ls",
+						tool: "bash",
+						status: "done",
+					},
+					{
+						id: "b",
+						type: "tool",
+						text: "pin",
+						tool: "read",
+						status: "running",
+					},
+				],
+			},
+			{ type: "text", id: "t2", text: "Done" },
+		]);
 	});
 
 	test("replaces a pending prompt when the server echoes it", () => {

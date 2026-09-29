@@ -1,30 +1,48 @@
 import { router } from "expo-router";
 import {
 	applyOpencodeEvent,
+	CODE_DEFAULT_MODEL,
+	codeNavBack,
 	emptyOpencodeView,
+	OPENCODE_EFFORT_KEY,
+	OPENCODE_MODEL_KEY,
 	type OpencodeClientCall,
 	type OpencodeInline,
 	type OpencodeMarkdown,
+	type OpencodePart,
 	type OpencodePermissionResponse,
 	type OpencodeTurn,
 	type OpencodeView,
+	opencodeModelChoices,
+	opencodePromptFields,
 	opencodeSessionBucket,
 	opencodeSessions,
+	opencodeStoredEffort,
+	opencodeStoredModel,
+	opencodeToolStacks,
 	opencodeTurns,
 	parseOpencodeMarkdown,
 	pendingOpencodeTurn,
+	pushCodeNav,
+	type ReasoningEffort,
+	readCodeNav,
 	readOpencodeEventStream,
+	replaceCodeNav,
 	settleOpencodeTurns,
 } from "gpio-companion-opencode";
-import { Fragment, type ReactNode, useEffect, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import {
+	Alert,
+	BackHandler,
 	Linking,
+	Modal,
 	Pressable,
 	ScrollView,
 	Text,
 	TextInput,
 	View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listProjects, opencodeCall, openOpencodeEvents } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
@@ -288,6 +306,7 @@ function MdBlock({
 export default function Code() {
 	const t = useT();
 	const colors = useColors();
+	const insets = useSafeAreaInsets();
 	const auth = useAuth();
 	const { setTab } = useDeviceHub();
 	const { uuid } = useBoardSelection();
@@ -304,6 +323,21 @@ export default function Code() {
 	const [reconnecting, setReconnecting] = useState(false);
 	const [answers, setAnswers] = useState<Record<string, string>>({});
 	const [composerFocused, setComposerFocused] = useState(false);
+	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
+	const [effort, setEffort] = useState<ReasoningEffort>("medium");
+	const [picker, setPicker] = useState<"" | "model" | "effort">("");
+	const transcript = useRef<ScrollView>(null);
+	const scrollKey = view.turns.length + (view.turns.at(-1)?.text.length ?? 0);
+
+	useEffect(() => {
+		if (mode !== "session" || !view.sessionID || scrollKey < 0) {
+			return;
+		}
+		const frame = requestAnimationFrame(() => {
+			transcript.current?.scrollToEnd({ animated: false });
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [mode, view.sessionID, scrollKey]);
 
 	useEffect(() => {
 		if (!token) {
@@ -327,6 +361,67 @@ export default function Code() {
 			});
 	}, [token]);
 
+	useEffect(() => {
+		void storageGet(OPENCODE_MODEL_KEY).then((value) => {
+			setModel(opencodeStoredModel(value));
+		});
+		void storageGet(OPENCODE_EFFORT_KEY).then((value) => {
+			setEffort(opencodeStoredEffort(value));
+		});
+	}, []);
+
+	function openSession(sessionID: string) {
+		setView((current) => ({
+			...current,
+			sessionID,
+			turns: [],
+		}));
+		setMode("session");
+		pushCodeNav({ mode: "session", sessionID });
+	}
+
+	function askDelete(sessionID: string) {
+		Alert.alert(t("code.deleteSession"), t("code.deleteConfirm"), [
+			{ text: t("code.dismiss"), style: "cancel" },
+			{
+				text: t("code.delete"),
+				style: "destructive",
+				onPress: () => void removeSession(sessionID),
+			},
+		]);
+	}
+
+	async function removeSession(sessionID: string) {
+		const removed = await run({ repo, op: "delete", sessionID });
+		if (!removed) {
+			return;
+		}
+		setView((current) => ({
+			...current,
+			sessions: current.sessions.filter((item) => item.id !== sessionID),
+			sessionID: current.sessionID === sessionID ? "" : current.sessionID,
+			turns: current.sessionID === sessionID ? [] : current.turns,
+		}));
+		if (mode === "session" && view.sessionID === sessionID) {
+			setMode("home");
+			replaceCodeNav({ mode: "home", sessionID: "" });
+		}
+	}
+
+	function openDraft() {
+		setPrompt("");
+		setMode("draft");
+		pushCodeNav({ mode: "draft", sessionID: "" });
+	}
+
+	function leaveChat() {
+		if (codeNavBack()) {
+			return;
+		}
+		setMode("home");
+		replaceCodeNav({ mode: "home", sessionID: "" });
+	}
+
 	function selectRepo(name: string) {
 		setRepo(name);
 		const match = repos.find((item) => item.name === name);
@@ -335,11 +430,53 @@ export default function Code() {
 		}
 	}
 
+	const boardRef = useRef(selected);
 	useEffect(() => {
-		if (selected) {
-			setMode("home");
+		if (boardRef.current === selected) {
+			return;
 		}
+		boardRef.current = selected;
+		setMode("home");
+		replaceCodeNav({ mode: "home", sessionID: "" });
 	}, [selected]);
+
+	const leaveRef = useRef(leaveChat);
+	leaveRef.current = leaveChat;
+
+	useEffect(() => {
+		if (
+			typeof window === "undefined" ||
+			typeof window.addEventListener !== "function" ||
+			!window.location
+		) {
+			return;
+		}
+		function applyNav() {
+			const next = readCodeNav(window.location.search);
+			setMode(next.mode);
+			if (next.sessionID) {
+				setView((current) => ({
+					...current,
+					sessionID: next.sessionID,
+					turns: current.sessionID === next.sessionID ? current.turns : [],
+				}));
+			}
+		}
+		applyNav();
+		window.addEventListener("popstate", applyNav);
+		return () => window.removeEventListener("popstate", applyNav);
+	}, []);
+
+	useEffect(() => {
+		if (mode === "home") {
+			return;
+		}
+		const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+			leaveRef.current();
+			return true;
+		});
+		return () => sub.remove();
+	}, [mode]);
 
 	useEffect(() => {
 		if (!token || !selected || !repo) {
@@ -481,6 +618,7 @@ export default function Code() {
 				turns: [],
 			}));
 			setMode("session");
+			replaceCodeNav({ mode: "session", sessionID });
 		}
 		setView((current) => ({
 			...current,
@@ -492,6 +630,7 @@ export default function Code() {
 			op: "prompt",
 			sessionID,
 			text,
+			...opencodePromptFields(model, effort),
 		});
 		if (!sent) {
 			setView((current) => ({ ...current, busy: false }));
@@ -718,7 +857,7 @@ export default function Code() {
 									backgroundColor: colors.chipBg,
 								}}
 							/>
-							<Pressable disabled={!repo} onPress={() => setMode("draft")}>
+							<Pressable disabled={!repo} onPress={openDraft}>
 								<Text style={{ color: colors.muted, fontWeight: "600" }}>
 									{t("code.newSession")}
 								</Text>
@@ -738,7 +877,7 @@ export default function Code() {
 								<Text style={[muted, { textAlign: "center" }]}>
 									{t("code.emptyBody")}
 								</Text>
-								<Pressable disabled={!repo} onPress={() => setMode("draft")}>
+								<Pressable disabled={!repo} onPress={openDraft}>
 									<Text style={{ color: colors.text, fontWeight: "600" }}>
 										{t("code.newSession")}
 									</Text>
@@ -753,35 +892,45 @@ export default function Code() {
 										{group.title}
 									</Text>
 									{group.sessions.map((session) => (
-										<Pressable
+										<View
 											key={session.id}
-											onPress={() => {
-												setView((current) => ({
-													...current,
-													sessionID: session.id,
-													turns: [],
-												}));
-												setMode("session");
-											}}
 											style={[
 												row,
 												{
 													flexDirection: "row",
 													alignItems: "center",
-													justifyContent: "space-between",
 													gap: 8,
 												},
 											]}
 										>
-											<Text style={[ink, { flex: 1 }]} numberOfLines={1}>
-												{session.title}
-											</Text>
-											{session.updated ? (
-												<Text style={[muted, { fontSize: 11 }]}>
-													{formatSessionTime(session.updated)}
+											<Pressable
+												onPress={() => openSession(session.id)}
+												style={{
+													flex: 1,
+													flexDirection: "row",
+													alignItems: "center",
+													gap: 8,
+												}}
+											>
+												<Text style={[ink, { flex: 1 }]} numberOfLines={1}>
+													{session.title}
 												</Text>
-											) : null}
-										</Pressable>
+												{session.updated ? (
+													<Text style={[muted, { fontSize: 11 }]}>
+														{formatSessionTime(session.updated)}
+													</Text>
+												) : null}
+											</Pressable>
+											<Pressable
+												accessibilityRole="button"
+												accessibilityLabel={t("code.deleteSession")}
+												onPress={() => askDelete(session.id)}
+											>
+												<Text style={{ color: colors.danger, fontSize: 12 }}>
+													{t("code.delete")}
+												</Text>
+											</Pressable>
+										</View>
 									))}
 								</View>
 							))
@@ -800,7 +949,7 @@ export default function Code() {
 								borderBottomColor: colors.border,
 							}}
 						>
-							<Pressable onPress={() => setMode("home")}>
+							<Pressable onPress={leaveChat}>
 								<Text style={{ color: colors.muted, fontWeight: "600" }}>
 									{t("code.back")}
 								</Text>
@@ -816,7 +965,13 @@ export default function Code() {
 							</Text>
 						</View>
 						<ScrollView
+							ref={transcript}
 							style={{ flex: 1 }}
+							onContentSizeChange={() => {
+								if (mode === "session") {
+									transcript.current?.scrollToEnd({ animated: false });
+								}
+							}}
 							contentContainerStyle={{
 								padding: 16,
 								gap: 12,
@@ -953,10 +1108,280 @@ export default function Code() {
 						{mode === "draft" ? (
 							<Text style={[muted, { paddingHorizontal: 16 }]}>{repo}</Text>
 						) : null}
+						<View
+							style={{
+								flexDirection: "row",
+								flexWrap: "wrap",
+								gap: 8,
+								paddingHorizontal: 16,
+								paddingBottom: 4,
+							}}
+						>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel={t("code.model")}
+								onPress={() => setPicker("model")}
+								style={({ pressed }) => ({
+									flexDirection: "row",
+									alignItems: "center",
+									gap: 6,
+									borderRadius: 8,
+									borderWidth: 1,
+									borderColor:
+										pressed || picker === "model" ? colors.text : colors.border,
+									paddingHorizontal: 10,
+									paddingVertical: 6,
+									backgroundColor: pressed ? colors.border : colors.chipBg,
+								})}
+							>
+								<Text
+									style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
+								>
+									{opencodeModelChoices().find((item) => item.id === model)
+										?.name ?? model}
+								</Text>
+								<Text style={{ color: colors.muted, fontSize: 11 }}>
+									{
+										opencodeModelChoices().find((item) => item.id === model)
+											?.provider
+									}
+								</Text>
+								<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+							</Pressable>
+							{opencodeModelChoices().some(
+								(item) => item.id === model && item.reasoning,
+							) ? (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={t("code.effort")}
+									onPress={() => setPicker("effort")}
+									style={({ pressed }) => ({
+										flexDirection: "row",
+										alignItems: "center",
+										gap: 6,
+										borderRadius: 8,
+										borderWidth: 1,
+										borderColor:
+											pressed || picker === "effort"
+												? colors.text
+												: colors.border,
+										paddingHorizontal: 10,
+										paddingVertical: 6,
+										backgroundColor: pressed ? colors.border : colors.chipBg,
+									})}
+								>
+									<Text style={{ color: colors.text, fontSize: 12 }}>
+										{effort === "low"
+											? t("code.effortLow")
+											: effort === "high"
+												? t("code.effortHigh")
+												: t("code.effortMedium")}
+									</Text>
+									<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+								</Pressable>
+							) : null}
+						</View>
+						<Modal
+							visible={picker !== ""}
+							transparent
+							animationType="fade"
+							onRequestClose={() => setPicker("")}
+						>
+							<Pressable
+								onPress={() => setPicker("")}
+								style={{
+									flex: 1,
+									justifyContent: "flex-end",
+									backgroundColor: "rgba(0,0,0,0.4)",
+									paddingBottom: 56 + Math.max(insets.bottom, 8),
+								}}
+							>
+								<Pressable
+									onPress={() => undefined}
+									style={{
+										maxHeight: "70%",
+										borderTopLeftRadius: 12,
+										borderTopRightRadius: 12,
+										backgroundColor: colors.surface,
+										padding: 12,
+									}}
+								>
+									<Text style={[ink, { fontWeight: "600", marginBottom: 8 }]}>
+										{picker === "effort" ? t("code.effort") : t("code.model")}
+									</Text>
+									<ScrollView
+										style={{ maxHeight: 360 }}
+										contentContainerStyle={{ paddingBottom: 12 }}
+									>
+										{picker === "effort"
+											? (["low", "medium", "high"] as const).map((item) => (
+													<Pressable
+														key={item}
+														onPress={() => {
+															setEffort(item);
+															void storageSet(OPENCODE_EFFORT_KEY, item);
+															setPicker("");
+														}}
+														style={{ paddingVertical: 12 }}
+													>
+														<Text style={ink}>
+															{item === "low"
+																? t("code.effortLow")
+																: item === "high"
+																	? t("code.effortHigh")
+																	: t("code.effortMedium")}
+														</Text>
+													</Pressable>
+												))
+											: opencodeModelChoices().map((item) => (
+													<Pressable
+														key={item.id}
+														onPress={() => {
+															const next = opencodeStoredModel(item.id);
+															setModel(next);
+															void storageSet(OPENCODE_MODEL_KEY, next);
+															setPicker("");
+														}}
+														style={({ pressed }) => ({
+															flexDirection: "row",
+															alignItems: "center",
+															gap: 12,
+															paddingVertical: 12,
+															paddingHorizontal: 8,
+															borderRadius: 8,
+															backgroundColor: pressed
+																? colors.chipBg
+																: "transparent",
+														})}
+													>
+														<Text style={[ink, { flex: 1 }]} numberOfLines={1}>
+															{item.name}
+														</Text>
+														<Text style={[muted, { fontSize: 12 }]}>
+															{item.provider}
+														</Text>
+													</Pressable>
+												))}
+									</ScrollView>
+								</Pressable>
+							</Pressable>
+						</Modal>
 						{composer(Boolean(permission || question) || !repo)}
 					</View>
 				) : null}
 			</View>
+		</View>
+	);
+}
+
+function stackStatus(parts: OpencodePart[]): "running" | "error" | "done" {
+	if (parts.some((part) => part.status === "running")) {
+		return "running";
+	}
+	if (parts.some((part) => part.status === "error")) {
+		return "error";
+	}
+	return "done";
+}
+
+function toolInfo(
+	part: OpencodePart,
+	inputLabel: string,
+	outputLabel: string,
+): string {
+	const chunks: string[] = [];
+	if (part.input) {
+		chunks.push(`${inputLabel}\n${part.input}`);
+	}
+	if (part.output) {
+		chunks.push(`${outputLabel}\n${part.output}`);
+	}
+	return chunks.join("\n\n");
+}
+
+function ToolStack({
+	parts,
+	color,
+	muted,
+}: {
+	parts: OpencodePart[];
+	color: string;
+	muted: string;
+}) {
+	const t = useT();
+	const colors = useColors();
+	const running = parts.some((part) => part.status === "running");
+	const touched = useRef(false);
+	const [open, setOpen] = useState(running);
+	const [info, setInfo] = useState("");
+	useEffect(() => {
+		if (!touched.current) {
+			setOpen(running);
+		}
+	}, [running]);
+	const names = [
+		...new Set(parts.map((part) => part.tool).filter(Boolean)),
+	].join(", ");
+	const label =
+		parts.length === 1
+			? names
+			: t("code.toolStack", { n: parts.length, names });
+	const status = stackStatus(parts);
+	return (
+		<View style={{ gap: 4 }}>
+			<Pressable
+				accessibilityRole="button"
+				accessibilityState={{ expanded: open }}
+				onPress={() => {
+					touched.current = true;
+					setOpen((value) => !value);
+				}}
+			>
+				<Text style={{ color: status === "error" ? colors.warning : muted }}>
+					{open ? "▾" : "▸"} {label}
+				</Text>
+			</Pressable>
+			{open
+				? parts.map((part) => {
+						const body = toolInfo(
+							part,
+							t("code.toolInput"),
+							t("code.toolOutput"),
+						);
+						return (
+							<View key={part.id} style={{ paddingLeft: 12, gap: 4 }}>
+								<Pressable
+									accessibilityRole="button"
+									accessibilityState={{ expanded: info === part.id }}
+									onPress={() =>
+										setInfo((current) => (current === part.id ? "" : part.id))
+									}
+								>
+									<Text style={{ color: muted }}>
+										{part.tool}
+										{part.text ? `  ${part.text}` : ""}
+									</Text>
+								</Pressable>
+								{info === part.id && body ? (
+									<ScrollView horizontal nestedScrollEnabled>
+										<Text
+											style={{
+												color,
+												fontFamily: "monospace",
+												fontSize: 12,
+												backgroundColor: colors.chipBg,
+												padding: 8,
+												borderRadius: 8,
+											}}
+										>
+											{body}
+										</Text>
+									</ScrollView>
+								) : null}
+							</View>
+						);
+					})
+				: null}
 		</View>
 	);
 }
@@ -986,16 +1411,19 @@ function Turn({
 					<Text style={{ color, fontWeight: "600" }}>{turn.text}</Text>
 				</View>
 			) : (
-				<Blocks text={turn.text} color={color} />
+				opencodeToolStacks(turn.parts).map((block) =>
+					block.type === "text" ? (
+						<Blocks key={block.id} text={block.text} color={color} />
+					) : (
+						<ToolStack
+							key={block.id}
+							parts={block.parts}
+							color={color}
+							muted={muted}
+						/>
+					),
+				)
 			)}
-			{turn.parts
-				.filter((part) => part.type === "tool")
-				.map((part) => (
-					<Text key={part.id} style={{ color: muted }}>
-						{part.tool}
-						{part.text ? `  ${part.text}` : ""}
-					</Text>
-				))}
 		</View>
 	);
 }

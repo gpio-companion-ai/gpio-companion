@@ -28,6 +28,9 @@ export async function onRequestPost(ctx: MobileContext) {
 			permissionID: asString(body.permissionID) || undefined,
 			requestID: asString(body.requestID) || undefined,
 			text: asString(body.text) || undefined,
+			model: asString(body.model) || undefined,
+			variant:
+				(asString(body.variant) as OpencodeClientCall["variant"]) || undefined,
 			response:
 				body.response === "once" ||
 				body.response === "always" ||

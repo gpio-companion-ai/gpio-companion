@@ -407,6 +407,8 @@ export function opencodeCall(
 		permissionID?: string;
 		requestID?: string;
 		text?: string;
+		model?: string;
+		variant?: "low" | "medium" | "high";
 		response?: "once" | "always" | "reject";
 		answers?: string[][];
 		reject?: boolean;
