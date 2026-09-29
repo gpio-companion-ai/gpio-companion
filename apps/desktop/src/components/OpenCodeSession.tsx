@@ -45,7 +45,14 @@ function SendIcon() {
 function StopIcon() {
 	return (
 		<svg viewBox="0 0 24 24" aria-hidden="true">
-			<rect x="8" y="8" width="8" height="8" fill="currentColor" stroke="none" />
+			<rect
+				x="8"
+				y="8"
+				width="8"
+				height="8"
+				fill="currentColor"
+				stroke="none"
+			/>
 		</svg>
 	);
 }
@@ -63,8 +70,15 @@ function Blocks({ text }: { text: string }) {
 	if (blocks.length === 0 && text) {
 		return <p>{text}</p>;
 	}
-	return blocks.map((block, index) => (
-		<Block key={`${block.type}-${index}`} block={block} />
+	return blocks.map((block) => (
+		<Block
+			key={
+				block.type === "list"
+					? `list:${block.items.join("\n")}`
+					: `${block.type}:${block.text}`
+			}
+			block={block}
+		/>
 	));
 }
 
@@ -87,7 +101,11 @@ function Block({ block }: { block: OpencodeBlock }) {
 function TurnView({ turn, caret }: { turn: OpencodeTurn; caret: boolean }) {
 	return (
 		<article className="oc-turn">
-			{turn.role === "user" ? <p className="oc-user">{turn.text}</p> : <Blocks text={turn.text} />}
+			{turn.role === "user" ? (
+				<p className="oc-user">{turn.text}</p>
+			) : (
+				<Blocks text={turn.text} />
+			)}
 			{turn.parts
 				.filter((part) => part.type === "tool")
 				.map((part) => (
@@ -171,6 +189,12 @@ export default function OpenCodeSession({
 	}
 
 	useEffect(() => {
+		if (selected) {
+			setMode("home");
+		}
+	}, [selected]);
+
+	useEffect(() => {
 		if (!selected || !repo) {
 			setView(emptyOpencodeView());
 			return;
@@ -182,7 +206,8 @@ export default function OpenCodeSession({
 				if (cancelled) {
 					return;
 				}
-				setView({ ...emptyOpencodeView(), sessions: opencodeSessions(data) });
+				const sessions = opencodeSessions(data);
+				setView((current) => ({ ...current, sessions }));
 			})
 			.catch((caught) => {
 				if (!cancelled) {
@@ -269,19 +294,26 @@ export default function OpenCodeSession({
 		};
 	}, [selected, repo]);
 
-	const scrollKey = view.turns.length + view.permissions.length + view.questions.length;
+	const scrollKey =
+		view.turns.length +
+		(view.turns.at(-1)?.text.length ?? 0) +
+		view.permissions.length +
+		view.questions.length;
 	useEffect(() => {
+		if (scrollKey < 0) {
+			return;
+		}
 		scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
 	}, [scrollKey]);
 
-	async function run(call: OpencodeClientCall) {
+	async function run(call: Omit<OpencodeClientCall, "uuid">) {
 		setError("");
-		const result = await postOpencode(call);
-		if (!result.ok) {
-			setError(result.error);
+		try {
+			return await opencodeCall({ ...call, uuid: selected });
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "request failed");
 			return null;
 		}
-		return result.data;
 	}
 
 	async function send() {
@@ -295,7 +327,7 @@ export default function OpenCodeSession({
 		}
 		let sessionID = mode === "session" ? view.sessionID : "";
 		if (!sessionID) {
-			const data = await run({ uuid, repo, op: "create" });
+			const data = await run({ repo, op: "create" });
 			const created = opencodeSessions(data ? [data] : [])[0];
 			if (!created) {
 				setPrompt(text);
@@ -304,7 +336,10 @@ export default function OpenCodeSession({
 			sessionID = created.id;
 			setView((current) => ({
 				...current,
-				sessions: [created, ...current.sessions.filter((item) => item.id !== created.id)],
+				sessions: [
+					created,
+					...current.sessions.filter((item) => item.id !== created.id),
+				],
 				sessionID: created.id,
 				turns: [],
 				busy: false,
@@ -316,7 +351,7 @@ export default function OpenCodeSession({
 			busy: true,
 			turns: [...current.turns, pendingOpencodeTurn(text)],
 		}));
-		const sent = await run({ uuid, repo, op: "prompt", sessionID, text });
+		const sent = await run({ repo, op: "prompt", sessionID, text });
 		if (!sent) {
 			setView((current) => ({ ...current, busy: false }));
 		}
@@ -326,7 +361,7 @@ export default function OpenCodeSession({
 		if (!view.sessionID) {
 			return;
 		}
-		await run({ uuid, repo, op: "abort", sessionID: view.sessionID });
+		await run({ repo, op: "abort", sessionID: view.sessionID });
 		setView((current) => ({ ...current, busy: false }));
 	}
 
@@ -335,7 +370,6 @@ export default function OpenCodeSession({
 		response: OpencodePermissionResponse,
 	) {
 		await run({
-			uuid,
 			repo,
 			op: "permission",
 			sessionID: view.sessionID,
@@ -344,7 +378,9 @@ export default function OpenCodeSession({
 		});
 		setView((current) => ({
 			...current,
-			permissions: current.permissions.filter((item) => item.id !== permissionID),
+			permissions: current.permissions.filter(
+				(item) => item.id !== permissionID,
+			),
 		}));
 	}
 
@@ -367,9 +403,14 @@ export default function OpenCodeSession({
 		}))
 		.filter((group) => group.sessions.length > 0);
 	const title =
-		view.sessions.find((item) => item.id === view.sessionID)?.title || t("code.sessions");
-	const permission = view.permissions.find((item) => item.sessionID === view.sessionID);
-	const question = view.questions.find((item) => item.sessionID === view.sessionID);
+		view.sessions.find((item) => item.id === view.sessionID)?.title ||
+		t("code.sessions");
+	const permission = view.permissions.find(
+		(item) => item.sessionID === view.sessionID,
+	);
+	const question = view.questions.find(
+		(item) => item.sessionID === view.sessionID,
+	);
 	const lastTurn = view.turns.at(-1)?.id;
 
 	function composer(disabled: boolean) {
@@ -388,7 +429,11 @@ export default function OpenCodeSession({
 						event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
 					}}
 					onKeyDown={(event) => {
-						if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+						if (
+							event.key === "Enter" &&
+							!event.shiftKey &&
+							!event.nativeEvent.isComposing
+						) {
 							event.preventDefault();
 							if (!view.busy) {
 								void send();
@@ -409,143 +454,238 @@ export default function OpenCodeSession({
 		);
 	}
 
+	if (!selected) {
+		return (
+			<div className="oc-shell">
+				<div className="oc-card">
+					<div className="oc-empty">
+						<p>{t("code.pickBoard")}</p>
+					</div>
+				</div>
+			</div>
+		);
+	}
+
 	return (
-		<div className="oc-card">
-			{error && mode === "home" ? (
-				<p className="oc-error">
-					<span>{error}</span>
-					<button type="button" aria-label={t("code.dismiss")} onClick={() => setError("")}>
-						{t("code.dismiss")}
-					</button>
-				</p>
-			) : null}
-			{mode === "home" ? (
-				<div className="oc-home">
-					<aside className="oc-projects" aria-label={t("code.projects")}>
-						<div className="oc-label">{t("code.projects")}</div>
-						{repos.length === 0 ? (
-							<div className="oc-empty">
-								<p className="oc-muted">{t("code.noProjects")}</p>
-								<a className="oc-neutral" href="/project">
-									{t("code.openProject")}
-								</a>
-							</div>
-						) : (
-							repos.map((item) => (
-								<button
-									key={`${item.owner}/${item.name}`}
-									type="button"
-									className={`oc-row${item.name === repo ? " is-active" : ""}`}
-									onClick={() => remember(item.name)}
-								>
-									<span>{item.name}</span>
-								</button>
-							))
-						)}
-					</aside>
-					<section className="oc-sessions" aria-label={t("code.sessions")}>
-						<div className="oc-sessions-head">
-							<label className="oc-search">
-								<SearchIcon />
-								<input
-									value={query}
-									placeholder={t("code.search")}
-									aria-label={t("code.search")}
-									onFocus={() => setSearching(true)}
-									onBlur={() => setSearching(false)}
-									onChange={(event) => setQuery(event.target.value)}
-								/>
-							</label>
-							<button
-								type="button"
-								className="oc-ghost"
-								disabled={!repo}
-								onClick={() => {
-									setPrompt("");
-									setMode("draft");
-								}}
-							>
-								{t("code.newSession")}
-							</button>
-							{searching && needle ? (
-								<div className="oc-results">
-									{matches.length === 0 ? (
-										<p className="oc-muted">{t("code.searchEmpty")}</p>
-									) : (
-										matches.map((session) => (
-											<button
-												key={session.id}
-												type="button"
-												className="oc-row"
-												onMouseDown={(event) => event.preventDefault()}
-												onClick={() => {
-													setQuery("");
-													setView((current) => ({ ...current, sessionID: session.id, turns: [] }));
-													setMode("session");
-												}}
-											>
-												<span className="oc-session-title">{session.title}</span>
-											</button>
-										))
-									)}
-								</div>
-							) : null}
-						</div>
-						<div className="oc-status">
-							<i />
-							{reconnecting ? t("code.reconnecting") : t("code.live")}
-						</div>
-						<div className="oc-session-list">
-							{view.sessions.length === 0 ? (
+		<div className="oc-shell">
+			<div className="oc-card">
+				{error && mode === "home" ? (
+					<p className="oc-error">
+						<span>{error}</span>
+						<button
+							type="button"
+							aria-label={t("code.dismiss")}
+							onClick={() => setError("")}
+						>
+							{t("code.dismiss")}
+						</button>
+					</p>
+				) : null}
+				{mode === "home" ? (
+					<div className="oc-home">
+						<aside className="oc-projects" aria-label={t("code.projects")}>
+							<div className="oc-label">{t("code.projects")}</div>
+							{repos.length === 0 ? (
 								<div className="oc-empty">
-									<strong>{t("code.emptyTitle")}</strong>
-									<p className="oc-muted">{t("code.emptyBody")}</p>
+									<p className="oc-muted">{t("code.noProjects")}</p>
 									<button
 										type="button"
 										className="oc-neutral"
-										disabled={!repo}
-										onClick={() => setMode("draft")}
+										onClick={() => onOpenProject?.()}
 									>
-										{t("code.newSession")}
+										{t("code.openProject")}
 									</button>
 								</div>
 							) : (
-								grouped.map((group) => (
-									<div key={group.id}>
-										<div className="oc-group">{group.title}</div>
-										{group.sessions.map((session) => (
-											<button
-												key={session.id}
-												type="button"
-												className={`oc-row${session.id === view.sessionID ? " is-active" : ""}`}
-												onClick={() => {
-													setView((current) => ({
-														...current,
-														sessionID: session.id,
-														turns: [],
-													}));
-													setMode("session");
-												}}
-											>
-												<span className="oc-session-title">{session.title}</span>
-											</button>
-										))}
-									</div>
+								repos.map((item) => (
+									<button
+										key={`${item.owner}/${item.name}`}
+										type="button"
+										className={`oc-row${item.name === repo ? " is-active" : ""}`}
+										onClick={() => remember(item.name)}
+									>
+										<span>{item.name}</span>
+									</button>
 								))
 							)}
-						</div>
-					</section>
-				</div>
-			) : null}
-			{mode === "draft" ? (
-				<div className="oc-draft">
-					<div className="oc-session-bar">
-						<button type="button" className="oc-back" onClick={() => setMode("home")}>
-							<BackIcon />
-							{t("code.back")}
-						</button>
+						</aside>
+						<section className="oc-sessions" aria-label={t("code.sessions")}>
+							<div className="oc-sessions-head">
+								<label className="oc-search">
+									<SearchIcon />
+									<input
+										value={query}
+										placeholder={t("code.search")}
+										aria-label={t("code.search")}
+										onFocus={() => setSearching(true)}
+										onBlur={() => setSearching(false)}
+										onChange={(event) => setQuery(event.target.value)}
+									/>
+								</label>
+								<button
+									type="button"
+									className="oc-ghost"
+									disabled={!repo}
+									onClick={() => {
+										setPrompt("");
+										setMode("draft");
+									}}
+								>
+									{t("code.newSession")}
+								</button>
+								{searching && needle ? (
+									<div className="oc-results">
+										{matches.length === 0 ? (
+											<p className="oc-muted">{t("code.searchEmpty")}</p>
+										) : (
+											matches.map((session) => (
+												<button
+													key={session.id}
+													type="button"
+													className="oc-row"
+													onMouseDown={(event) => event.preventDefault()}
+													onClick={() => {
+														setQuery("");
+														setView((current) => ({
+															...current,
+															sessionID: session.id,
+															turns: [],
+														}));
+														setMode("session");
+													}}
+												>
+													<span className="oc-session-title">
+														{session.title}
+													</span>
+												</button>
+											))
+										)}
+									</div>
+								) : null}
+							</div>
+							<div className="oc-status">
+								<i />
+								{reconnecting ? t("code.reconnecting") : t("code.live")}
+							</div>
+							<div className="oc-session-list">
+								{view.sessions.length === 0 ? (
+									<div className="oc-empty">
+										<strong>{t("code.emptyTitle")}</strong>
+										<p className="oc-muted">{t("code.emptyBody")}</p>
+										<button
+											type="button"
+											className="oc-neutral"
+											disabled={!repo}
+											onClick={() => setMode("draft")}
+										>
+											{t("code.newSession")}
+										</button>
+									</div>
+								) : (
+									grouped.map((group) => (
+										<div key={group.id}>
+											<div className="oc-group">{group.title}</div>
+											{group.sessions.map((session) => (
+												<button
+													key={session.id}
+													type="button"
+													className={`oc-row${session.id === view.sessionID ? " is-active" : ""}`}
+													onClick={() => {
+														setView((current) => ({
+															...current,
+															sessionID: session.id,
+															turns: [],
+														}));
+														setMode("session");
+													}}
+												>
+													<span className="oc-session-title">
+														{session.title}
+													</span>
+												</button>
+											))}
+										</div>
+									))
+								)}
+							</div>
+						</section>
 					</div>
-					<div className="oc-draft-body">
+				) : null}
+				{mode === "draft" ? (
+					<div className="oc-draft">
+						<div className="oc-session-bar">
+							<button
+								type="button"
+								className="oc-back"
+								onClick={() => setMode("home")}
+							>
+								<BackIcon />
+								{t("code.back")}
+							</button>
+						</div>
+						<div className="oc-draft-body">
+							{error ? (
+								<p className="oc-error">
+									<span>{error}</span>
+									<button
+										type="button"
+										aria-label={t("code.dismiss")}
+										onClick={() => setError("")}
+									>
+										{t("code.dismiss")}
+									</button>
+								</p>
+							) : null}
+							{composer(!repo)}
+							<label className="oc-chip">
+								{t("code.project")}
+								<select
+									value={repo}
+									aria-label={t("code.project")}
+									onChange={(event) => selectRepo(event.target.value)}
+								>
+									{repos.map((item) => (
+										<option
+											key={`${item.owner}/${item.name}`}
+											value={item.name}
+										>
+											{item.name}
+										</option>
+									))}
+								</select>
+							</label>
+						</div>
+					</div>
+				) : null}
+				{mode === "session" ? (
+					<div className="oc-session">
+						<div className="oc-session-bar">
+							<button
+								type="button"
+								className="oc-back"
+								onClick={() => setMode("home")}
+							>
+								<BackIcon />
+								{t("code.back")}
+							</button>
+							<strong>{title}</strong>
+							<span className={`oc-status${reconnecting ? " is-wait" : ""}`}>
+								<i />
+								{reconnecting ? t("code.reconnecting") : t("code.live")}
+							</span>
+						</div>
+						<div className="oc-transcript" ref={scroller}>
+							{view.turns.map((turn) => (
+								<TurnView
+									key={turn.id}
+									turn={turn}
+									caret={view.busy && turn.id === lastTurn}
+								/>
+							))}
+							{view.busy && view.turns.length === 0 ? (
+								<span className="oc-caret" />
+							) : null}
+						</div>
 						{error ? (
 							<p className="oc-error">
 								<span>{error}</span>
@@ -558,150 +698,117 @@ export default function OpenCodeSession({
 								</button>
 							</p>
 						) : null}
-						{composer(!repo)}
-						<label className="oc-chip">
-							{t("code.project")}
-							<select
-								value={repo}
-								aria-label={t("code.project")}
-								onChange={(event) => selectRepo(event.target.value)}
-							>
-								{repos.map((item) => (
-									<option key={`${item.owner}/${item.name}`} value={item.name}>
-										{item.name}
-									</option>
-								))}
-							</select>
-						</label>
-					</div>
-				</div>
-			) : null}
-			{mode === "session" ? (
-				<div className="oc-session">
-					<div className="oc-session-bar">
-						<button type="button" className="oc-back" onClick={() => setMode("home")}>
-							<BackIcon />
-							{t("code.back")}
-						</button>
-						<strong>{title}</strong>
-						<span className={`oc-status${reconnecting ? " is-wait" : ""}`}>
-							<i />
-							{reconnecting ? t("code.reconnecting") : t("code.live")}
-						</span>
-					</div>
-					<div className="oc-transcript" ref={scroller}>
-						{view.turns.map((turn) => (
-							<TurnView
-								key={turn.id}
-								turn={turn}
-								caret={view.busy && turn.id === lastTurn}
-							/>
-						))}
-						{view.busy && view.turns.length === 0 ? <span className="oc-caret" /> : null}
-					</div>
-					{error ? (
-						<p className="oc-error">
-							<span>{error}</span>
-							<button type="button" aria-label={t("code.dismiss")} onClick={() => setError("")}>
-								{t("code.dismiss")}
-							</button>
-						</p>
-					) : null}
-					{permission ? (
-						<div className="oc-decision is-permission">
-							<strong>
-								{t("code.permission")}: {permission.title}
-							</strong>
-							{permission.detail ? <p className="oc-muted">{permission.detail}</p> : null}
-							<div className="oc-decision-actions">
-								<button type="button" onClick={() => void replyPermission(permission.id, "once")}>
-									{t("code.allowOnce")}
-								</button>
-								<button type="button" onClick={() => void replyPermission(permission.id, "always")}>
-									{t("code.allowAlways")}
-								</button>
-								<button type="button" onClick={() => void replyPermission(permission.id, "reject")}>
-									{t("code.deny")}
-								</button>
-							</div>
-						</div>
-					) : null}
-					{!permission && question ? (
-						<div className="oc-decision">
-							{question.prompts.map((item) => (
-								<div key={item.question}>
-									<p>
-										{item.header ? `${item.header}: ` : ""}
-										{item.question}
-									</p>
-									<div className="oc-options">
-										{item.options.map((option) => (
-											<button
-												key={option}
-												type="button"
-												className={answers[item.question] === option ? "is-on" : undefined}
-												onClick={() =>
-													setAnswers((current) => ({
-														...current,
-														[item.question]: option,
-													}))
-												}
-											>
-												{option}
-											</button>
-										))}
-									</div>
+						{permission ? (
+							<div className="oc-decision is-permission">
+								<strong>
+									{t("code.permission")}: {permission.title}
+								</strong>
+								{permission.detail ? (
+									<p className="oc-muted">{permission.detail}</p>
+								) : null}
+								<div className="oc-decision-actions">
+									<button
+										type="button"
+										onClick={() => void replyPermission(permission.id, "once")}
+									>
+										{t("code.allowOnce")}
+									</button>
+									<button
+										type="button"
+										onClick={() =>
+											void replyPermission(permission.id, "always")
+										}
+									>
+										{t("code.allowAlways")}
+									</button>
+									<button
+										type="button"
+										onClick={() =>
+											void replyPermission(permission.id, "reject")
+										}
+									>
+										{t("code.deny")}
+									</button>
 								</div>
-							))}
-							<div className="oc-decision-actions">
-								<button
-									type="button"
-									disabled={question.prompts.some((item) => !answers[item.question])}
-									onClick={() =>
-										void run({
-											uuid,
-											repo,
-											op: "question",
-											requestID: question.id,
-											answers: question.prompts.map((item) => [answers[item.question] ?? ""]),
-										}).then(() =>
-											setView((current) => ({
-												...current,
-												questions: current.questions.filter((item) => item.id !== question.id),
-											})),
-										)
-									}
-								>
-									{t("code.reply")}
-								</button>
-								<button
-									type="button"
-									onClick={() =>
-										void run({
-											uuid,
-											repo,
-											op: "question",
-											requestID: question.id,
-											reject: true,
-										})
-									}
-								>
-									{t("code.reject")}
-								</button>
 							</div>
-						</div>
-					) : null}
-					{composer(Boolean(permission))}
-				</div>
-			) : null}
+						) : null}
+						{!permission && question ? (
+							<div className="oc-decision">
+								{question.prompts.map((item) => (
+									<div key={item.question}>
+										<p>
+											{item.header ? `${item.header}: ` : ""}
+											{item.question}
+										</p>
+										<div className="oc-options">
+											{item.options.map((option) => (
+												<button
+													key={option}
+													type="button"
+													className={
+														answers[item.question] === option
+															? "is-on"
+															: undefined
+													}
+													onClick={() =>
+														setAnswers((current) => ({
+															...current,
+															[item.question]: option,
+														}))
+													}
+												>
+													{option}
+												</button>
+											))}
+										</div>
+									</div>
+								))}
+								<div className="oc-decision-actions">
+									<button
+										type="button"
+										disabled={question.prompts.some(
+											(item) => !answers[item.question],
+										)}
+										onClick={() =>
+											void run({
+												repo,
+												op: "question",
+												requestID: question.id,
+												answers: question.prompts.map((item) => [
+													answers[item.question] ?? "",
+												]),
+											}).then(() =>
+												setView((current) => ({
+													...current,
+													questions: current.questions.filter(
+														(item) => item.id !== question.id,
+													),
+												})),
+											)
+										}
+									>
+										{t("code.reply")}
+									</button>
+									<button
+										type="button"
+										onClick={() =>
+											void run({
+												repo,
+												op: "question",
+												requestID: question.id,
+												reject: true,
+											})
+										}
+									>
+										{t("code.reject")}
+									</button>
+								</div>
+							</div>
+						) : null}
+						{composer(Boolean(permission || question))}
+					</div>
+				) : null}
+			</div>
 		</div>
 	);
-}
-
-export async function loadCodeRepos() {
-	const result = await getProjects();
-	if (!result.ok) {
-		throw new Error(result.error);
-	}
-	return result.data.repos;
 }

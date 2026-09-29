@@ -492,7 +492,10 @@ function appendTextPart(
 	});
 }
 
-export function pendingOpencodeTurn(text: string, now = Date.now()): OpencodeTurn {
+export function pendingOpencodeTurn(
+	text: string,
+	now = Date.now(),
+): OpencodeTurn {
 	const id = `local-${now}`;
 	return makeTurn(
 		id,
@@ -519,10 +522,7 @@ export function settleOpencodeTurns(
 			matched.add(hit.id);
 		}
 	}
-	return [
-		...incoming,
-		...pending.filter((item) => !matched.has(item.id)),
-	];
+	return [...incoming, ...pending.filter((item) => !matched.has(item.id))];
 }
 
 export function opencodeSessionBucket(
@@ -742,9 +742,11 @@ export function applyOpencodeEvent(
 			if (!messageID) {
 				return view;
 			}
-			if (part.type === "text" && typeof part.text === "string") {
+			const echoed =
+				part.type === "text" && typeof part.text === "string" ? part.text : "";
+			if (echoed) {
 				const pending = view.turns.find(
-					(turn) => turn.pending && turn.text === part.text,
+					(turn) => turn.pending && turn.text === echoed,
 				);
 				if (pending) {
 					return {
@@ -762,7 +764,7 @@ export function applyOpencodeEvent(
 														? part.id
 														: `${messageID}:text`,
 												type: "text",
-												text: part.text,
+												text: echoed,
 												tool: "",
 												status: "done",
 											},
@@ -779,7 +781,7 @@ export function applyOpencodeEvent(
 					turns: upsertPart(view.turns, messageID, "assistant", {
 						id: typeof part.id === "string" ? part.id : `${messageID}:text`,
 						type: "text",
-						text: part.text,
+						text: echoed,
 						tool: "",
 						status: "done",
 					}),

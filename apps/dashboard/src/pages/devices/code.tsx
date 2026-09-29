@@ -1,6 +1,8 @@
 import { GET as getPairing } from "@api/pair";
 import { useEffect, useState } from "react";
-import OpenCodeSession, { loadCodeRepos } from "../../components/OpenCodeSession.tsx";
+import OpenCodeSession, {
+	loadCodeRepos,
+} from "../../components/OpenCodeSession.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
 import { useAuthSession } from "../../hooks/useAuth.ts";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
@@ -14,7 +16,9 @@ export default function CodePage() {
 	const { uuid } = useBoardSelection();
 	const loggedIn = Boolean(session.data?.id || session.data?.email);
 	const [devices, setDevices] = useState<StoredPairing[]>([]);
-	const [repos, setRepos] = useState<Array<{ owner: string; name: string }>>([]);
+	const [repos, setRepos] = useState<Array<{ owner: string; name: string }>>(
+		[],
+	);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {

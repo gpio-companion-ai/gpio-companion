@@ -168,7 +168,11 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	const rail = [
 		{ href: "/project", label: t("deck.rail.work"), icon: <FolderIcon /> },
 		{ href: "/devices", label: t("deck.rail.fleet"), icon: <MemoryIcon /> },
-		{ href: "/devices/code", label: t("deck.rail.code"), icon: <TerminalIcon /> },
+		{
+			href: "/devices/code",
+			label: t("deck.rail.code"),
+			icon: <TerminalIcon />,
+		},
 		{
 			href: "/profile",
 			label: t("deck.rail.you"),
@@ -659,7 +663,8 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 						const active =
 							item.href === "/devices/code"
 								? pathname.startsWith(item.href)
-								: section === item.href && !pathname.startsWith("/devices/code");
+								: section === item.href &&
+									!pathname.startsWith("/devices/code");
 						return (
 							<a
 								key={item.href}

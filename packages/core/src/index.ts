@@ -571,8 +571,8 @@ export {
 export {
 	applyOpencodeEvent,
 	emptyOpencodeView,
-	OPENCODE_REPO_HEADER,
 	formatOpencodeBlocks,
+	OPENCODE_REPO_HEADER,
 	type OpencodeBlock,
 	type OpencodeClientCall,
 	type OpencodePart,
@@ -591,11 +591,11 @@ export {
 	opencodeSessionBucket,
 	opencodeSessions,
 	opencodeTurns,
-	pendingOpencodeTurn,
-	settleOpencodeTurns,
 	parseOpencodeSse,
+	pendingOpencodeTurn,
 	readOpencodeEventStream,
 	scopeOpencodeSearch,
+	settleOpencodeTurns,
 } from "./opencode-session.ts";
 export {
 	emptyPairingState,

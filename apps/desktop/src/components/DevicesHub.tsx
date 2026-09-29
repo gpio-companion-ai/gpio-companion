@@ -8,10 +8,10 @@ import { useT } from "../locale";
 import Admin from "./Admin";
 import Debug from "./Debug";
 import Docs from "./Docs";
+import OpenCodeSession from "./OpenCodeSession";
 import Overview from "./Overview";
 import Pair from "./Pair";
 import Requests from "./Requests";
-import OpenCodeSession from "./OpenCodeSession";
 import Wifi from "./Wifi";
 
 export type DeviceTab = DeviceTabId;

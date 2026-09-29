@@ -218,7 +218,9 @@ describe("opencode session client", () => {
 	});
 
 	test("formats fenced code and lists without treating them as HTML", () => {
-		expect(formatOpencodeBlocks("See\n\n- pin 7\n- GND\n\n```c\nloop();\n```")).toEqual([
+		expect(
+			formatOpencodeBlocks("See\n\n- pin 7\n- GND\n\n```c\nloop();\n```"),
+		).toEqual([
 			{ type: "paragraph", text: "See" },
 			{ type: "list", items: ["pin 7", "GND"] },
 			{ type: "code", text: "loop();" },

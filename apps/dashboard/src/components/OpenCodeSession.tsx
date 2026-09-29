@@ -68,7 +68,14 @@ function SendIcon() {
 function StopIcon() {
 	return (
 		<svg viewBox="0 0 24 24" aria-hidden="true">
-			<rect x="8" y="8" width="8" height="8" fill="currentColor" stroke="none" />
+			<rect
+				x="8"
+				y="8"
+				width="8"
+				height="8"
+				fill="currentColor"
+				stroke="none"
+			/>
 		</svg>
 	);
 }
@@ -86,8 +93,15 @@ function Blocks({ text }: { text: string }) {
 	if (blocks.length === 0 && text) {
 		return <p>{text}</p>;
 	}
-	return blocks.map((block, index) => (
-		<Block key={`${block.type}-${index}`} block={block} />
+	return blocks.map((block) => (
+		<Block
+			key={
+				block.type === "list"
+					? `list:${block.items.join("\n")}`
+					: `${block.type}:${block.text}`
+			}
+			block={block}
+		/>
 	));
 }
 
@@ -110,7 +124,11 @@ function Block({ block }: { block: OpencodeBlock }) {
 function TurnView({ turn, caret }: { turn: OpencodeTurn; caret: boolean }) {
 	return (
 		<article className="oc-turn">
-			{turn.role === "user" ? <p className="oc-user">{turn.text}</p> : <Blocks text={turn.text} />}
+			{turn.role === "user" ? (
+				<p className="oc-user">{turn.text}</p>
+			) : (
+				<Blocks text={turn.text} />
+			)}
 			{turn.parts
 				.filter((part) => part.type === "tool")
 				.map((part) => (
@@ -177,6 +195,12 @@ export default function OpenCodeSession({
 	}
 
 	useEffect(() => {
+		if (uuid) {
+			setMode("home");
+		}
+	}, [uuid]);
+
+	useEffect(() => {
 		if (!uuid || !repo) {
 			setView(emptyOpencodeView());
 			return;
@@ -191,7 +215,8 @@ export default function OpenCodeSession({
 				setError(result.error);
 				return;
 			}
-			setView({ ...emptyOpencodeView(), sessions: opencodeSessions(result.data) });
+			const sessions = opencodeSessions(result.data);
+			setView((current) => ({ ...current, sessions }));
 		});
 		return () => {
 			cancelled = true;
@@ -204,19 +229,24 @@ export default function OpenCodeSession({
 		}
 		let cancelled = false;
 		const sessionID = view.sessionID;
-		void postOpencode({ uuid, repo, op: "messages", sessionID }).then((result) => {
-			if (cancelled || !result.ok) {
-				return;
-			}
-			setView((current) =>
-				current.sessionID === sessionID
-					? {
-							...current,
-							turns: settleOpencodeTurns(current.turns, opencodeTurns(result.data)),
-						}
-					: current,
-			);
-		});
+		void postOpencode({ uuid, repo, op: "messages", sessionID }).then(
+			(result) => {
+				if (cancelled || !result.ok) {
+					return;
+				}
+				setView((current) =>
+					current.sessionID === sessionID
+						? {
+								...current,
+								turns: settleOpencodeTurns(
+									current.turns,
+									opencodeTurns(result.data),
+								),
+							}
+						: current,
+				);
+			},
+		);
 		return () => {
 			cancelled = true;
 		};
@@ -232,7 +262,12 @@ export default function OpenCodeSession({
 		async function loop() {
 			while (!stopped) {
 				try {
-					const response = await openEvents(uuid, repo, lastEventId, controller.signal);
+					const response = await openEvents(
+						uuid,
+						repo,
+						lastEventId,
+						controller.signal,
+					);
 					setReconnecting(false);
 					await readOpencodeEventStream(
 						response,
@@ -266,8 +301,15 @@ export default function OpenCodeSession({
 		};
 	}, [uuid, repo]);
 
-	const scrollKey = view.turns.length + view.permissions.length + view.questions.length;
+	const scrollKey =
+		view.turns.length +
+		(view.turns.at(-1)?.text.length ?? 0) +
+		view.permissions.length +
+		view.questions.length;
 	useEffect(() => {
+		if (scrollKey < 0) {
+			return;
+		}
 		scroller.current?.scrollTo({ top: scroller.current.scrollHeight });
 	}, [scrollKey]);
 
@@ -301,7 +343,10 @@ export default function OpenCodeSession({
 			sessionID = created.id;
 			setView((current) => ({
 				...current,
-				sessions: [created, ...current.sessions.filter((item) => item.id !== created.id)],
+				sessions: [
+					created,
+					...current.sessions.filter((item) => item.id !== created.id),
+				],
 				sessionID: created.id,
 				turns: [],
 				busy: false,
@@ -341,7 +386,9 @@ export default function OpenCodeSession({
 		});
 		setView((current) => ({
 			...current,
-			permissions: current.permissions.filter((item) => item.id !== permissionID),
+			permissions: current.permissions.filter(
+				(item) => item.id !== permissionID,
+			),
 		}));
 	}
 
@@ -364,9 +411,14 @@ export default function OpenCodeSession({
 		}))
 		.filter((group) => group.sessions.length > 0);
 	const title =
-		view.sessions.find((item) => item.id === view.sessionID)?.title || t("code.sessions");
-	const permission = view.permissions.find((item) => item.sessionID === view.sessionID);
-	const question = view.questions.find((item) => item.sessionID === view.sessionID);
+		view.sessions.find((item) => item.id === view.sessionID)?.title ||
+		t("code.sessions");
+	const permission = view.permissions.find(
+		(item) => item.sessionID === view.sessionID,
+	);
+	const question = view.questions.find(
+		(item) => item.sessionID === view.sessionID,
+	);
 	const lastTurn = view.turns.at(-1)?.id;
 
 	function composer(disabled: boolean) {
@@ -385,7 +437,11 @@ export default function OpenCodeSession({
 						event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
 					}}
 					onKeyDown={(event) => {
-						if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+						if (
+							event.key === "Enter" &&
+							!event.shiftKey &&
+							!event.nativeEvent.isComposing
+						) {
 							event.preventDefault();
 							if (!view.busy) {
 								void send();
@@ -411,7 +467,11 @@ export default function OpenCodeSession({
 			{error && mode === "home" ? (
 				<p className="oc-error">
 					<span>{error}</span>
-					<button type="button" aria-label={t("code.dismiss")} onClick={() => setError("")}>
+					<button
+						type="button"
+						aria-label={t("code.dismiss")}
+						onClick={() => setError("")}
+					>
 						{t("code.dismiss")}
 					</button>
 				</p>
@@ -477,11 +537,17 @@ export default function OpenCodeSession({
 												onMouseDown={(event) => event.preventDefault()}
 												onClick={() => {
 													setQuery("");
-													setView((current) => ({ ...current, sessionID: session.id, turns: [] }));
+													setView((current) => ({
+														...current,
+														sessionID: session.id,
+														turns: [],
+													}));
 													setMode("session");
 												}}
 											>
-												<span className="oc-session-title">{session.title}</span>
+												<span className="oc-session-title">
+													{session.title}
+												</span>
 											</button>
 										))
 									)}
@@ -524,7 +590,9 @@ export default function OpenCodeSession({
 													setMode("session");
 												}}
 											>
-												<span className="oc-session-title">{session.title}</span>
+												<span className="oc-session-title">
+													{session.title}
+												</span>
 											</button>
 										))}
 									</div>
@@ -537,7 +605,11 @@ export default function OpenCodeSession({
 			{mode === "draft" ? (
 				<div className="oc-draft">
 					<div className="oc-session-bar">
-						<button type="button" className="oc-back" onClick={() => setMode("home")}>
+						<button
+							type="button"
+							className="oc-back"
+							onClick={() => setMode("home")}
+						>
 							<BackIcon />
 							{t("code.back")}
 						</button>
@@ -576,7 +648,11 @@ export default function OpenCodeSession({
 			{mode === "session" ? (
 				<div className="oc-session">
 					<div className="oc-session-bar">
-						<button type="button" className="oc-back" onClick={() => setMode("home")}>
+						<button
+							type="button"
+							className="oc-back"
+							onClick={() => setMode("home")}
+						>
 							<BackIcon />
 							{t("code.back")}
 						</button>
@@ -594,12 +670,18 @@ export default function OpenCodeSession({
 								caret={view.busy && turn.id === lastTurn}
 							/>
 						))}
-						{view.busy && view.turns.length === 0 ? <span className="oc-caret" /> : null}
+						{view.busy && view.turns.length === 0 ? (
+							<span className="oc-caret" />
+						) : null}
 					</div>
 					{error ? (
 						<p className="oc-error">
 							<span>{error}</span>
-							<button type="button" aria-label={t("code.dismiss")} onClick={() => setError("")}>
+							<button
+								type="button"
+								aria-label={t("code.dismiss")}
+								onClick={() => setError("")}
+							>
 								{t("code.dismiss")}
 							</button>
 						</p>
@@ -609,15 +691,26 @@ export default function OpenCodeSession({
 							<strong>
 								{t("code.permission")}: {permission.title}
 							</strong>
-							{permission.detail ? <p className="oc-muted">{permission.detail}</p> : null}
+							{permission.detail ? (
+								<p className="oc-muted">{permission.detail}</p>
+							) : null}
 							<div className="oc-decision-actions">
-								<button type="button" onClick={() => void replyPermission(permission.id, "once")}>
+								<button
+									type="button"
+									onClick={() => void replyPermission(permission.id, "once")}
+								>
 									{t("code.allowOnce")}
 								</button>
-								<button type="button" onClick={() => void replyPermission(permission.id, "always")}>
+								<button
+									type="button"
+									onClick={() => void replyPermission(permission.id, "always")}
+								>
 									{t("code.allowAlways")}
 								</button>
-								<button type="button" onClick={() => void replyPermission(permission.id, "reject")}>
+								<button
+									type="button"
+									onClick={() => void replyPermission(permission.id, "reject")}
+								>
 									{t("code.deny")}
 								</button>
 							</div>
@@ -636,7 +729,11 @@ export default function OpenCodeSession({
 											<button
 												key={option}
 												type="button"
-												className={answers[item.question] === option ? "is-on" : undefined}
+												className={
+													answers[item.question] === option
+														? "is-on"
+														: undefined
+												}
 												onClick={() =>
 													setAnswers((current) => ({
 														...current,
@@ -653,18 +750,24 @@ export default function OpenCodeSession({
 							<div className="oc-decision-actions">
 								<button
 									type="button"
-									disabled={question.prompts.some((item) => !answers[item.question])}
+									disabled={question.prompts.some(
+										(item) => !answers[item.question],
+									)}
 									onClick={() =>
 										void run({
 											uuid,
 											repo,
 											op: "question",
 											requestID: question.id,
-											answers: question.prompts.map((item) => [answers[item.question] ?? ""]),
+											answers: question.prompts.map((item) => [
+												answers[item.question] ?? "",
+											]),
 										}).then(() =>
 											setView((current) => ({
 												...current,
-												questions: current.questions.filter((item) => item.id !== question.id),
+												questions: current.questions.filter(
+													(item) => item.id !== question.id,
+												),
 											})),
 										)
 									}
@@ -688,7 +791,7 @@ export default function OpenCodeSession({
 							</div>
 						</div>
 					) : null}
-					{composer(Boolean(permission))}
+					{composer(Boolean(permission || question))}
 				</div>
 			) : null}
 		</div>
