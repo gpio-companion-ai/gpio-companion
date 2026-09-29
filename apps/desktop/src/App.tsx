@@ -92,6 +92,7 @@ export default function App() {
 								tab={deviceTab}
 								onTab={setDeviceTab}
 								admin={Boolean(admin)}
+								onOpenProject={() => setSection("project")}
 							/>
 						)}
 					</DeckShell>

@@ -20,10 +20,12 @@ export default function DevicesHub({
 	tab,
 	onTab,
 	admin,
+	onOpenProject,
 }: {
 	tab: DeviceTab;
 	onTab: (tab: DeviceTab) => void;
 	admin: boolean;
+	onOpenProject?: () => void;
 }) {
 	const { mode, isEasy, setMode } = useDashboardMode();
 	const t = useT();
@@ -39,12 +41,30 @@ export default function DevicesHub({
 
 	return (
 		<Box
-			sx={{
-				minWidth: 0,
-				width: "100%",
-			}}
+			sx={
+				tab === "code"
+					? {
+							display: "flex",
+							width: "100%",
+							height: "100%",
+							minHeight: 0,
+							flexDirection: "column",
+						}
+					: { minWidth: 0, width: "100%" }
+			}
 		>
-			<Box>
+			<Box
+				sx={
+					tab === "code"
+						? {
+								display: "flex",
+								minHeight: 0,
+								flex: 1,
+								flexDirection: "column",
+							}
+						: undefined
+				}
+			>
 				{isEasy && expertOnly ? (
 					<Alert severity="info">
 						{t("mode.expertPage")}{" "}
@@ -62,7 +82,9 @@ export default function DevicesHub({
 							<Overview onAddBoard={() => onTab("pair")} />
 						) : null}
 						{tab === "docs" ? <Docs /> : null}
-						{tab === "code" ? <OpenCodeSession /> : null}
+						{tab === "code" ? (
+							<OpenCodeSession onOpenProject={onOpenProject} />
+						) : null}
 						{tab === "pair" ? <Pair onBack={() => onTab("overview")} /> : null}
 						{tab === "wifi" ? <Wifi onBack={() => onTab("overview")} /> : null}
 						{tab === "requests" ? <Requests /> : null}

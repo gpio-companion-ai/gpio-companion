@@ -387,7 +387,11 @@ export default function DeckShell({
 					aria-label={t("deck.focus.primary")}
 					onFocus={() => setFocus("primary")}
 				>
-					<div className={"b6-screen workbench-bg"}>{children}</div>
+					<div
+						className={`b6-screen workbench-bg${section === "devices" && deviceTab === "code" ? " is-fill" : ""}`}
+					>
+						{children}
+					</div>
 				</section>
 				<aside
 					className={`b6-context ${focus === "secondary" ? "is-focused" : ""}`}

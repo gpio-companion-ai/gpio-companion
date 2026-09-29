@@ -711,7 +711,11 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 							onClick={() => setFocusRegion("primary")}
 							onKeyDown={() => setFocusRegion("primary")}
 						>
-							<div className="b6-stage-content">{children}</div>
+							<div
+								className={`b6-stage-content${pathname.startsWith("/devices/code") ? " is-fill" : ""}`}
+							>
+								{children}
+							</div>
 						</section>
 						<aside
 							ref={secondaryRef}

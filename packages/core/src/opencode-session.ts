@@ -39,11 +39,30 @@ export type OpencodeSessionSummary = {
 	updated: number;
 };
 
+export type OpencodeToolStatus = "running" | "done" | "error";
+
+export type OpencodePart = {
+	id: string;
+	type: "text" | "tool";
+	text: string;
+	tool: string;
+	status: OpencodeToolStatus;
+};
+
 export type OpencodeTurn = {
 	id: string;
 	role: "user" | "assistant";
+	pending?: boolean;
+	parts: OpencodePart[];
 	text: string;
 };
+
+export type OpencodeBlock =
+	| { type: "paragraph"; text: string }
+	| { type: "code"; text: string }
+	| { type: "list"; items: string[] };
+
+export type OpencodeSessionBucket = "today" | "yesterday" | "earlier";
 
 export type OpencodePermission = {
 	id: string;
@@ -311,20 +330,79 @@ export function opencodeSessions(value: unknown): OpencodeSessionSummary[] {
 	return sessions.sort((left, right) => right.updated - left.updated);
 }
 
-function textFromParts(parts: unknown[]): string {
-	const lines: string[] = [];
-	for (const part of parts) {
-		const record = asRecord(part);
+function toolStatus(value: unknown): OpencodeToolStatus {
+	if (value === "error" || value === "failed") {
+		return "error";
+	}
+	if (value === "completed" || value === "done" || value === "success") {
+		return "done";
+	}
+	return "running";
+}
+
+function toolDetail(record: Record<string, unknown>): string {
+	const state = asRecord(record.state);
+	const title = typeof state?.title === "string" ? state.title.trim() : "";
+	if (title) {
+		return title.slice(0, 160);
+	}
+	const input = asRecord(state?.input);
+	for (const key of ["command", "description", "filePath", "path", "query"]) {
+		const value = input?.[key];
+		if (typeof value === "string" && value.trim()) {
+			return value.trim().split("\n")[0]?.slice(0, 160) ?? "";
+		}
+	}
+	return "";
+}
+
+function textOf(parts: OpencodePart[]): string {
+	return parts
+		.filter((part) => part.type === "text" && part.text)
+		.map((part) => part.text)
+		.join("\n")
+		.slice(0, 20_000);
+}
+
+function makeTurn(
+	id: string,
+	role: "user" | "assistant",
+	parts: OpencodePart[],
+	pending = false,
+): OpencodeTurn {
+	return { id, role, pending, parts, text: textOf(parts) };
+}
+
+function partsFrom(raw: unknown[]): OpencodePart[] {
+	const parts: OpencodePart[] = [];
+	for (const [index, item] of raw.entries()) {
+		const record = asRecord(item);
 		if (!record) {
 			continue;
 		}
+		const id = typeof record.id === "string" ? record.id : `part-${index}`;
 		if (record.type === "text" && typeof record.text === "string") {
-			lines.push(record.text);
-		} else if (record.type === "tool" && typeof record.tool === "string") {
-			lines.push(`· ${record.tool}`);
+			parts.push({
+				id,
+				type: "text",
+				text: record.text,
+				tool: "",
+				status: "done",
+			});
+			continue;
+		}
+		if (record.type === "tool" && typeof record.tool === "string") {
+			const state = asRecord(record.state);
+			parts.push({
+				id,
+				type: "tool",
+				text: toolDetail(record),
+				tool: record.tool,
+				status: toolStatus(state?.status),
+			});
 		}
 	}
-	return lines.join("\n").slice(0, 20_000);
+	return parts;
 }
 
 export function opencodeTurns(value: unknown): OpencodeTurn[] {
@@ -344,11 +422,13 @@ export function opencodeTurns(value: unknown): OpencodeTurn[] {
 		if (!id || !role) {
 			continue;
 		}
-		turns.push({
-			id,
-			role,
-			text: textFromParts(Array.isArray(record.parts) ? record.parts : []),
-		});
+		turns.push(
+			makeTurn(
+				id,
+				role,
+				partsFrom(Array.isArray(record.parts) ? record.parts : []),
+			),
+		);
 	}
 	return turns;
 }
@@ -372,15 +452,150 @@ function upsertTurn(turns: OpencodeTurn[], turn: OpencodeTurn): OpencodeTurn[] {
 	return next;
 }
 
-function appendTurnText(
+function upsertPart(
 	turns: OpencodeTurn[],
-	id: string,
+	messageID: string,
 	role: "user" | "assistant",
+	part: OpencodePart,
+): OpencodeTurn[] {
+	const current = turns.find((item) => item.id === messageID);
+	const parts = current?.parts ?? [];
+	const index = parts.findIndex((item) => item.id === part.id);
+	const next =
+		index < 0
+			? [...parts, part]
+			: parts.map((item, itemIndex) => (itemIndex === index ? part : item));
+	return upsertTurn(
+		turns,
+		makeTurn(messageID, current?.role ?? role, next, false),
+	);
+}
+
+function appendTextPart(
+	turns: OpencodeTurn[],
+	messageID: string,
+	role: "user" | "assistant",
+	partID: string,
 	delta: string,
 ): OpencodeTurn[] {
-	const current = turns.find((item) => item.id === id);
-	const text = `${current?.text ?? ""}${delta}`.slice(0, 20_000);
-	return upsertTurn(turns, { id, role: current?.role ?? role, text });
+	const current = turns.find((item) => item.id === messageID);
+	const existing = current?.parts.find(
+		(item) => item.id === partID && item.type === "text",
+	);
+	const text = `${existing?.text ?? ""}${delta}`.slice(0, 20_000);
+	return upsertPart(turns, messageID, role, {
+		id: partID,
+		type: "text",
+		text,
+		tool: "",
+		status: "done",
+	});
+}
+
+export function pendingOpencodeTurn(text: string, now = Date.now()): OpencodeTurn {
+	const id = `local-${now}`;
+	return makeTurn(
+		id,
+		"user",
+		[{ id: `${id}:text`, type: "text", text, tool: "", status: "done" }],
+		true,
+	);
+}
+
+export function settleOpencodeTurns(
+	current: OpencodeTurn[],
+	incoming: OpencodeTurn[],
+): OpencodeTurn[] {
+	const pending = current.filter((turn) => turn.pending);
+	const matched = new Set<string>();
+	for (const turn of incoming) {
+		if (turn.role !== "user") {
+			continue;
+		}
+		const hit = pending.find(
+			(item) => !matched.has(item.id) && item.text === turn.text,
+		);
+		if (hit) {
+			matched.add(hit.id);
+		}
+	}
+	return [
+		...incoming,
+		...pending.filter((item) => !matched.has(item.id)),
+	];
+}
+
+export function opencodeSessionBucket(
+	updated: number,
+	now = Date.now(),
+): OpencodeSessionBucket {
+	if (!updated) {
+		return "earlier";
+	}
+	const day = (value: number) => {
+		const date = new Date(value);
+		return Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
+	};
+	const diff = (day(now) - day(updated)) / 86_400_000;
+	if (diff <= 0) {
+		return "today";
+	}
+	if (diff === 1) {
+		return "yesterday";
+	}
+	return "earlier";
+}
+
+export function formatOpencodeBlocks(source: string): OpencodeBlock[] {
+	const blocks: OpencodeBlock[] = [];
+	const text = source.replace(/\r\n/g, "\n");
+	let last = 0;
+	for (const match of text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
+		const index = match.index ?? 0;
+		pushOpencodeProse(blocks, text.slice(last, index));
+		const code = (match[1] ?? "").replace(/\n$/, "");
+		if (code) {
+			blocks.push({ type: "code", text: code });
+		}
+		last = index + match[0].length;
+	}
+	pushOpencodeProse(blocks, text.slice(last));
+	return blocks;
+}
+
+function pushOpencodeProse(blocks: OpencodeBlock[], raw: string) {
+	const paragraph: string[] = [];
+	const list: string[] = [];
+	const flushParagraph = () => {
+		const text = paragraph.join(" ").trim();
+		paragraph.length = 0;
+		if (text) {
+			blocks.push({ type: "paragraph", text });
+		}
+	};
+	const flushList = () => {
+		if (list.length > 0) {
+			blocks.push({ type: "list", items: list.slice() });
+			list.length = 0;
+		}
+	};
+	for (const line of raw.split("\n")) {
+		const item = /^[-*]\s+(.+)$/.exec(line) ?? /^\d+\.\s+(.+)$/.exec(line);
+		if (item?.[1]) {
+			flushParagraph();
+			list.push(item[1]);
+			continue;
+		}
+		if (!line.trim()) {
+			flushParagraph();
+			flushList();
+			continue;
+		}
+		flushList();
+		paragraph.push(line.trim());
+	}
+	flushParagraph();
+	flushList();
 }
 
 function eventBody(value: unknown): {
@@ -528,26 +743,60 @@ export function applyOpencodeEvent(
 				return view;
 			}
 			if (part.type === "text" && typeof part.text === "string") {
+				const pending = view.turns.find(
+					(turn) => turn.pending && turn.text === part.text,
+				);
+				if (pending) {
+					return {
+						...view,
+						busy: true,
+						turns: view.turns.map((turn) =>
+							turn.id === pending.id
+								? makeTurn(
+										messageID,
+										"user",
+										[
+											{
+												id:
+													typeof part.id === "string"
+														? part.id
+														: `${messageID}:text`,
+												type: "text",
+												text: part.text,
+												tool: "",
+												status: "done",
+											},
+										],
+										false,
+									)
+								: turn,
+						),
+					};
+				}
 				return {
 					...view,
 					busy: true,
-					turns: upsertTurn(view.turns, {
-						id: messageID,
-						role: "assistant",
+					turns: upsertPart(view.turns, messageID, "assistant", {
+						id: typeof part.id === "string" ? part.id : `${messageID}:text`,
+						type: "text",
 						text: part.text,
+						tool: "",
+						status: "done",
 					}),
 				};
 			}
 			if (part.type === "tool" && typeof part.tool === "string") {
+				const state = asRecord(part.state);
 				return {
 					...view,
 					busy: true,
-					turns: appendTurnText(
-						view.turns,
-						messageID,
-						"assistant",
-						`\n· ${part.tool}`,
-					),
+					turns: upsertPart(view.turns, messageID, "assistant", {
+						id: typeof part.id === "string" ? part.id : `${messageID}:tool`,
+						type: "tool",
+						text: toolDetail(part),
+						tool: part.tool,
+						status: toolStatus(state?.status),
+					}),
 				};
 			}
 			return view;
@@ -568,10 +817,18 @@ export function applyOpencodeEvent(
 			if (!messageID || !delta) {
 				return view;
 			}
+			const partID =
+				typeof properties.partID === "string" ? properties.partID : messageID;
 			return {
 				...view,
 				busy: true,
-				turns: appendTurnText(view.turns, messageID, "assistant", delta),
+				turns: appendTextPart(
+					view.turns,
+					messageID,
+					"assistant",
+					partID,
+					delta,
+				),
 			};
 		}
 		case "permission.asked":
