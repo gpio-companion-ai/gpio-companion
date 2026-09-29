@@ -7422,7 +7422,6 @@ html, body {
   position: relative;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
   outline: 0;
 }
 .b6-stage-primary {
@@ -7430,6 +7429,7 @@ html, body {
   min-height: 0;
   flex: 1 1 0;
   flex-direction: column;
+  overflow: hidden;
   border-right: 0;
   border-bottom: 0;
 }
@@ -8269,10 +8269,9 @@ mark {
 .oc-shell {
   display: flex;
   width: 100%;
-  height: auto;
   min-width: 0;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   overflow: hidden;
   color: rgb(var(--text-main));
@@ -8293,10 +8292,9 @@ mark {
 .oc-card {
   display: flex;
   width: 100%;
-  height: auto;
   min-width: 0;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   overflow: hidden;
   border-radius: 10px;
@@ -8305,9 +8303,9 @@ mark {
 }
 .oc-home {
   display: grid;
-  height: auto;
+  min-width: 0;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   grid-template-columns: 220px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   overflow: hidden;
@@ -8526,9 +8524,9 @@ mark {
 }
 .oc-draft, .oc-session {
   display: flex;
-  height: auto;
+  min-width: 0;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
   flex-direction: column;
   overflow: hidden;
 }
@@ -8727,7 +8725,7 @@ mark {
   .oc-home {
     display: flex;
     flex-direction: column;
-    overflow: auto;
+    overflow: hidden;
   }
   .oc-projects {
     flex: none;
@@ -8736,7 +8734,8 @@ mark {
     border-bottom: 1px solid rgba(var(--text-main), 0.08);
   }
   .oc-sessions {
-    flex: none;
+    min-height: 0;
+    flex: 1 1 0;
   }
 }
 @media (prefers-reduced-motion: reduce) {

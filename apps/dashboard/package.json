@@ -17,7 +17,7 @@
 		"@shpaw415/mui-lite": "^0.1.6",
 		"@tailwindcss/cli": "^4.3.3",
 		"@wokwi/elements": "^1.9.2",
-		"frame-master": "^4.0.0",
+		"frame-master": "^4.0.3",
 		"frame-master-plugin-apply-react": "^3.0.0",
 		"frame-master-plugin-assets-to-build": "^0.1.1",
 		"frame-master-plugin-auto-sitemap": "^0.1.0",
