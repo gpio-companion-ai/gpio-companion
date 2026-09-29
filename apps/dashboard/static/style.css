@@ -245,6 +245,9 @@
   .mb-6 {
     margin-bottom: calc(var(--spacing) * 6);
   }
+  .ml-2 {
+    margin-left: calc(var(--spacing) * 2);
+  }
   .block {
     display: block;
   }
@@ -447,6 +450,9 @@
   .py-0\.5 {
     padding-block: calc(var(--spacing) * 0.5);
   }
+  .py-1 {
+    padding-block: var(--spacing);
+  }
   .py-2 {
     padding-block: calc(var(--spacing) * 2);
   }
@@ -492,6 +498,9 @@
     --tw-numeric-spacing: tabular-nums;
     font-variant-numeric: var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,);
   }
+  .opacity-80 {
+    opacity: 80%;
+  }
   .shadow {
     --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
     box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
@@ -510,6 +519,9 @@
   @media (width >= 900px) {
     .min-\[900px\]\:mt-16 {
       margin-top: calc(var(--spacing) * 16);
+    }
+    .min-\[900px\]\:h-\[420px\] {
+      height: 420px;
     }
     .min-\[900px\]\:h-\[520px\] {
       height: 520px;
@@ -7944,8 +7956,17 @@ html, body {
 .project-preview-grid > *, .project-assets-grid > * {
   min-width: 0;
 }
-.breadboard-canvas {
+.breadboard-canvas, .model-canvas {
   background: rgb(var(--bg-main));
+}
+.model-part {
+  color: rgb(var(--text-secondary));
+  border: 1px solid rgba(var(--text-main), 0.16);
+  background: transparent;
+}
+.model-part.is-active {
+  background: rgba(var(--text-primary), 0.16);
+  color: rgb(var(--text-primary));
 }
 .breadboard-step {
   color: rgb(var(--text-secondary));
@@ -8403,8 +8424,7 @@ mark {
   cursor: pointer;
   font-size: 12px;
 }
-.oc-session-delete:hover,
-.oc-session-delete:focus-visible {
+.oc-session-delete:hover, .oc-session-delete:focus-visible {
   color: rgb(var(--text-error, 180, 40, 40));
 }
 .oc-sessions {
@@ -8726,16 +8746,27 @@ mark {
   line-height: 18px;
   white-space: pre-wrap;
 }
-.oc-tool {
+.oc-tools {
+  margin: 0 0 8px;
+}
+.oc-tools-toggle, .oc-tool {
   display: flex;
+  width: 100%;
   max-width: 100%;
   align-items: baseline;
   gap: 8px;
   margin: 0 0 8px;
+  border: 0;
+  padding: 0;
+  background: none;
   color: rgb(var(--text-secondary));
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
-.oc-tool strong {
+.oc-tools-toggle strong, .oc-tool strong {
   flex: none;
+  min-width: 0;
   color: rgb(var(--text-main));
   font-weight: 530;
   text-transform: capitalize;
@@ -8754,12 +8785,15 @@ mark {
   border-radius: 999px;
   background: rgba(var(--text-main), 0.35);
 }
-.oc-tool.is-running .oc-mark {
+.oc-tools.is-running .oc-mark, .oc-tool.is-running .oc-mark {
   background: rgb(var(--text-primary));
   animation: oc-pulse 1s ease-in-out infinite;
 }
-.oc-tool.is-error .oc-mark {
+.oc-tools.is-error .oc-mark, .oc-tool.is-error .oc-mark {
   background: #e7af36;
+}
+.oc-tool-info {
+  margin-left: 16px;
 }
 .oc-caret {
   display: inline-block;
@@ -8797,8 +8831,7 @@ mark {
   background: rgb(var(--text-main));
   color: rgb(var(--bg-surface));
 }
-button.oc-chip,
-.oc-chip {
+button.oc-chip, .oc-chip {
   display: inline-flex;
   width: fit-content;
   align-items: center;
@@ -8806,10 +8839,9 @@ button.oc-chip,
   border: 1px solid rgba(var(--text-main), 0.22);
   color: rgba(var(--text-main), 0.72);
   cursor: pointer;
+  transition: background 120ms ease,	border-color 120ms ease,	color 120ms ease;
 }
-.oc-chip:hover,
-.oc-chip:focus-within,
-.oc-model.is-open > .oc-chip {
+.oc-chip:hover, .oc-chip:focus-within, .oc-model.is-open > .oc-chip {
   border-color: rgb(var(--text-main));
   background: rgba(var(--text-main), 0.14);
   color: rgb(var(--text-main));
@@ -8856,8 +8888,7 @@ button.oc-chip,
   padding: 4px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
-.oc-model-menu button,
-.oc-model-row {
+.oc-model-menu button, .oc-model-row {
   display: flex;
   width: 100%;
   align-items: center;
@@ -8873,9 +8904,7 @@ button.oc-chip,
 .oc-model-menu button {
   cursor: pointer;
 }
-.oc-model-menu button:hover,
-.oc-model-menu button:focus-visible,
-.oc-model-menu button.is-on {
+.oc-model-menu button:hover, .oc-model-menu button:focus-visible, .oc-model-menu button.is-on {
   background: rgba(var(--text-main), 0.08);
 }
 .oc-model-provider {
@@ -8963,13 +8992,205 @@ button.oc-chip,
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .oc-tool.is-running .oc-mark,	.oc-caret {
+  .oc-tools.is-running .oc-mark,	.oc-tool.is-running .oc-mark,	.oc-caret {
     animation: none;
   }
 }
 @keyframes oc-pulse {
   50% {
     opacity: 0.35;
+  }
+}
+.oc-work {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+}
+.oc-tree {
+  display: flex;
+  width: 240px;
+  min-width: 0;
+  min-height: 0;
+  flex: none;
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid rgba(var(--text-main), 0.08);
+  background: rgba(var(--text-main), 0.03);
+}
+.oc-tree-head, .oc-editor-bar {
+  display: flex;
+  min-height: 32px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid rgba(var(--text-main), 0.08);
+}
+.oc-tree-head {
+  flex: none;
+}
+.oc-tree-title {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+.oc-tree-branch {
+  max-width: 88px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(var(--text-main), 0.62);
+  font-size: 11px;
+}
+.oc-tree-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 4px 0 8px;
+}
+.oc-tree-row {
+  display: flex;
+  width: 100%;
+  height: 22px;
+  align-items: center;
+  gap: 4px;
+  padding-right: 8px;
+  text-align: left;
+}
+.oc-tree-row:hover {
+  background: rgba(var(--text-main), 0.06);
+}
+.oc-tree-row.is-active {
+  background: rgba(var(--text-main), 0.1);
+  box-shadow: inset 2px 0 0 rgb(var(--text-primary));
+}
+.oc-tree-chevron, .oc-tree-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: rgba(var(--text-main), 0.55);
+}
+.oc-tree-chevron {
+  transition: transform 80ms linear;
+}
+.oc-tree-chevron.is-open {
+  transform: rotate(90deg);
+}
+.oc-tree-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-stage {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+}
+.oc-stage.is-split {
+  display: grid;
+  grid-template-columns: minmax(0, var(--oc-editor, 55%)) 4px minmax(180px, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.oc-editor {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.oc-editor-bar {
+  flex: none;
+}
+.oc-editor-name {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.oc-editor-name.is-dirty::after {
+  content: " ●";
+  color: rgb(var(--text-primary));
+}
+.oc-editor-body {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  overflow: hidden;
+}
+.oc-editor-body > * {
+  min-height: 0;
+  flex: 1;
+}
+.oc-editor-note {
+  margin: 8px;
+  color: rgba(var(--text-main), 0.7);
+}
+.oc-split {
+  cursor: col-resize;
+  background: rgba(var(--text-main), 0.08);
+}
+.oc-split:hover {
+  background: rgba(var(--text-primary), 0.45);
+}
+.oc-chat {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 0;
+  flex-direction: column;
+  overflow: hidden;
+}
+.oc-chat > .oc-home, .oc-chat > .oc-draft, .oc-chat > .oc-session {
+  min-height: 0;
+  flex: 1 1 0;
+}
+.oc-mini {
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 4px;
+  color: rgb(var(--text-main));
+  font-size: 12px;
+}
+.oc-mini:hover {
+  background: rgba(var(--text-main), 0.08);
+}
+.oc-mini:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.oc-mini.is-on {
+  background: rgba(var(--text-primary), 0.16);
+  color: rgb(var(--text-primary));
+}
+.oc-view-toggle {
+  display: inline-flex;
+  gap: 2px;
+}
+@media (max-width: 800px) {
+  .oc-work {
+    flex-direction: column;
+  }
+  .oc-tree {
+    width: auto;
+    max-height: 180px;
+    border-right: 0;
+    border-bottom: 1px solid rgba(var(--text-main), 0.08);
+  }
+  .oc-stage.is-split {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(140px, var(--oc-editor, 45%)) 4px minmax(0, 1fr);
+  }
+  .oc-split {
+    cursor: row-resize;
   }
 }
 @property --tw-rotate-x {

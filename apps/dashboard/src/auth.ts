@@ -1,3 +1,4 @@
+import type { ShippingAddress } from "gpio-companion";
 import { createOpenAuthsterClient } from "openauthster-shared/client/user";
 
 import type { UserRole } from "./lib/auth/role.ts";
@@ -9,6 +10,7 @@ export type PublicSession = {
 	email?: string;
 	name?: string;
 	role?: UserRole;
+	address?: ShippingAddress;
 };
 
 export type PrivateSession = Record<string, never>;

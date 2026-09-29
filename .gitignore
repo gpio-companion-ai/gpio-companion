@@ -27,6 +27,10 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # BLE central venv for scripts/device-endpoint-runner.ts
 scripts/.ble-central-venv/
 
+# gpio-3d local test bytecode
+__pycache__/
+*.pyc
+
 # dotenv environment variable files
 .env
 .env.development.local

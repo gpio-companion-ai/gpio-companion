@@ -22,6 +22,9 @@ import Typography from "@shpaw415/mui-lite/Typography";
 import {
 	type CircuitVerifyItem,
 	circuitVerifyOverlay,
+	type ModelPart,
+	modelPartRepoPath,
+	parseModelManifest,
 	parseWokwiDiagram,
 } from "gpio-companion";
 import { translateError } from "gpio-companion-i18n";
@@ -67,8 +70,8 @@ import BreadboardViewer from "./BreadboardViewer";
 import DebugLog from "./DebugLog";
 import FlashPanel from "./FlashPanel";
 import GpioPanel from "./GpioPanel";
-import OrderReviewPanel from "./OrderReviewPanel";
-import PartsSearchPanel from "./PartsSearchPanel";
+import JlcpcbCard from "./JlcpcbCard";
+import ModelViewer from "./ModelViewer";
 import RunPanel from "./RunPanel";
 import { ListSkeleton, PreviewSkeleton } from "./skeletons";
 import VerifyPanel from "./VerifyPanel";
@@ -340,6 +343,10 @@ export default function Project({
 	const [stopping, setStopping] = useState(false);
 	const [runRunning, setRunRunning] = useState(false);
 	const [breadboardJson, setBreadboardJson] = useState<string | null>(null);
+	const [modelParts, setModelParts] = useState<ModelPart[]>([]);
+	const [activePart, setActivePart] = useState<string | null>(null);
+	const [modelGlb, setModelGlb] = useState<string | null>(null);
+	const modelToken = useRef(0);
 	const [livePins, setLivePins] = useState<Record<number, 0 | 1>>({});
 	const [arduinoLivePins, setArduinoLivePins] = useState<Record<number, 0 | 1>>(
 		{},
@@ -408,6 +415,99 @@ export default function Project({
 			cancelled = true;
 		};
 	}, [bundle]);
+
+	useEffect(() => {
+		if (!bundle) {
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+			return;
+		}
+		const listed = bundle.model ?? [];
+		const hasManifest =
+			Boolean(bundle.modelManifestUrl) ||
+			listed.some(
+				(file) =>
+					file.name === "manifest.json" || file.path === "model/manifest.json",
+			);
+		if (bundle.model && !hasManifest) {
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+			return;
+		}
+		const token = ++modelToken.current;
+		let cancelled = false;
+		setModelParts([]);
+		setActivePart(null);
+		setModelGlb(null);
+		void readProjectFile(
+			bundle.owner,
+			bundle.repo,
+			"model/manifest.json",
+			bundle.ref,
+		)
+			.then(async (file) => {
+				if (cancelled || modelToken.current !== token) {
+					return;
+				}
+				const manifest = parseModelManifest(file.text);
+				const part = manifest.parts[0];
+				setModelParts(manifest.parts);
+				if (!part) {
+					return;
+				}
+				setActivePart(part.name);
+				const glb = await readProjectFile(
+					bundle.owner,
+					bundle.repo,
+					modelPartRepoPath(part.file),
+					bundle.ref,
+				);
+				if (!cancelled && modelToken.current === token) {
+					setModelGlb(glb.base64 || null);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setModelParts([]);
+					setActivePart(null);
+					setModelGlb(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [bundle]);
+
+	function selectModelPart(name: string) {
+		if (!bundle) {
+			return;
+		}
+		const part = modelParts.find((item) => item.name === name);
+		if (!part) {
+			return;
+		}
+		const token = ++modelToken.current;
+		setActivePart(name);
+		setModelGlb(null);
+		void readProjectFile(
+			bundle.owner,
+			bundle.repo,
+			modelPartRepoPath(part.file),
+			bundle.ref,
+		)
+			.then((file) => {
+				if (modelToken.current === token) {
+					setModelGlb(file.base64 || null);
+				}
+			})
+			.catch(() => {
+				if (modelToken.current === token) {
+					setModelGlb(null);
+				}
+			});
+	}
 
 	useEffect(() => {
 		void listProjects()
@@ -802,8 +902,7 @@ export default function Project({
 					</Button>
 				</Stack>
 			) : null}
-			<PartsSearchPanel />
-			<OrderReviewPanel onOpenProfile={onOpenProfile} />
+			<JlcpcbCard onOpenProfile={onOpenProfile} />
 			{error || githubQuery.error || projectsQuery.error ? (
 				<Alert severity="error">
 					{translateError(t, error || githubQuery.error || projectsQuery.error)}
@@ -1141,6 +1240,12 @@ export default function Project({
 							boardModel={activeBoard?.status?.model}
 						/>
 					</Box>
+					<ModelViewer
+						activeName={activePart}
+						glbBase64={modelGlb}
+						onSelect={selectModelPart}
+						parts={modelParts}
+					/>
 					<Box
 						sx={{
 							display: "grid",
@@ -1158,6 +1263,7 @@ export default function Project({
 							title={t("project.technical")}
 							files={bundle.technical}
 						/>
+						<FileGroup title={t("project.model")} files={bundle.model ?? []} />
 						<BoardSketchGroup
 							title={t("project.hostSketches")}
 							action={t("project.run")}

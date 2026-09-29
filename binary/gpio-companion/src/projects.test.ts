@@ -231,6 +231,9 @@ describe("pushProject", () => {
 							code: 0,
 						};
 					}
+					if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+						return { stdout: "feat/blink\n", stderr: "", code: 0 };
+					}
 					if (args[0] === "rev-parse") {
 						return { stdout: "abc123\n", stderr: "", code: 0 };
 					}
@@ -242,11 +245,12 @@ describe("pushProject", () => {
 		expect(calls[0]).toBe("remote get-url origin");
 		expect(calls).toContain("add -A");
 		expect(calls.some((item) => item.includes("commit -m"))).toBe(true);
-		expect(calls).toContain("push");
+		expect(calls).toContain("push -u origin HEAD");
 		expect(result).toEqual({
 			committed: true,
 			pushed: true,
 			sha: "abc123",
+			branch: "feat/blink",
 			message: PROJECT_PUSH_MESSAGE,
 		});
 	});
@@ -265,6 +269,9 @@ describe("pushProject", () => {
 							stderr: "",
 							code: 0,
 						};
+					}
+					if (args[0] === "rev-parse" && args[1] === "--abbrev-ref") {
+						return { stdout: "main\n", stderr: "", code: 0 };
 					}
 					if (args[0] === "rev-parse") {
 						return { stdout: "def456\n", stderr: "", code: 0 };

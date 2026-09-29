@@ -18,6 +18,9 @@ import {
 	type DeviceConfig,
 	type DiskStats,
 	debugAuthHeadersFromRequest,
+	FILES_LIST_PATH,
+	FILES_READ_PATH,
+	FILES_WRITE_PATH,
 	FLASH_PATH,
 	FLASH_PORTS_PATH,
 	FLASH_PROXY_PATH,
@@ -48,6 +51,10 @@ import {
 	PROJECTS_REMOVE_PATH,
 	PROJECTS_SYNC_PATH,
 	pairingCredentials,
+	parseBoardFileListPut,
+	parseBoardFileReadPut,
+	parseBoardFileWatchPath,
+	parseBoardFileWritePut,
 	parseDebugEventInput,
 	parseDeviceSecrets,
 	parseFlashProxyPut,
@@ -87,6 +94,13 @@ import {
 	createArduinoProxy,
 	resolveArduinoProxyDir,
 } from "./arduino-proxy.ts";
+import {
+	type BoardFileHub,
+	createBoardFileHub,
+	listBoardFiles,
+	readBoardFile,
+	writeBoardFile,
+} from "./board-files.ts";
 import { readBoardModel } from "./board-model.ts";
 import { type ConsoleHub, createConsoleHub } from "./console.ts";
 import { createDebugHub } from "./debug.ts";
@@ -96,6 +110,12 @@ import type { GithubInstallationCreds } from "./github-credentials.ts";
 import { createLibgpiodGpio, type GpioController } from "./gpio.ts";
 import { createGpioStream } from "./gpio-stream.ts";
 import { readDeviceInfoJson } from "./info.ts";
+import {
+	clearCliSession,
+	completeJlcpcbLogin,
+	type PendingCliLogin,
+	startJlcpcbLogin,
+} from "./jlcpcb-login.ts";
 import { proxyJlcpcbRequest } from "./jlcpcb-proxy.ts";
 import { readJournalLogs } from "./logs.ts";
 import { readNetworkStatus } from "./network.ts";
@@ -201,9 +221,14 @@ export type DeviceRequestExtras = {
 	revokeOpencode?: () => Promise<void>;
 	debug?: { publish(event: DebugEvent): void };
 	gpioStream?: { publish(): void };
+	files?: BoardFileHub;
+	startJlcpcbLogin?: () => Promise<PendingCliLogin>;
 };
 
-type TunnelWsData = { stream: "debug" | "gpio" | "console" };
+type TunnelWsData = {
+	stream: "debug" | "gpio" | "console" | "files";
+	repo?: string;
+};
 
 export function startDeviceApi(options: ServeOptions) {
 	const port = options.port ?? DEFAULT_PORT;
@@ -223,6 +248,7 @@ export function startDeviceApi(options: ServeOptions) {
 		hardware: async () => (await options.store.read()).hardware,
 	});
 	const consoleHub = options.console ?? createConsoleHub();
+	const fileHub = createBoardFileHub(options.projectsDir ?? projectsRoot());
 	const jobs: { run?: RunController; verify?: VerifyController } = {};
 	const run =
 		options.run ??
@@ -259,6 +285,7 @@ export function startDeviceApi(options: ServeOptions) {
 		gpioStream,
 		proxy,
 		console: consoleHub,
+		files: fileHub,
 		flash:
 			options.flash ??
 			createArduinoFlash({
@@ -320,11 +347,28 @@ export function startDeviceApi(options: ServeOptions) {
 			const url = new URL(request.url);
 			const path = url.pathname.replace(/\/+$/, "") || "/";
 			const upgrade = request.headers.get("upgrade")?.toLowerCase() ?? "";
+			const watchRepo =
+				request.method === "GET" ? parseBoardFileWatchPath(path) : null;
+			if (watchRepo && upgrade === "websocket") {
+				return (
+					(await acceptSignedUpgrade(request, server, {
+						path,
+						stream: "files",
+						repo: watchRepo,
+						label: "files",
+						allowOrigin: (origin) => isAllowedDebugOrigin(origin, dashboardUrl),
+						deviceAuth: options.deviceAuth,
+						clock,
+						nonces,
+					})) ?? (undefined as never)
+				);
+			}
 			if (
 				upgrade === "websocket" &&
 				path !== DEBUG_PATH &&
 				path !== GPIO_PATH &&
-				path !== CONSOLE_PATH
+				path !== CONSOLE_PATH &&
+				!watchRepo
 			) {
 				console.error(`gpio-companion debug: websocket to ${path}`);
 			}
@@ -438,6 +482,12 @@ export function startDeviceApi(options: ServeOptions) {
 					consoleHub.add(ws);
 					return;
 				}
+				if (ws.data.stream === "files") {
+					if (ws.data.repo) {
+						fileHub.add(ws, ws.data.repo);
+					}
+					return;
+				}
 				debug.add(ws);
 			},
 			message(ws, message) {
@@ -460,6 +510,10 @@ export function startDeviceApi(options: ServeOptions) {
 				}
 				if (ws.data.stream === "console") {
 					consoleHub.remove(ws);
+					return;
+				}
+				if (ws.data.stream === "files") {
+					fileHub.remove(ws);
 					return;
 				}
 				debug.remove(ws);
@@ -537,7 +591,7 @@ export async function handleDeviceRequest(
 		});
 	}
 
-	if (path === "/v1/jlcpcb") {
+	if (path === "/v1/jlcpcb" || path === "/v1/jlcpcb/draft") {
 		if (!isLoopback(url)) {
 			throw new Error("jlcpcb proxy is local-only");
 		}
@@ -549,6 +603,10 @@ export async function handleDeviceRequest(
 			key: pairing.key,
 			origin: extras?.dashboardUrl,
 			fetchImpl: extras?.fetchImpl,
+			upstreamPath:
+				path === "/v1/jlcpcb/draft"
+					? "/api/jlcpcb/device-draft"
+					: "/api/jlcpcb/device",
 		});
 	}
 
@@ -671,6 +729,7 @@ export async function handleDeviceRequest(
 		const next = applyTransfer(current, claim);
 		await pairingStore.write(next);
 		await wipeOwnerSecrets(secretsStore, extras?.revokeOpencode);
+		await clearCliSession();
 		return json(publicPairing(next));
 	}
 
@@ -680,7 +739,26 @@ export async function handleDeviceRequest(
 		const next = applyUnpair(current, body.uuid, body.key);
 		await pairingStore.write(next);
 		await wipeOwnerSecrets(secretsStore, extras?.revokeOpencode);
+		await clearCliSession();
 		return json(publicPairing(next));
+	}
+
+	if (method === "POST" && path === "/v1/jlcpcb/login") {
+		const started = await startJlcpcbLogin(extras?.startJlcpcbLogin);
+		return json({
+			authorizeUrl: started.authorizeUrl,
+			state: started.state,
+		});
+	}
+
+	if (method === "POST" && path === "/v1/jlcpcb/login/code") {
+		const body = asObject(parseJson(bodyText));
+		const state = typeof body.state === "string" ? body.state : "";
+		const code = typeof body.code === "string" ? body.code : "";
+		if (!state || !code) {
+			return json({ error: "cli login expired" }, 400);
+		}
+		return json(await completeJlcpcbLogin(state, code));
 	}
 
 	if (isOpencodeProxyPath(path)) {
@@ -829,6 +907,36 @@ export async function handleDeviceRequest(
 		return json(await extras.applyProjectPush(put));
 	}
 
+	if (method === "POST" && path === FILES_LIST_PATH) {
+		const put = parseBoardFileListPut(parseJson(bodyText));
+		return json(
+			await listBoardFiles(extras?.projectsDir ?? projectsRoot(), put.name),
+		);
+	}
+
+	if (method === "POST" && path === FILES_READ_PATH) {
+		const put = parseBoardFileReadPut(parseJson(bodyText));
+		return json(
+			await readBoardFile(
+				extras?.projectsDir ?? projectsRoot(),
+				put.name,
+				put.path,
+			),
+		);
+	}
+
+	if (method === "PUT" && path === FILES_WRITE_PATH) {
+		const put = parseBoardFileWritePut(parseJson(bodyText));
+		return json(
+			await writeBoardFile(
+				extras?.projectsDir ?? projectsRoot(),
+				put.name,
+				put.path,
+				put.text,
+			),
+		);
+	}
+
 	if (path === GPIO_PATH) {
 		return handleGpio(
 			method,
@@ -896,6 +1004,7 @@ async function acceptSignedUpgrade(
 	options: {
 		path: string;
 		stream: TunnelWsData["stream"];
+		repo?: string;
 		label: string;
 		allowOrigin: (origin: string) => boolean;
 		deviceAuth: DeviceAuthConfig;
@@ -946,7 +1055,11 @@ async function acceptSignedUpgrade(
 		}
 		throw error;
 	}
-	if (server.upgrade(request, { data: { stream: options.stream } })) {
+	if (
+		server.upgrade(request, {
+			data: { stream: options.stream, repo: options.repo },
+		})
+	) {
 		return undefined;
 	}
 	console.error(`gpio-companion ${options.label}: upgrade failed`);
@@ -1211,9 +1324,7 @@ async function handleFlash(
 			) ?? listed.ports[0];
 		const live = extras?.proxy?.status();
 		const fqbn =
-			put.fqbn ||
-			(live?.connected ? live.fqbn : undefined) ||
-			selected?.fqbn;
+			put.fqbn || (live?.connected ? live.fqbn : undefined) || selected?.fqbn;
 		const port = put.port || live?.port || selected?.address;
 		if (!port) {
 			throw new ArduinoProxyError("no arduino connected");

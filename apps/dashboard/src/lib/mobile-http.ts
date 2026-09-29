@@ -3,6 +3,7 @@ import { requireIdentity } from "./session.ts";
 
 export type MobileEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
+	DASHBOARD_DB?: D1Database;
 	GPIO_COMPANION_DEVICE_PRIVATE_KEY?: string;
 	GPIO_COMPANION_DEVICE_KEY_ID?: string;
 	JLCPCB_APP_ID?: string;

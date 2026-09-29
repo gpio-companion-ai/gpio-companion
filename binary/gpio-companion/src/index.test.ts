@@ -57,6 +57,7 @@ const server = startDeviceApi({
 			committed: true,
 			pushed: true,
 			sha: "abc123",
+			branch: "feat/blink",
 			message: put.message,
 		};
 	},
@@ -323,6 +324,7 @@ describe("gpio-companion-bin", () => {
 			committed: true,
 			pushed: true,
 			sha: "abc123",
+			branch: "feat/blink",
 			message: "Save project from board",
 		});
 		expect(projectPushes).toEqual([

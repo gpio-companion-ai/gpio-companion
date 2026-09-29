@@ -19,9 +19,16 @@ export async function proxyJlcpcbRequest(options: {
 	key: string;
 	origin?: string;
 	fetchImpl?: FetchLike;
+	upstreamPath?: string;
 }): Promise<Response> {
 	const method = options.request.method.toUpperCase();
-	if (method !== "GET" && method !== "POST") {
+	const upstreamPath = options.upstreamPath ?? "/api/jlcpcb/device";
+	const draft = upstreamPath.endsWith("/device-draft");
+	if (draft) {
+		if (method !== "GET" && method !== "PUT") {
+			return Response.json({ error: "method not allowed" }, { status: 405 });
+		}
+	} else if (method !== "GET" && method !== "POST") {
 		return Response.json({ error: "method not allowed" }, { status: 405 });
 	}
 	const creds = await fetchAiCredentials({
@@ -33,13 +40,13 @@ export async function proxyJlcpcbRequest(options: {
 	const headers = new Headers();
 	headers.set("authorization", `Bearer ${creds.token}`);
 	const init: RequestInit = { method, headers };
-	if (method === "POST") {
+	if (method === "POST" || method === "PUT") {
 		headers.set("content-type", "application/json");
 		init.body = stripSecretFields(options.bodyText);
 	}
 	const fetcher = options.fetchImpl ?? fetch;
 	const upstream = await fetcher(
-		`${dashboardOrigin(options.origin)}/api/jlcpcb/device`,
+		`${dashboardOrigin(options.origin)}${upstreamPath}`,
 		init,
 	);
 	const text = await upstream.text();

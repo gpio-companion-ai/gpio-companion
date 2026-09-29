@@ -3,6 +3,7 @@ import type { ConsoleTunnelStatus } from "../hooks/useConsoleTunnel";
 import { useDashboardMode } from "../hooks/useDashboardMode";
 import { useT } from "../locale";
 import FlashPanel from "./FlashPanel";
+import FlashProxyButton from "./FlashProxyButton";
 import GpioPanel from "./GpioPanel";
 import VerifyPanel from "./VerifyPanel";
 
@@ -13,11 +14,13 @@ export default function DockBody({
 	uuid,
 	log,
 	status,
+	connected,
 }: {
 	tab: DesktopDockTab;
 	uuid: string;
 	log: string;
 	status: ConsoleTunnelStatus;
+	connected?: boolean;
 }) {
 	const t = useT();
 	const { isEasy } = useDashboardMode();
@@ -41,7 +44,12 @@ export default function DockBody({
 		return <GpioPanel key={uuid} uuid={uuid} poll connected />;
 	}
 	if (tab === "flash") {
-		return <FlashPanel uuid={uuid} />;
+		return (
+			<div className="b6-dock-stack">
+				<FlashProxyButton uuid={uuid} connected={connected} />
+				<FlashPanel uuid={uuid} />
+			</div>
+		);
 	}
 	if (tab === "problems") {
 		return <VerifyPanel uuid={uuid} />;

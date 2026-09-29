@@ -1,4 +1,12 @@
 export {
+	type JlcpcbDraftAssemblyLine,
+	type JlcpcbDraftPart,
+	type JlcpcbDraftPcb,
+	type JlcpcbDraftPrint,
+	type JlcpcbOrderBundle,
+	parseJlcpcbDraft,
+} from "./jlcpcb-draft.ts";
+export {
 	type JlcpcbOrderDraft,
 	type JlcpcbOrderKind,
 	type JlcpcbOrderRequest,
@@ -20,15 +28,36 @@ export type JlcpcbPartView = {
 	price?: string | number;
 };
 
+const LCSC_CODE = /^C\d{1,12}$/i;
+const MAX_QUERY = 80;
+
+export function partsQueryKind(query: string): "codes" | "keyword" | null {
+	const trimmed = query.trim();
+	if (!trimmed || trimmed.length > MAX_QUERY) {
+		return null;
+	}
+	const tokens = trimmed.split(/[\s,]+/).filter(Boolean);
+	if (tokens.length === 0) {
+		return null;
+	}
+	if (tokens.every((token) => LCSC_CODE.test(token))) {
+		return "codes";
+	}
+	return "keyword";
+}
+
 export function partsSearchBody(
 	configured: boolean,
 	query: string,
 ): { query: string } | null {
-	const trimmed = query.trim();
-	if (!configured || !trimmed) {
+	const kind = partsQueryKind(query);
+	if (!kind) {
 		return null;
 	}
-	return { query: trimmed };
+	if (kind === "codes" && !configured) {
+		return null;
+	}
+	return { query: query.trim() };
 }
 
 export function partsFromSearch(data: unknown): JlcpcbPartView[] {

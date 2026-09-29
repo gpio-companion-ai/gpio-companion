@@ -43,6 +43,7 @@ import {
 	View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import ProjectFiles from "../components/ProjectFiles.tsx";
 import { listProjects, opencodeCall, openOpencodeEvents } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
@@ -326,6 +327,7 @@ export default function Code() {
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
 	const [picker, setPicker] = useState<"" | "model" | "effort">("");
+	const [pane, setPane] = useState<"chat" | "files">("chat");
 	const transcript = useRef<ScrollView>(null);
 	const scrollKey = view.turns.length + (view.turns.at(-1)?.text.length ?? 0);
 
@@ -787,7 +789,44 @@ export default function Code() {
 					overflow: "hidden",
 				}}
 			>
-				{mode === "home" ? (
+				<View
+					style={{
+						flexDirection: "row",
+						borderBottomWidth: 1,
+						borderBottomColor: colors.chipBg,
+					}}
+				>
+					{(["files", "chat"] as const).map((item) => (
+						<Pressable
+							key={item}
+							onPress={() => setPane(item)}
+							style={{
+								paddingHorizontal: 14,
+								paddingVertical: 8,
+								borderBottomWidth: 2,
+								borderBottomColor:
+									pane === item ? colors.primary : "transparent",
+							}}
+						>
+							<Text
+								style={{
+									color: pane === item ? colors.text : colors.muted,
+									fontWeight: "600",
+								}}
+							>
+								{item === "files" ? t("code.files") : t("code.chat")}
+							</Text>
+						</Pressable>
+					))}
+				</View>
+				{pane === "files" ? (
+					<ProjectFiles
+						token={token}
+						uuid={selected}
+						owner={repos.find((item) => item.name === repo)?.owner ?? ""}
+						name={repo}
+					/>
+				) : mode === "home" ? (
 					<ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
 						<View
 							style={{

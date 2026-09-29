@@ -196,10 +196,12 @@ export type ProjectBundle = {
 	pcb: GithubContent[];
 	breadboard: GithubContent[];
 	technical: GithubContent[];
+	model?: GithubContent[];
 	pcbPreviewUrl: string | null;
 	breadboardPreviewUrl: string | null;
 	breadboardDiagramUrl?: string | null;
 	breadboardCircuitJsonUrl?: string | null;
+	modelManifestUrl?: string | null;
 };
 
 export type GithubAppStatus = {
@@ -481,6 +483,21 @@ export function searchJlcpcbParts(token: string, query: string) {
 	});
 }
 
+export function loadJlcpcbDraft(token: string) {
+	return request<{ draft: unknown }>(token, "/api/mobile/jlcpcb/draft");
+}
+
+export function startCliLogin(token: string, uuid: string) {
+	return request<{ authorizeUrl: string }>(
+		token,
+		"/api/mobile/jlcpcb/cli/start",
+		{
+			method: "POST",
+			body: JSON.stringify({ uuid }),
+		},
+	);
+}
+
 export function loadShippingAddress(token: string) {
 	return request<{ address: unknown }>(token, "/api/mobile/address");
 }
@@ -548,11 +565,15 @@ export function readProjectFile(
 	path: string,
 	ref?: string,
 ) {
-	return request<{ text: string }>(token, "/api/mobile/projects", {
-		method: "PUT",
-		cache: "no-store",
-		body: JSON.stringify({ owner, repo, path, ...(ref ? { ref } : {}) }),
-	});
+	return request<{ text: string; base64?: string }>(
+		token,
+		"/api/mobile/projects",
+		{
+			method: "PUT",
+			cache: "no-store",
+			body: JSON.stringify({ owner, repo, path, ...(ref ? { ref } : {}) }),
+		},
+	);
 }
 
 export function createProject(token: string, name: string) {
@@ -575,6 +596,7 @@ export type ProjectPushResponse = {
 		committed: boolean;
 		pushed: boolean;
 		sha: string;
+		branch?: string;
 		message: string;
 	};
 	bundle: ProjectBundle;
@@ -587,6 +609,67 @@ export function pushProject(
 	return request<ProjectPushResponse>(token, "/api/mobile/projects/push", {
 		method: "POST",
 		body: JSON.stringify(input),
+	});
+}
+
+export type BoardFileEntry = {
+	path: string;
+	type: "file" | "dir";
+	size: number;
+};
+
+export type BoardFileList = {
+	branch: string;
+	entries: BoardFileEntry[];
+};
+
+export type BoardFileRead = {
+	path: string;
+	kind: "text" | "model" | "binary";
+	text?: string;
+	base64?: string;
+};
+
+export function listBoardFiles(token: string, uuid: string, name: string) {
+	return request<BoardFileList>(token, "/api/mobile/files/list", {
+		method: "POST",
+		body: JSON.stringify({ uuid, name }),
+	});
+}
+
+export function readBoardFile(
+	token: string,
+	uuid: string,
+	name: string,
+	path: string,
+) {
+	return request<BoardFileRead>(token, "/api/mobile/files/read", {
+		method: "POST",
+		body: JSON.stringify({ uuid, name, path }),
+	});
+}
+
+export function writeBoardFile(
+	token: string,
+	uuid: string,
+	name: string,
+	path: string,
+	text: string,
+) {
+	return request<{ written: boolean; path: string }>(
+		token,
+		"/api/mobile/files/write",
+		{
+			method: "PUT",
+			body: JSON.stringify({ uuid, name, path, text }),
+		},
+	);
+}
+
+export function signBoardFilesLive(token: string, uuid: string, name: string) {
+	return request<{ wsUrl: string }>(token, "/api/mobile/files/live", {
+		method: "POST",
+		body: JSON.stringify({ uuid, name }),
 	});
 }
 

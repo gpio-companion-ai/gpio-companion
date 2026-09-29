@@ -66,7 +66,11 @@ describe("jlcpcb order gate", () => {
 			cwd: `${root}/apps`,
 			onlyFiles: true,
 		})) {
-			if (!path.includes("OrderReview") && !path.includes("AddressForm")) {
+			if (
+				!path.includes("OrderReview") &&
+				!path.includes("JlcpcbCard") &&
+				!path.includes("AddressForm")
+			) {
 				continue;
 			}
 			const text = await Bun.file(`${root}/apps/${path}`).text();

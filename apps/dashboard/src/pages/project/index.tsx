@@ -1,7 +1,6 @@
 import { GET as getDevice } from "@api/device";
 import { GET as getPairing } from "@api/pair";
-import OrderReviewPanel from "@components/OrderReviewPanel";
-import PartsSearchPanel from "@components/PartsSearchPanel";
+import JlcpcbCard from "@components/JlcpcbCard";
 import ProjectBrowser from "@components/ProjectBrowser";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Box from "@shpaw415/mui-lite/Box";
@@ -183,8 +182,7 @@ export default function ProjectPage() {
 				</Alert>
 			) : null}
 
-			{loggedIn ? <PartsSearchPanel /> : null}
-			{loggedIn ? <OrderReviewPanel /> : null}
+			{loggedIn ? <JlcpcbCard /> : null}
 			<div>
 				<ProjectBrowser
 					onConfigured={setGithubReady}

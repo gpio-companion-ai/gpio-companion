@@ -75,6 +75,7 @@ export default function FlashProxyButton({
 	const [fqbn, setFqbn] = useState("");
 	const [proxy, setProxy] = useState<ArduinoProxyStatus | null>(null);
 	const [status, setStatus] = useState<FlashStatus | null>(null);
+	const [checked, setChecked] = useState(false);
 	const waitingRef = useRef(false);
 	const seenRunningRef = useRef(false);
 	const beforeKeyRef = useRef("");
@@ -138,7 +139,11 @@ export default function FlashProxyButton({
 		try {
 			const nextProxy = await loadArduinoProxy(token, uuid);
 			setProxy(nextProxy);
-			if (nextProxy.connected && nextProxy.fqbn && isProxyFqbn(nextProxy.fqbn)) {
+			if (
+				nextProxy.connected &&
+				nextProxy.fqbn &&
+				isProxyFqbn(nextProxy.fqbn)
+			) {
 				setFqbn(nextProxy.fqbn);
 			}
 		} catch {
@@ -159,7 +164,18 @@ export default function FlashProxyButton({
 	}, [uuid, token, connected]);
 
 	useEffect(() => {
-		void load().catch(() => undefined);
+		let cancelled = false;
+		setChecked(false);
+		void load()
+			.catch(() => undefined)
+			.finally(() => {
+				if (!cancelled) {
+					setChecked(true);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
 	}, [load]);
 
 	useEffect(() => {
@@ -211,17 +227,28 @@ export default function FlashProxyButton({
 		onFlash: applyFlash,
 	});
 
-	if (connected === false) {
-		return null;
-	}
-
+	const offline = connected === false;
 	const live = Boolean(proxy?.connected);
 	const flashing = waiting || Boolean(status?.running);
 	const hasBoard =
 		ports.length > 0 || live || flashing || Boolean(status?.last);
+	const checking = !offline && !checked && !hasBoard;
+	const noDevice = !hasBoard && (offline || checked);
 
-	if (!hasBoard) {
-		return null;
+	if (checking || noDevice) {
+		return (
+			<View style={{ gap: 8 }}>
+				<Body>{t("flash.proxyTitle")}</Body>
+				<Muted>{checking ? t("common.loading") : t("flash.noDevice")}</Muted>
+				{noDevice ? (
+					<TextButton
+						label={t("flash.asProxy")}
+						disabled
+						onPress={() => undefined}
+					/>
+				) : null}
+			</View>
+		);
 	}
 
 	const last = status?.last;

@@ -1,4 +1,5 @@
 import FlashPanel from "@components/FlashPanel";
+import FlashProxyButton from "@components/FlashProxyButton";
 import GpioPanel from "@components/GpioPanel";
 import RunPanel from "@components/RunPanel";
 import VerifyPanel from "@components/VerifyPanel";
@@ -51,12 +52,19 @@ export default function DockBody() {
 	}
 
 	if (dockTab === "flash") {
+		const proxy = <FlashProxyButton uuid={uuid} connected={online} />;
 		if (!isEasy) {
-			return <FlashPanel uuid={uuid} project={project} />;
+			return (
+				<>
+					{proxy}
+					<FlashPanel uuid={uuid} project={project} />
+				</>
+			);
 		}
 		return (
 			<>
 				<DockTool title={t("flash.title")} startOpen>
+					{proxy}
 					<FlashPanel uuid={uuid} project={project} />
 				</DockTool>
 				<DockTool title={t("verify.title")}>

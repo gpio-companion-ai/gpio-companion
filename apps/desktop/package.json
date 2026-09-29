@@ -13,14 +13,17 @@
 		"tauri:build": "./tauri.sh build"
 	},
 	"dependencies": {
+		"@monaco-editor/react": "^4.7.0",
 		"@shpaw415/mui-lite": "^0.1.6",
-		"@wokwi/elements": "^1.9.2",
 		"@tauri-apps/api": "^2.11.1",
 		"@tauri-apps/plugin-deep-link": "^2.4.10",
 		"@tauri-apps/plugin-opener": "^2.5.5",
+		"@wokwi/elements": "^1.9.2",
 		"marked": "^18.0.11",
+		"monaco-editor": "^0.57.0",
 		"react": "^19.2.8",
-		"react-dom": "^19.2.8"
+		"react-dom": "^19.2.8",
+		"three": "0.170.0"
 	},
 	"devDependencies": {
 		"@tauri-apps/cli": "^2.11.4",

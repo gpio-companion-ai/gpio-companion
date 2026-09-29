@@ -1,6 +1,10 @@
 "no action";
 
-import { handleAddressRead, handleAddressSave } from "../../../lib/address.ts";
+import {
+	addressContext,
+	handleAddressRead,
+	handleAddressSave,
+} from "../../../lib/address.ts";
 import {
 	type MobileContext,
 	readJsonBody,
@@ -8,19 +12,15 @@ import {
 } from "../../../lib/mobile-http.ts";
 
 export async function onRequestGet(ctx: MobileContext) {
-	return runMobile(ctx, async (identity) => {
-		return handleAddressRead({
-			kv: ctx.env.DYNAMIC_PAGE_KV,
-			userId: identity.id,
-		});
+	return runMobile(ctx, async () => {
+		return handleAddressRead(await addressContext(ctx));
 	});
 }
 
 export async function onRequestPut(ctx: MobileContext) {
-	return runMobile(ctx, async (identity) => {
+	return runMobile(ctx, async () => {
 		return handleAddressSave({
-			kv: ctx.env.DYNAMIC_PAGE_KV,
-			userId: identity.id,
+			...(await addressContext(ctx)),
 			body: await readJsonBody(ctx.request),
 		});
 	});

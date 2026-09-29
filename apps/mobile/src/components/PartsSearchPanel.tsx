@@ -89,7 +89,7 @@ export default function PartsSearchPanel({ token }: { token: string | null }) {
 			{status === "missing" ? (
 				<Muted>{t("parts.needCredentials")}</Muted>
 			) : null}
-			{status === "ready" ? (
+			{status === "ready" || status === "missing" ? (
 				<View style={{ gap: 8 }}>
 					<Field
 						label={t("parts.query")}
@@ -99,7 +99,7 @@ export default function PartsSearchPanel({ token }: { token: string | null }) {
 					/>
 					<PrimaryButton
 						label={busy ? t("parts.searching") : t("parts.search")}
-						disabled={busy || !partsSearchBody(true, query)}
+						disabled={busy || !partsSearchBody(status === "ready", query)}
 						onPress={() => void search()}
 					/>
 					{searched && parts.length === 0 ? (

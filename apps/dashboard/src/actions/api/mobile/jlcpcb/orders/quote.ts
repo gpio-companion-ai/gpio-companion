@@ -1,5 +1,9 @@
 "no action";
 
+import {
+	addressContext,
+	loadShippingAddress,
+} from "../../../../../lib/address.ts";
 import { handleJlcpcbQuote } from "../../../../../lib/jlcpcb.ts";
 import {
 	type MobileContext,
@@ -8,11 +12,12 @@ import {
 } from "../../../../../lib/mobile-http.ts";
 
 export async function onRequestPost(ctx: MobileContext) {
-	return runMobile(ctx, async (identity) => {
+	return runMobile(ctx, async () => {
+		const session = await addressContext(ctx);
 		return handleJlcpcbQuote({
 			env: ctx.env,
-			kv: ctx.env.DYNAMIC_PAGE_KV,
-			userId: identity.id,
+			userId: session.userId,
+			address: await loadShippingAddress(session),
 			body: await readJsonBody(ctx.request),
 		});
 	});

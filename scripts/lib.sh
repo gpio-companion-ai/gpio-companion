@@ -1580,6 +1580,90 @@ install_gpio_companion_bin() {
 	install_gpio_host
 	install_arduino_proxy
 	install_github_git_helper
+	install_gpio_jlcpcb
+}
+
+install_gpio_jlcpcb() {
+	cat >"$BIN_DIR/gpio-jlcpcb" <<'EOF'
+#!/bin/sh
+set -eu
+CONFIG_DIR="${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}"
+REPO="$(cat "$CONFIG_DIR/repo.path")"
+exec bun "$REPO/binary/gpio-jlcpcb/src/index.ts" "$@"
+EOF
+	chmod 0755 "$BIN_DIR/gpio-jlcpcb"
+}
+
+install_gpio_3d_wrapper() {
+	local venv="${GPIO_COMPANION_GPIO_3D_VENV:-$LIB_DIR/gpio-3d}"
+	cat >"$BIN_DIR/gpio-3d" <<EOF
+#!/bin/sh
+set -eu
+CONFIG_DIR="\${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}"
+VENV="\${GPIO_COMPANION_GPIO_3D_VENV:-$venv}"
+REPO="\$(cat "\$CONFIG_DIR/repo.path")"
+export PYTHONPATH="\$REPO/native/gpio-3d\${PYTHONPATH:+:\$PYTHONPATH}"
+exec "\$VENV/bin/python" -m gpio_3d "\$@"
+EOF
+	chmod 0755 "$BIN_DIR/gpio-3d"
+}
+
+install_gpio_3d() {
+	local req="$REPO_ROOT/native/gpio-3d/requirements.txt"
+	local venv="${GPIO_COMPANION_GPIO_3D_VENV:-$LIB_DIR/gpio-3d}"
+	local stamp="$venv/.requirements.sha256"
+	local arch free need=200 hash
+	if [[ ! -f "$req" ]]; then
+		echo "gpio-3d: requirements missing, skipping" >&2
+		return 0
+	fi
+	arch="$(dpkg --print-architecture 2>/dev/null || uname -m)"
+	case "$arch" in
+	armhf|armv7l|armv6l)
+		echo "gpio-3d: skipping on $arch (no wheel; will not compile)" >&2
+		return 0
+		;;
+	esac
+	hash="$(sha256sum "$req" | awk '{print $1}')"
+	if [[ -x "$venv/bin/python" && -f "$stamp" && "$(cat "$stamp")" == "$hash" ]]; then
+		if "$venv/bin/python" -c "import trimesh, numpy, manifold3d" >/dev/null 2>&1; then
+			echo "gpio-3d: wheels unchanged"
+			install_gpio_3d_wrapper
+			return 0
+		fi
+	fi
+	free="$(df -Pm / | awk 'NR==2 {print $4}')"
+	if [[ "$free" -lt "$need" ]]; then
+		if [[ -x "$venv/bin/python" ]] && "$venv/bin/python" -c "import trimesh, numpy, manifold3d" >/dev/null 2>&1; then
+			echo "gpio-3d: refusing upgrade, ${free}MB free on / (need ${need}MB)" >&2
+			install_gpio_3d_wrapper
+			return 0
+		fi
+		echo "gpio-3d: refusing install, ${free}MB free on / (need ${need}MB)" >&2
+		return 1
+	fi
+	if ! command -v python3 >/dev/null 2>&1; then
+		echo "gpio-3d: python3 missing" >&2
+		return 1
+	fi
+	install -d -m 0755 "$(dirname "$venv")"
+	if [[ ! -x "$venv/bin/python" ]]; then
+		if ! python3 -m venv "$venv"; then
+			echo "gpio-3d: venv failed" >&2
+			return 1
+		fi
+	fi
+	echo "gpio-3d: installing wheels"
+	if ! "$venv/bin/pip" install --no-cache-dir --only-binary=:all: -r "$req"; then
+		echo "gpio-3d: wheel install failed" >&2
+		return 1
+	fi
+	if ! "$venv/bin/python" -c "import trimesh, numpy, manifold3d"; then
+		echo "gpio-3d: import failed after install" >&2
+		return 1
+	fi
+	printf '%s\n' "$hash" >"$stamp"
+	install_gpio_3d_wrapper
 }
 
 install_gpio_pwm() {
@@ -1794,6 +1878,7 @@ install_common() {
 	write_pairing_env
 	write_repo_metadata
 	install_gpio_companion_bin
+	install_gpio_3d
 	sync_opencode_agent
 	install_systemd_units "$hardware"
 	echo "gpio-companion $hardware install complete"

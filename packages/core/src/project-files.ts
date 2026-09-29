@@ -127,6 +127,7 @@ export type ProjectPushResult = {
 	committed: boolean;
 	pushed: boolean;
 	sha: string;
+	branch: string;
 	message: string;
 };
 

@@ -34,6 +34,9 @@ import {
 	type BoardSketch,
 	type CircuitVerifyItem,
 	circuitVerifyOverlay,
+	type ModelPart,
+	modelPartRepoPath,
+	parseModelManifest,
 	parseWokwiDiagram,
 	type RunStatus,
 } from "gpio-companion";
@@ -46,6 +49,7 @@ import { useWorkbench } from "../hooks/useWorkbench.tsx";
 import { unwrapAction } from "../lib/action.ts";
 import type { GithubRepo, ProjectBundle } from "../lib/github.ts";
 import BreadboardViewer from "./BreadboardViewer.tsx";
+import ModelViewer from "./ModelViewer.tsx";
 import PcbViewer from "./PcbViewer.tsx";
 import { PreviewSkeleton, TableRowsSkeleton } from "./skeletons.tsx";
 
@@ -83,6 +87,10 @@ export default function ProjectBrowser({
 	const [bundle, setBundle] = useState<ProjectBundle | null>(null);
 	const [pcbJson, setPcbJson] = useState<string | null>(null);
 	const [breadboardJson, setBreadboardJson] = useState<string | null>(null);
+	const [modelParts, setModelParts] = useState<ModelPart[]>([]);
+	const [activePart, setActivePart] = useState<string | null>(null);
+	const [modelGlb, setModelGlb] = useState<string | null>(null);
+	const modelToken = useRef(0);
 	const [query, setQuery] = useState("");
 	const [owner, setOwner] = useState("all");
 	const [page, setPage] = useState(0);
@@ -287,6 +295,9 @@ export default function ProjectBrowser({
 				setBundle(null);
 				setPcbJson(null);
 				setBreadboardJson(null);
+				setModelParts([]);
+				setActivePart(null);
+				setModelGlb(null);
 				onProject?.("");
 				try {
 					window.localStorage.removeItem(LAST_REPO_KEY);
@@ -316,6 +327,7 @@ export default function ProjectBrowser({
 		onProject?.(next.repo);
 		setPcbJson(null);
 		setBreadboardJson(null);
+		void loadModel(next);
 		if (next.pcbCircuitJsonUrl) {
 			const file = unwrapAction(
 				await readFile(next.owner, next.repo, "pcb/circuit.json", next.ref),
@@ -333,6 +345,77 @@ export default function ProjectBrowser({
 			);
 			setBreadboardJson(file.text);
 		}
+	}
+
+	async function loadModel(next: ProjectBundle, partName?: string) {
+		const token = ++modelToken.current;
+		if (partName) {
+			setActivePart(partName);
+			setModelGlb(null);
+		} else {
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+		}
+		const listed = next.model ?? [];
+		const hasManifest =
+			Boolean(next.modelManifestUrl) ||
+			listed.some(
+				(file) =>
+					file.name === "manifest.json" || file.path === "model/manifest.json",
+			);
+		if (next.model && !hasManifest) {
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+			return;
+		}
+		try {
+			const file = unwrapAction(
+				await readFile(next.owner, next.repo, "model/manifest.json", next.ref),
+			);
+			if (modelToken.current !== token) {
+				return;
+			}
+			const manifest = parseModelManifest(file.text);
+			setModelParts(manifest.parts);
+			const part =
+				manifest.parts.find((item) => item.name === partName) ??
+				manifest.parts[0];
+			if (!part) {
+				setActivePart(null);
+				setModelGlb(null);
+				return;
+			}
+			setActivePart(part.name);
+			setModelGlb(null);
+			const glb = unwrapAction(
+				await readFile(
+					next.owner,
+					next.repo,
+					modelPartRepoPath(part.file),
+					next.ref,
+				),
+			);
+			if (modelToken.current !== token) {
+				return;
+			}
+			setModelGlb(glb.base64 || null);
+		} catch {
+			if (modelToken.current !== token) {
+				return;
+			}
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+		}
+	}
+
+	function selectModelPart(name: string) {
+		if (!bundle) {
+			return;
+		}
+		void loadModel(bundle, name);
 	}
 
 	async function openRepo(repo: GithubRepo, created = false) {
@@ -383,7 +466,12 @@ export default function ProjectBrowser({
 			},
 		}));
 		const files = bundle
-			? [...bundle.pcb, ...bundle.breadboard, ...bundle.technical].slice(0, 16)
+			? [
+					...bundle.pcb,
+					...bundle.breadboard,
+					...bundle.technical,
+					...(bundle.model ?? []),
+				].slice(0, 16)
 			: [];
 		const fileEntries = files.map((file) => ({
 			id: `file:${file.path}`,
@@ -895,6 +983,12 @@ export default function ProjectBrowser({
 								boardModel={boardModel}
 							/>
 						</div>
+						<ModelViewer
+							activeName={activePart}
+							glbBase64={modelGlb}
+							onSelect={selectModelPart}
+							parts={modelParts}
+						/>
 						<div className="project-assets-grid">
 							<FileGroup title={t("project.pcb")} files={bundle.pcb} />
 							<FileGroup
@@ -904,6 +998,10 @@ export default function ProjectBrowser({
 							<FileGroup
 								title={t("project.technical")}
 								files={bundle.technical}
+							/>
+							<FileGroup
+								title={t("project.model")}
+								files={bundle.model ?? []}
 							/>
 							<BoardSketchGroup
 								title={t("project.hostSketches")}

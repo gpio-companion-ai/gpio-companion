@@ -4,6 +4,7 @@ import {
 	parseProjectRef,
 	pickProjectRef,
 	readRepoFile,
+	readRepoModelFile,
 } from "./github.ts";
 
 const account = { username: "ada", token: "ghs_install" };
@@ -140,6 +141,8 @@ describe("loadProjectBundle", () => {
 		expect(bundle.breadboardDiagramUrl).toContain(
 			"/aaa/breadboard/diagram.json",
 		);
+		expect(bundle.model).toEqual([]);
+		expect(bundle.modelManifestUrl).toBeNull();
 		expect(paths).toContain("POST /graphql");
 		expect(paths).toContain(
 			"GET /repos/ada/blink/contents/breadboard?ref=feat%2Fblink",
@@ -314,5 +317,55 @@ describe("readRepoFile", () => {
 		expect(paths).toEqual([
 			"GET /repos/ada/blink/contents/breadboard/diagram.json?ref=feat%2Fblink",
 		]);
+	});
+});
+
+describe("readRepoModelFile", () => {
+	const originalFetch = globalThis.fetch;
+
+	afterEach(() => {
+		globalThis.fetch = originalFetch;
+	});
+
+	test("rejects paths outside model/*.glb", async () => {
+		globalThis.fetch = (() => {
+			throw new Error("fetch should not run");
+		}) as unknown as typeof fetch;
+		await expect(
+			readRepoModelFile(account, "ada", "blink", "pcb/circuit.json"),
+		).rejects.toThrow("path is not a model file");
+		await expect(
+			readRepoModelFile(account, "ada", "blink", "model/../x.glb"),
+		).rejects.toThrow("path is not a model file");
+	});
+
+	test("returns base64 for a model glb", async () => {
+		globalThis.fetch = (async (input: RequestInfo | URL) => {
+			const path = String(input).replace("https://api.github.com", "");
+			if (path === "/repos/ada/blink/contents/model/header-clip.glb?ref=main") {
+				return new Response(
+					JSON.stringify({
+						encoding: "base64",
+						content: btoa("glb"),
+						size: 3,
+					}),
+					{
+						status: 200,
+						headers: { "content-type": "application/json" },
+					},
+				);
+			}
+			return new Response(JSON.stringify({ message: `unexpected ${path}` }), {
+				status: 500,
+			});
+		}) as typeof fetch;
+		const file = await readRepoModelFile(
+			account,
+			"ada",
+			"blink",
+			"model/header-clip.glb",
+			"main",
+		);
+		expect(atob(file.base64)).toBe("glb");
 	});
 });

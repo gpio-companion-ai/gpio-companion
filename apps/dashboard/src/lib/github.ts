@@ -2,7 +2,12 @@ import {
 	BREADBOARD_CIRCUIT_JSON,
 	BREADBOARD_DIAGRAM_JSON,
 	BREADBOARD_PREVIEW_SVG,
+	encodeModelBase64,
 	isGithubAppToken,
+	isModelRepoPath,
+	MODEL_DIR,
+	MODEL_FILE_MAX_BYTES,
+	MODEL_MANIFEST_PATH,
 	PCB_CIRCUIT_JSON,
 	PCB_PREVIEW_SVG,
 	PROJECT_FILE_DIRS,
@@ -61,11 +66,13 @@ export type ProjectBundle = {
 	pcb: GithubContent[];
 	breadboard: GithubContent[];
 	technical: GithubContent[];
+	model: GithubContent[];
 	pcbCircuitJsonUrl: string | null;
 	pcbPreviewUrl: string | null;
 	breadboardCircuitJsonUrl: string | null;
 	breadboardPreviewUrl: string | null;
 	breadboardDiagramUrl: string | null;
+	modelManifestUrl: string | null;
 };
 
 const PROJECT_BRANCHES_QUERY = `query($owner: String!, $name: String!) {
@@ -605,7 +612,7 @@ export async function loadProjectBundle(
 	);
 	const selected = pickProjectRef(branches, defaultBranch, ref);
 	const dirs = await Promise.all(
-		PROJECT_FILE_DIRS.map(async (dir) => {
+		[...PROJECT_FILE_DIRS, MODEL_DIR].map(async (dir) => {
 			try {
 				return await listContents(reader, owner, repo, dir, selected);
 			} catch {
@@ -616,6 +623,7 @@ export async function loadProjectBundle(
 	const pcb = dirs[0] ?? [];
 	const breadboard = dirs[1] ?? [];
 	const technical = dirs[2] ?? [];
+	const model = dirs[3] ?? [];
 	return {
 		owner,
 		repo,
@@ -625,11 +633,13 @@ export async function loadProjectBundle(
 		pcb,
 		breadboard,
 		technical,
+		model,
 		pcbCircuitJsonUrl: fileUrl(pcb, PCB_CIRCUIT_JSON),
 		pcbPreviewUrl: fileUrl(pcb, PCB_PREVIEW_SVG),
 		breadboardCircuitJsonUrl: fileUrl(breadboard, BREADBOARD_CIRCUIT_JSON),
 		breadboardPreviewUrl: fileUrl(breadboard, BREADBOARD_PREVIEW_SVG),
 		breadboardDiagramUrl: fileUrl(breadboard, BREADBOARD_DIAGRAM_JSON),
+		modelManifestUrl: fileUrl(model, MODEL_MANIFEST_PATH),
 	};
 }
 
@@ -659,6 +669,64 @@ export async function readRepoFile(
 		return response.text();
 	}
 	throw new Error("github file has no content");
+}
+
+export async function readRepoModelFile(
+	account: GithubAccount,
+	owner: string,
+	repo: string,
+	path: string,
+	ref?: string,
+): Promise<{ base64: string }> {
+	if (!isModelRepoPath(path) || !path.endsWith(".glb")) {
+		throw new Error("path is not a model file");
+	}
+	const reader = readerAccount(account);
+	const data = await githubJson<{
+		content?: string;
+		encoding?: string;
+		download_url?: string | null;
+		size?: number;
+	}>(reader, contentsUrl(owner, repo, path, ref));
+	if (typeof data.size === "number" && data.size > MODEL_FILE_MAX_BYTES) {
+		throw new Error("model file is too large");
+	}
+	if (data.encoding === "base64" && data.content) {
+		const base64 = data.content.replace(/\s/g, "");
+		const bytes = decodeBase64(base64);
+		if (bytes.byteLength > MODEL_FILE_MAX_BYTES) {
+			throw new Error("model file is too large");
+		}
+		return { base64 };
+	}
+	if (data.download_url) {
+		const response = await fetch(data.download_url, {
+			headers: githubHeaders(reader),
+			cache: "no-store",
+		});
+		if (!response.ok) {
+			throw new Error(`github raw ${response.status}`);
+		}
+		const length = Number(response.headers.get("content-length") ?? "");
+		if (Number.isFinite(length) && length > MODEL_FILE_MAX_BYTES) {
+			throw new Error("model file is too large");
+		}
+		const bytes = new Uint8Array(await response.arrayBuffer());
+		if (bytes.byteLength > MODEL_FILE_MAX_BYTES) {
+			throw new Error("model file is too large");
+		}
+		return { base64: encodeModelBase64(bytes) };
+	}
+	throw new Error("github file has no content");
+}
+
+function decodeBase64(value: string): Uint8Array {
+	const binary = atob(value);
+	const bytes = new Uint8Array(binary.length);
+	for (let index = 0; index < binary.length; index += 1) {
+		bytes[index] = binary.charCodeAt(index);
+	}
+	return bytes;
 }
 
 async function listProjectBranches(

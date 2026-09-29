@@ -1,10 +1,11 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { useState } from "react";
-import { Alert, Pressable, Text, View } from "react-native";
+import { Alert, Linking, Pressable, Text, View } from "react-native";
 import {
 	type BoardView,
 	deviceDisplayName,
 	patchDeviceLabel,
+	startCliLogin,
 } from "../lib/api.ts";
 import { useAuth } from "../lib/auth.tsx";
 import { useColors } from "../lib/color-mode.tsx";
@@ -176,12 +177,12 @@ export default function BoardCard({
 											? t("devices.githubReady")
 											: t("devices.githubKeysPending")
 									}
-								tone={status.secrets?.githubReady ? "success" : "warning"}
-							/>
-						</>
-					) : null}
-				</Row>
-				{isEasy ? null : (
+									tone={status.secrets?.githubReady ? "success" : "warning"}
+								/>
+							</>
+						) : null}
+					</Row>
+					{isEasy ? null : (
 						<CompanionInfo key={device.uuid} uuid={device.uuid} />
 					)}
 					{selected ? (
@@ -199,6 +200,7 @@ export default function BoardCard({
 							label={t("project.openCode")}
 							onPress={() => setTab("code")}
 						/>
+						<CliAuthButton uuid={device.uuid} />
 						{!isEasy && onUnpair ? (
 							<TextButton
 								danger
@@ -223,5 +225,36 @@ export default function BoardCard({
 				</View>
 			) : null}
 		</Paper>
+	);
+}
+
+function CliAuthButton({ uuid }: { uuid: string }) {
+	const t = useT();
+	const auth = useAuth();
+	const [busy, setBusy] = useState(false);
+
+	async function start() {
+		if (!auth.token) return;
+		setBusy(true);
+		try {
+			const started = await startCliLogin(auth.token, uuid);
+			await Linking.openURL(started.authorizeUrl);
+		} catch (caught) {
+			Alert.alert(
+				t("devices.authenticateCli"),
+				caught instanceof Error ? caught.message : "cli login failed",
+			);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<TextButton
+			label={
+				busy ? t("devices.authenticatingCli") : t("devices.authenticateCli")
+			}
+			onPress={() => void start()}
+		/>
 	);
 }

@@ -12,11 +12,13 @@
       "name": "gpio-companion-dashboard",
       "version": "0.0.0",
       "dependencies": {
-        "@community-jlcpcb/client": "0.1.0",
+        "@community-jlcpcb/client": "0.2.0",
         "@material-design-icons/svg": "^0.14.15",
+        "@monaco-editor/react": "^4.7.0",
         "@shpaw415/mui-lite": "^0.1.6",
         "@tailwindcss/cli": "^4.3.3",
         "@wokwi/elements": "^1.9.2",
+        "drizzle-orm": "^0.45.3",
         "frame-master": "^4.0.3",
         "frame-master-plugin-apply-react": "^3.0.0",
         "frame-master-plugin-assets-to-build": "^0.1.1",
@@ -35,11 +37,13 @@
         "frame-master-svg-to-jsx-loader": "^0.1.0",
         "gpio-companion": "workspace:*",
         "marked": "^18.0.11",
-        "openauthster-shared": "^1.0.3",
+        "monaco-editor": "^0.57.0",
+        "openauthster-shared": "^1.0.7",
         "react": "^19.2.8",
         "react-dom": "^19.2.8",
         "superjson": "^2.2.6",
         "tailwindcss": "^4.3.3",
+        "three": "0.170.0",
         "uqr": "^0.1.3",
       },
       "devDependencies": {
@@ -47,6 +51,7 @@
         "@types/bun": "latest",
         "@types/react": "^19.2.18",
         "@types/react-dom": "^19.2.5",
+        "drizzle-kit": "^0.31.11",
         "typescript": "^7.0.2",
         "wrangler": "^4.131.0",
       },
@@ -124,6 +129,21 @@
       },
       "dependencies": {
         "gpio-companion": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "catalog:",
+        "typescript": "catalog:",
+      },
+    },
+    "binary/gpio-jlcpcb": {
+      "name": "gpio-jlcpcb",
+      "version": "0.0.0",
+      "bin": {
+        "gpio-jlcpcb": "./src/index.ts",
+      },
+      "dependencies": {
+        "gpio-companion": "workspace:*",
+        "openauthster-shared": "^1.0.7",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
@@ -210,7 +230,7 @@
 
     "@cloudflare/workers-types": ["@cloudflare/workers-types@4.20260702.1", "", {}, "sha512-mOhf5TUEB1m2vPrxtqoIGfz0fUC9xyxRDx5gWHy5s+OCo6dcV+g7wI1R7gYCMFohhqF/2y2xeKVwMwCJjfn/WA=="],
 
-    "@community-jlcpcb/client": ["@community-jlcpcb/client@0.1.0", "", {}, "sha512-n4g8Vp4l7+wYfxBIpKd8veLyna9z1ffonQAjyfsZhatnUzRBeujIFsrZity8rbmxBY8tkH0GHbQ6OybPHsDhjw=="],
+    "@community-jlcpcb/client": ["@community-jlcpcb/client@0.2.0", "", {}, "sha512-NIOEbLwHP/QgfKe1Ggz9FGg66DJ/y3271SQAsMFPcqzytAT5e3F6ORUeCQvEx28Q18lBPmEOfG10o09t+xnjaA=="],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 
@@ -756,6 +776,8 @@
 
     "gpio-companion-voice": ["gpio-companion-voice@workspace:apps/workers/voice-hub"],
 
+    "gpio-jlcpcb": ["gpio-jlcpcb@workspace:binary/gpio-jlcpcb"],
+
     "graceful-fs": ["graceful-fs@4.2.11", "", {}, "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ=="],
 
     "has-symbols": ["has-symbols@1.1.0", "", {}, "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ=="],
@@ -945,6 +967,8 @@
     "tapable": ["tapable@2.3.3", "", {}, "sha512-uxc/zpqFg6x7C8vOE7lh6Lbda8eEL9zmVm/PLeTPBRhh1xCgdWaQ+J1CUieGpIfm2HdtsUpRv+HshiasBMcc6A=="],
 
     "tar": ["tar@7.5.22", "", { "dependencies": { "@isaacs/fs-minipass": "^4.0.0", "chownr": "^3.0.0", "minipass": "^7.1.2", "minizlib": "^3.1.0", "yallist": "^5.0.0" } }, "sha512-MFO/QzvtAOmJbkhOaCTvbGcFN9L9b+JunIsDwaKljSOdcLMea3NJ1k9Usz/rjdfSXTq4dfzfeS7W4p4YOAAHeA=="],
+
+    "three": ["three@0.170.0", "", {}, "sha512-FQK+LEpYc0fBD+J8g6oSEyyNzjp+Q7Ks1C568WWaoMRLW+TkNNWmenWeGgJjV105Gd+p/2ql1ZcjYvNiPZBhuQ=="],
 
     "to-regex-range": ["to-regex-range@5.0.1", "", { "dependencies": { "is-number": "^7.0.0" } }, "sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ=="],
 

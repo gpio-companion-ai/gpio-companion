@@ -62,8 +62,6 @@ const logo = require("../../assets/logo.png");
 const DOCK_STORAGE_KEY = "b6-dockH";
 const DOCK_COLLAPSED_KEY = "b6-dockCollapsed";
 const PROJECT_STORAGE_KEY = "gpio-companion-selected-project";
-const PROXY_DEFAULT_FQBN = "arduino:avr:uno";
-
 function pickMobileFlashTarget(
 	ports: FlashPort[],
 	hint?: { connected?: boolean; port?: string; fqbn?: string } | null,
@@ -1023,6 +1021,8 @@ function GpioSummaryLine({
 function DockFlash({
 	status,
 	proxyStatus,
+	ports,
+	portsChecked,
 	name,
 	projectRepo,
 	sketches,
@@ -1033,6 +1033,8 @@ function DockFlash({
 }: {
 	status: FlashStatus | null;
 	proxyStatus: ArduinoProxyStatus | null;
+	ports: FlashPort[];
+	portsChecked: boolean;
 	name: string;
 	projectRepo: string;
 	sketches: BoardSketch[];
@@ -1045,6 +1047,7 @@ function DockFlash({
 	const tCore = useT();
 	const live = Boolean(proxyStatus?.connected);
 	const flashing = busy || Boolean(status?.running);
+	const hasDevice = live || ports.length > 0 || flashing;
 	const proxyName =
 		proxyStatus?.name?.trim() || proxyStatus?.fqbn?.trim() || "";
 	const stateLabel = !status
@@ -1074,11 +1077,15 @@ function DockFlash({
 					<Text style={{ flex: 1, color: colors.muted, fontSize: 11 }}>
 						{flashing
 							? tCore("flash.takeMinute")
-							: live
-								? tCore("flash.firmata", {
-										name: proxyName || tCore("debug.connected"),
-									})
-								: tCore("flash.usbArduino")}
+							: !hasDevice
+								? portsChecked
+									? tCore("flash.noDevice")
+									: tCore("common.loading")
+								: live
+									? tCore("flash.firmata", {
+											name: proxyName || tCore("debug.connected"),
+										})
+									: tCore("flash.usbArduino")}
 					</Text>
 					<TextButton
 						label={
@@ -1088,7 +1095,7 @@ function DockFlash({
 									? tCore("flash.reflashProxy")
 									: tCore("flash.asProxy")
 						}
-						disabled={busy}
+						disabled={busy || !hasDevice}
 						onPress={onFlashProxy}
 					/>
 				</View>
@@ -1165,6 +1172,7 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 	const [flashStatus, setFlashStatus] = useState<FlashStatus | null>(null);
 	const [sketches, setSketches] = useState<BoardSketch[]>([]);
 	const [ports, setPorts] = useState<FlashPort[]>([]);
+	const [portsChecked, setPortsChecked] = useState(false);
 	const [projectRepo, setProjectRepo] = useState("");
 	const [flashBusy, setFlashBusy] = useState(false);
 	const [proxyBusy, setProxyBusy] = useState(false);
@@ -1203,6 +1211,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 		setGpioProxy(null);
 		setProxyStatus(null);
 		setFlashStatus(null);
+		setPorts([]);
+		setPortsChecked(false);
 		const selected = uuid.trim();
 		if (selected && auth.token) {
 			gpioRefreshRef.current();
@@ -1253,15 +1263,18 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 				},
 			);
 		});
+		setPortsChecked(false);
 		void loadFlashPorts(token, selected).then(
 			(result) => {
 				if (!cancelled) {
 					setPorts(result.ports);
+					setPortsChecked(true);
 				}
 			},
 			() => {
 				if (!cancelled) {
 					setPorts([]);
+					setPortsChecked(true);
 				}
 			},
 		);
@@ -1305,7 +1318,11 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 			return;
 		}
 		const target = pickMobileFlashTarget(ports, proxyStatus);
-		const fqbn = target.fqbn || PROXY_DEFAULT_FQBN;
+		if (!target.fqbn) {
+			setFlashError(tCore("flash.selectArduinoFirst"));
+			return;
+		}
+		const fqbn = target.fqbn;
 		setProxyBusy(true);
 		setFlashError("");
 		void startFlashProxy(token, {
@@ -1320,7 +1337,7 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 				);
 			})
 			.finally(() => setProxyBusy(false));
-	}, [auth.token, uuid, ports, proxyStatus]);
+	}, [auth.token, uuid, ports, proxyStatus, tCore]);
 
 	useEffect(() => {
 		void storageGet(DOCK_STORAGE_KEY).then((stored) => {
@@ -1551,6 +1568,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 						<DockFlash
 							status={flashStatus}
 							proxyStatus={proxyStatus}
+							ports={ports}
+							portsChecked={portsChecked}
 							name={boardLabel}
 							projectRepo={projectRepo}
 							sketches={sketches}

@@ -507,6 +507,7 @@ export default function DeckShell({
 								uuid={uuid}
 								log={tunnel.snapshot.host.log}
 								status={tunnel.status}
+								connected={Boolean(selected?.status)}
 							/>
 						) : null}
 					</div>

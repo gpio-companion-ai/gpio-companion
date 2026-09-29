@@ -76,6 +76,7 @@ export default function FlashProxyButton({
 	const [fqbn, setFqbn] = useState("");
 	const [proxy, setProxy] = useState<ArduinoProxyStatus | null>(null);
 	const [status, setStatus] = useState<FlashStatus | null>(null);
+	const [checked, setChecked] = useState(false);
 	const waitingRef = useRef(false);
 	const seenRunningRef = useRef(false);
 	const beforeKeyRef = useRef("");
@@ -139,7 +140,11 @@ export default function FlashProxyButton({
 		try {
 			const nextProxy = await loadArduinoProxy(uuid);
 			setProxy(nextProxy);
-			if (nextProxy.connected && nextProxy.fqbn && isProxyFqbn(nextProxy.fqbn)) {
+			if (
+				nextProxy.connected &&
+				nextProxy.fqbn &&
+				isProxyFqbn(nextProxy.fqbn)
+			) {
 				setFqbn(nextProxy.fqbn);
 			}
 		} catch {
@@ -160,7 +165,18 @@ export default function FlashProxyButton({
 	}, [uuid, connected]);
 
 	useEffect(() => {
-		void load().catch(() => undefined);
+		let cancelled = false;
+		setChecked(false);
+		void load()
+			.catch(() => undefined)
+			.finally(() => {
+				if (!cancelled) {
+					setChecked(true);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
 	}, [load]);
 
 	useEffect(() => {
@@ -212,17 +228,28 @@ export default function FlashProxyButton({
 		onFlash: applyFlash,
 	});
 
-	if (connected === false) {
-		return null;
-	}
-
+	const offline = connected === false;
 	const live = Boolean(proxy?.connected);
 	const flashing = waiting || Boolean(status?.running);
 	const hasBoard =
 		ports.length > 0 || live || flashing || Boolean(status?.last);
+	const checking = !offline && !checked && !hasBoard;
+	const noDevice = !hasBoard && (offline || checked);
 
-	if (!hasBoard) {
-		return null;
+	if (checking || noDevice) {
+		return (
+			<Stack spacing={1}>
+				<Typography variant="subtitle2">{t("flash.proxyTitle")}</Typography>
+				<Typography variant="body2" color="secondary">
+					{checking ? t("common.loading") : t("flash.noDevice")}
+				</Typography>
+				{noDevice ? (
+					<Button type="button" variant="contained" size="small" disabled>
+						{t("flash.asProxy")}
+					</Button>
+				) : null}
+			</Stack>
+		);
 	}
 
 	const last = status?.last;

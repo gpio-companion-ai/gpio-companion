@@ -21,6 +21,15 @@
 		"JLCPCB_APP_ID": "626910717980270593",
 		"CLOUDFLARE_ACCOUNT_ID": "17b0a92da13df078f38bcd297ee71f81",
 	},
+	"d1_databases": [
+		{
+			"binding": "DASHBOARD_DB",
+			"database_name": "gpio-companion-dashboard",
+			"database_id": "c1ffbccb-de80-4f65-bd69-516f508f64fe",
+			"migrations_dir": "drizzle",
+			"remote": true
+		}
+	],
 	"kv_namespaces": [
 		{
 			"binding": "DYNAMIC_PAGE_KV",

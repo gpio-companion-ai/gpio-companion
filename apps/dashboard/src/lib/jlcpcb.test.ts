@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Glob } from "bun";
-import { saveShippingAddress } from "./address.ts";
+
 import {
 	ADDRESS_REQUIRED,
 	CONFIRM_REQUIRED,
@@ -187,6 +187,39 @@ describe("jlcpcb search", () => {
 		expect(JSON.stringify(result)).not.toContain(SECRET);
 	});
 
+	test("keyword search uses the client helper and does not build a signed client", async () => {
+		let constructed = 0;
+		const keywords: string[] = [];
+		const result = await handleJlcpcbSearch({
+			env: {},
+			userId: "user-1",
+			body: { query: "10k 0603" },
+			clientFor: () => {
+				constructed += 1;
+				throw new Error("constructed");
+			},
+			searchParts: async (body) => {
+				keywords.push(body.keyword);
+				return {
+					raiseForStatus() {},
+					data: [
+						{
+							componentCode: "C2040",
+							name: "10k",
+							package: "0603",
+							stock: 4,
+						},
+					],
+				};
+			},
+		});
+		expect(constructed).toBe(0);
+		expect(keywords).toEqual(["10k 0603"]);
+		expect(result.parts).toEqual([
+			{ componentCode: "C2040", name: "10k", package: "0603", stock: 4 },
+		]);
+	});
+
 	test("does not return a client error that contains the secret", async () => {
 		await expect(
 			searchJlcpcbParts(appEnv(), ["C2040"], () => ({
@@ -247,13 +280,12 @@ describe("jlcpcb order", () => {
 	}
 
 	test("does not create an order without confirm, address, or credentials", async () => {
-		const store = kv();
 		const missingCreds = orderClient();
 		await expect(
 			handleJlcpcbOrder({
 				env: {},
-				kv: store,
 				userId: "user-1",
+				address,
 				body: { confirm: true, kind: "pcb", address },
 				clientFor: missingCreds.clientFor,
 			}),
@@ -264,21 +296,20 @@ describe("jlcpcb order", () => {
 		await expect(
 			handleJlcpcbOrder({
 				env: appEnv(),
-				kv: store,
 				userId: "user-1",
+				address: null,
 				body: { confirm: true, kind: "pcb", address },
 				clientFor: noAddress.clientFor,
 			}),
 		).rejects.toThrow(ADDRESS_REQUIRED);
 		expect(noAddress.calls).toEqual([]);
 
-		await saveShippingAddress(store, "user-1", address);
 		const cancelled = orderClient();
 		await expect(
 			handleJlcpcbOrder({
 				env: appEnv(),
-				kv: store,
 				userId: "user-1",
+				address,
 				body: { kind: "pcb", confirm: false },
 				clientFor: cancelled.clientFor,
 			}),
@@ -287,8 +318,8 @@ describe("jlcpcb order", () => {
 		await expect(
 			handleJlcpcbOrder({
 				env: appEnv(),
-				kv: store,
 				userId: "user-1",
+				address,
 				body: { kind: "assembly", confirm: true },
 				clientFor: cancelled.clientFor,
 			}),
@@ -297,13 +328,11 @@ describe("jlcpcb order", () => {
 	});
 
 	test("confirm uses the stored address and ignores a body address", async () => {
-		const store = kv();
-		await saveShippingAddress(store, "user-1", address);
 		const mocked = orderClient();
 		const result = await handleJlcpcbOrder({
 			env: appEnv(),
-			kv: store,
 			userId: "user-1",
+			address,
 			body: {
 				confirm: true,
 				kind: "pcb",
@@ -338,13 +367,11 @@ describe("jlcpcb order", () => {
 	});
 
 	test("quote does not create an order", async () => {
-		const store = kv();
-		await saveShippingAddress(store, "user-1", address);
 		const mocked = orderClient();
 		const result = await handleJlcpcbQuote({
 			env: appEnv(),
-			kv: store,
 			userId: "user-1",
+			address,
 			body: { confirm: true, kind: "tdp", fileAccessId: "file-1" },
 			clientFor: mocked.clientFor,
 		});
@@ -359,7 +386,7 @@ describe("jlcpcb import boundary", () => {
 		const dashboard = (await Bun.file(
 			`${root}/apps/dashboard/package.json`,
 		).json()) as { dependencies: Record<string, string> };
-		expect(dashboard.dependencies["@community-jlcpcb/client"]).toBe("0.1.0");
+		expect(dashboard.dependencies["@community-jlcpcb/client"]).toBe("0.2.0");
 		for (const app of ["desktop", "mobile"]) {
 			const pkg = (await Bun.file(
 				`${root}/apps/${app}/package.json`,

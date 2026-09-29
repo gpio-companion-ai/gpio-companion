@@ -1,8 +1,8 @@
 "no action";
 
+import { addressContext, loadShippingAddress } from "../../../lib/address.ts";
 import { handleJlcpcbOrder, jlcpcbResponse } from "../../../lib/jlcpcb.ts";
 import { readJsonBody } from "../../../lib/mobile-http.ts";
-import { requireIdentity } from "../../../lib/session.ts";
 
 type JlcpcbContext = {
 	request: Request;
@@ -16,14 +16,11 @@ type JlcpcbContext = {
 
 export async function onRequestPost(ctx: JlcpcbContext) {
 	return jlcpcbResponse(async () => {
-		const identity = await requireIdentity(ctx);
-		if (!identity.id) {
-			throw new Error("sign in first");
-		}
+		const session = await addressContext(ctx);
 		return handleJlcpcbOrder({
 			env: ctx.env,
-			kv: ctx.env.DYNAMIC_PAGE_KV,
-			userId: identity.id,
+			userId: session.userId,
+			address: await loadShippingAddress(session),
 			body: await readJsonBody(ctx.request),
 		});
 	});

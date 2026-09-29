@@ -141,6 +141,7 @@ install_cleanup_units
 install_wifi_keep_units
 install_update_wrapper
 write_repo_metadata
+install_gpio_3d || echo "gpio-companion update: gpio-3d install failed" >&2
 unit_before=""
 if [[ -f /etc/systemd/system/gpio-companion.service ]]; then
 	unit_before="$(cat /etc/systemd/system/gpio-companion.service)"

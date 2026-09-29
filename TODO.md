@@ -23,7 +23,7 @@ If a dependency is not already in the tree, stop and report it. Do not build the
 | S02 | P0 | In-app OpenCode UI | S01 | done |
 | S03 | P0 | Remove T3 Code | S01, S02 | done |
 | S04 | P1 | 3D model skill | — | done |
-| S05 | P1 | 3D viewer | — | open |
+| S05 | P1 | 3D viewer | — | done |
 | S06 | P1 | 3D chat on the same page | S02, S05 | open |
 | S07 | P1 | Bug report email | — | done |
 | S08 | P2 | JLCPCB client | — | done |
@@ -118,6 +118,8 @@ Done when first-setup and the updater do not install or start t3, and no UI stil
 
 Status: done
 
+Follow-up 2026-09-29: the agent runs the preinstalled `gpio-3d` command. It does not pip-install trimesh. Viewer and chat stay S05 and S06.
+
 ### Prompt
 
 ```
@@ -134,7 +136,7 @@ Done when a sample manifest validates and the skill is linked from gpio-companio
 
 ## S05 — 3D viewer
 
-Status: open
+Status: done
 
 Does not require S04. Accept model/*.glb plus model/manifest.json. If no sample exists, use a fixture in tests only.
 

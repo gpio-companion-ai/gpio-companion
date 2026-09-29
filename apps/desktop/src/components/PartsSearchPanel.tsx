@@ -92,7 +92,7 @@ export default function PartsSearchPanel() {
 						{t("parts.needCredentials")}
 					</Typography>
 				) : null}
-				{status === "ready" ? (
+				{status === "ready" || status === "missing" ? (
 					<Stack spacing={1}>
 						<TextField
 							label={t("parts.query")}
@@ -110,7 +110,7 @@ export default function PartsSearchPanel() {
 						<Button
 							variant="contained"
 							size="small"
-							disabled={busy || !partsSearchBody(true, query)}
+							disabled={busy || !partsSearchBody(status === "ready", query)}
 							onClick={() => void search()}
 						>
 							{busy ? t("parts.searching") : t("parts.search")}

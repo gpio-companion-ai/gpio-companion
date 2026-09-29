@@ -66,6 +66,7 @@ type Props = {
 	arduinoLivePins?: Record<number, 0 | 1>;
 	verifyOverlay?: CircuitVerifyOverlay;
 	boardModel?: string | null;
+	fill?: boolean;
 };
 
 function ZoomOutIcon() {
@@ -150,6 +151,7 @@ export default function BreadboardViewer({
 	arduinoLivePins,
 	verifyOverlay,
 	boardModel,
+	fill = false,
 }: Props) {
 	const t = useT();
 	const parsed = useMemo(() => parseDiagram(diagramText), [diagramText]);
@@ -162,17 +164,21 @@ export default function BreadboardViewer({
 				arduinoLivePins={arduinoLivePins}
 				verifyOverlay={verifyOverlay}
 				boardModel={boardModel}
+				fill={fill}
 			/>
 		);
 	}
 
 	if (previewUrl) {
-		return <PreviewBoard previewUrl={previewUrl} />;
+		return <PreviewBoard previewUrl={previewUrl} fill={fill} />;
 	}
 
 	if (diagramText) {
 		return (
-			<Paper elevation={1} sx={{ p: 2 }}>
+			<Paper
+				elevation={fill ? 0 : 1}
+				sx={fill ? { p: 2, height: "100%", overflow: "auto" } : { p: 2 }}
+			>
 				<Typography variant="subtitle1" sx={{ mb: 1 }}>
 					{t("board.breadboard")}
 				</Typography>
@@ -189,7 +195,10 @@ export default function BreadboardViewer({
 	}
 
 	return (
-		<Paper elevation={1} sx={{ p: 2 }}>
+		<Paper
+			elevation={fill ? 0 : 1}
+			sx={fill ? { p: 2, height: "100%" } : { p: 2 }}
+		>
 			<Typography color="secondary">{t("project.noBreadboard")}</Typography>
 		</Paper>
 	);
@@ -201,12 +210,14 @@ function DiagramBoard({
 	arduinoLivePins,
 	verifyOverlay,
 	boardModel,
+	fill,
 }: {
 	diagram: WokwiDiagram;
 	livePins?: Record<number, 0 | 1>;
 	arduinoLivePins?: Record<number, 0 | 1>;
 	verifyOverlay?: CircuitVerifyOverlay;
 	boardModel?: string | null;
+	fill: boolean;
 }) {
 	const t = useT();
 	const [activeStep, setActiveStep] = useState(0);
@@ -298,9 +309,10 @@ function DiagramBoard({
 		<BoardShell
 			camera={camera}
 			expanded={expanded}
+			fill={fill}
 			onToggleExpand={() => setExpanded((value) => !value)}
 		>
-			<ZoomSurface camera={camera} expanded={expanded}>
+			<ZoomSurface camera={camera} expanded={expanded} fill={fill}>
 				<div
 					style={{
 						position: "relative",
@@ -429,7 +441,13 @@ function DiagramBoard({
 	);
 }
 
-function PreviewBoard({ previewUrl }: { previewUrl: string }) {
+function PreviewBoard({
+	previewUrl,
+	fill,
+}: {
+	previewUrl: string;
+	fill: boolean;
+}) {
 	const t = useT();
 	const [expanded, setExpanded] = useState(false);
 	const [natural, setNatural] = useState({ width: 800, height: 600 });
@@ -452,9 +470,10 @@ function PreviewBoard({ previewUrl }: { previewUrl: string }) {
 		<BoardShell
 			camera={camera}
 			expanded={expanded}
+			fill={fill}
 			onToggleExpand={() => setExpanded((value) => !value)}
 		>
-			<ZoomSurface camera={camera} expanded={expanded}>
+			<ZoomSurface camera={camera} expanded={expanded} fill={fill}>
 				<img
 					alt={t("board.previewAlt")}
 					height={natural.height * camera.view.scale}
@@ -478,20 +497,23 @@ function PreviewBoard({ previewUrl }: { previewUrl: string }) {
 function BoardShell({
 	camera,
 	expanded,
+	fill = false,
 	onToggleExpand,
 	children,
 }: {
 	camera: ZoomCamera;
 	expanded: boolean;
+	fill?: boolean;
 	onToggleExpand: () => void;
 	children: ReactNode;
 }) {
 	const t = useT();
+	const overlay = expanded && !fill;
 	return (
 		<Paper
-			elevation={expanded ? 8 : 1}
+			elevation={overlay ? 8 : fill ? 0 : 1}
 			sx={
-				expanded
+				overlay
 					? {
 							position: "fixed",
 							inset: 0,
@@ -505,7 +527,17 @@ function BoardShell({
 							paddingTop: "max(1rem, env(safe-area-inset-top))",
 							paddingBottom: "max(1rem, env(safe-area-inset-bottom))",
 						}
-					: { overflow: "hidden", p: 2 }
+					: fill
+						? {
+								p: 1,
+								overflow: "hidden",
+								display: "flex",
+								flexDirection: "column",
+								height: "100%",
+								minHeight: 0,
+								borderRadius: 0,
+							}
+						: { overflow: "hidden", p: 2 }
 			}
 		>
 			<Stack direction="row" spacing={0.5} sx={{ mb: 1, alignItems: "center" }}>
@@ -539,26 +571,28 @@ function BoardShell({
 				>
 					<FitScreenIcon />
 				</IconButton>
-				<IconButton
-					aria-label={
-						expanded ? t("board.exitFullScreen") : t("board.fullScreen")
-					}
-					color={expanded ? "error" : "secondary"}
-					onClick={onToggleExpand}
-					size="small"
-					sx={
-						expanded
-							? {
-									backgroundColor: "rgba(var(--bg-error), 0.18)",
-									"&:hover": {
-										backgroundColor: "rgba(var(--bg-error), 0.3) !important",
-									},
-								}
-							: undefined
-					}
-				>
-					{expanded ? <CloseIcon /> : <FullscreenIcon />}
-				</IconButton>
+				{fill ? null : (
+					<IconButton
+						aria-label={
+							expanded ? t("board.exitFullScreen") : t("board.fullScreen")
+						}
+						color={expanded ? "error" : "secondary"}
+						onClick={onToggleExpand}
+						size="small"
+						sx={
+							expanded
+								? {
+										backgroundColor: "rgba(var(--bg-error), 0.18)",
+										"&:hover": {
+											backgroundColor: "rgba(var(--bg-error), 0.3) !important",
+										},
+									}
+								: undefined
+						}
+					>
+						{expanded ? <CloseIcon /> : <FullscreenIcon />}
+					</IconButton>
+				)}
 			</Stack>
 			{children}
 		</Paper>
@@ -568,10 +602,12 @@ function BoardShell({
 function ZoomSurface({
 	camera,
 	expanded,
+	fill = false,
 	children,
 }: {
 	camera: ZoomCamera;
 	expanded: boolean;
+	fill?: boolean;
 	children: ReactNode;
 }) {
 	const t = useT();
@@ -616,8 +652,8 @@ function ZoomSurface({
 				minHeight: 0,
 				touchAction: "none",
 				cursor: "grab",
-				height: expanded ? undefined : 420,
-				flex: expanded ? 1 : undefined,
+				height: expanded || fill ? undefined : 420,
+				flex: expanded || fill ? 1 : undefined,
 			}}
 		>
 			<div

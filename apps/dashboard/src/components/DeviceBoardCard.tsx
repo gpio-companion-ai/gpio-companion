@@ -4,6 +4,7 @@ import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
 import type { NetworkStatus } from "gpio-companion";
+import { translateError } from "gpio-companion/i18n";
 import { useState } from "react";
 import { useBoardSelection } from "../hooks/useBoardSelection.tsx";
 import { useDashboardMode } from "../hooks/useDashboardMode.tsx";
@@ -166,13 +167,13 @@ export default function DeviceBoardCard({
 											color={
 												status.secrets?.githubReady ? "success" : "warning"
 											}
-										variant="outlined"
-										size="small"
-									/>
-								</>
-							) : null}
-						</Stack>
-						{!isEasy && loadInfo && live ? (
+											variant="outlined"
+											size="small"
+										/>
+									</>
+								) : null}
+							</Stack>
+							{!isEasy && loadInfo && live ? (
 								<DeviceCompanionInfo
 									key={device.uuid}
 									uuid={selectedUuid || device.uuid}
@@ -195,6 +196,7 @@ export default function DeviceBoardCard({
 								<Button href="/devices/code" variant="contained" size="small">
 									{t("project.openCode")}
 								</Button>
+								<CliAuthButton uuid={device.uuid} />
 								{!isEasy && onUnpair ? (
 									<Button
 										type="button"
@@ -212,6 +214,58 @@ export default function DeviceBoardCard({
 				) : null}
 			</Stack>
 		</Paper>
+	);
+}
+
+function CliAuthButton({ uuid }: { uuid: string }) {
+	const t = useT();
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState("");
+
+	async function start() {
+		setBusy(true);
+		setError("");
+		try {
+			const response = await fetch("/api/jlcpcb/cli/start", {
+				method: "POST",
+				headers: {
+					accept: "application/json",
+					"content-type": "application/json",
+				},
+				body: JSON.stringify({ uuid }),
+			});
+			const payload = (await response.json().catch(() => null)) as {
+				ok?: boolean;
+				error?: string;
+				data?: { authorizeUrl?: string };
+			} | null;
+			const url = payload?.data?.authorizeUrl;
+			if (!response.ok || !payload?.ok || !url) {
+				throw new Error(payload?.error || "cli login failed");
+			}
+			window.open(url, "_blank", "noopener,noreferrer");
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "cli login failed");
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<>
+			<Button
+				type="button"
+				variant="outlined"
+				size="small"
+				disabled={busy}
+				onClick={() => void start()}
+			>
+				{busy ? t("devices.authenticatingCli") : t("devices.authenticateCli")}
+			</Button>
+			{error ? (
+				<Typography color="secondary">{translateError(t, error)}</Typography>
+			) : null}
+		</>
 	);
 }
 

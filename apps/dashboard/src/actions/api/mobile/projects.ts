@@ -10,6 +10,7 @@ import {
 	loadProjectBundle,
 	parseProjectRef,
 	readRepoFile,
+	readRepoModelFile,
 } from "../../../lib/github.ts";
 import type { GithubAppEnv } from "../../../lib/github-app.ts";
 import {
@@ -81,14 +82,16 @@ export async function onRequestPut(ctx: MobileContext) {
 		if (!githubConfigured(account)) {
 			throw new Error("github is not configured");
 		}
+		const selected = parseProjectRef(body.ref);
+		if (path.endsWith(".glb")) {
+			return {
+				text: "",
+				base64: (await readRepoModelFile(account, owner, repo, path, selected))
+					.base64,
+			};
+		}
 		return {
-			text: await readRepoFile(
-				account,
-				owner,
-				repo,
-				path,
-				parseProjectRef(body.ref),
-			),
+			text: await readRepoFile(account, owner, repo, path, selected),
 		};
 	});
 }

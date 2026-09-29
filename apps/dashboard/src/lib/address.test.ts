@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	type AddressSession,
 	handleAddressRead,
 	handleAddressSave,
 	shippingAddressKey,
@@ -10,18 +11,32 @@ class MemoryKv {
 	async get(key: string) {
 		return this.store.get(key) ?? null;
 	}
-	async put(key: string, value: string) {
-		this.store.set(key, value);
+	async delete(key: string) {
+		this.store.delete(key);
 	}
 }
 
+function memorySession(
+	initial?: unknown,
+): AddressSession & { publicData: unknown } {
+	const state = { publicData: initial ?? { name: "Ada" } };
+	return {
+		publicData: state.publicData,
+		async read() {
+			return state.publicData;
+		},
+		async write(address) {
+			state.publicData = { ...(state.publicData as object), address };
+			this.publicData = state.publicData;
+		},
+	};
+}
+
 describe("profile address", () => {
-	test("saves the shipping shape and does not require email", async () => {
-		const store = new MemoryKv() as unknown as KVNamespace & {
-			store: Map<string, string>;
-		};
+	test("saves the shipping shape on the public session and drops email", async () => {
+		const session = memorySession();
 		const saved = await handleAddressSave({
-			kv: store,
+			session,
 			userId: "user-1",
 			body: {
 				name: " Ada Lovelace ",
@@ -43,17 +58,39 @@ describe("profile address", () => {
 			postalCode: "SW1",
 			country: "GB",
 		});
-		expect(store.store.get(shippingAddressKey("user-1"))).not.toContain(
-			"email",
-		);
-		expect(await handleAddressRead({ kv: store, userId: "user-1" })).toEqual(
+		expect(JSON.stringify(session.publicData)).not.toContain("email");
+		expect(JSON.stringify(session.publicData)).toContain("Ada Lovelace");
+		expect(await handleAddressRead({ session, userId: "user-1" })).toEqual(
 			saved,
 		);
 	});
 
+	test("moves a legacy KV address into the public session", async () => {
+		const store = new MemoryKv();
+		store.store.set(
+			shippingAddressKey("user-1"),
+			JSON.stringify({
+				name: "Ada Lovelace",
+				line1: "1 Analytical",
+				city: "London",
+				postalCode: "SW1",
+				country: "GB",
+			}),
+		);
+		const session = memorySession();
+		const read = await handleAddressRead({
+			session,
+			kv: store as unknown as KVNamespace,
+			userId: "user-1",
+		});
+		expect(read.address?.name).toBe("Ada Lovelace");
+		expect(store.store.has(shippingAddressKey("user-1"))).toBe(false);
+		expect(JSON.stringify(session.publicData)).toContain("1 Analytical");
+	});
+
 	test("missing address is empty, not an error", async () => {
-		const store = new MemoryKv() as unknown as KVNamespace;
-		expect(await handleAddressRead({ kv: store, userId: "user-1" })).toEqual({
+		const session = memorySession();
+		expect(await handleAddressRead({ session, userId: "user-1" })).toEqual({
 			address: null,
 		});
 	});

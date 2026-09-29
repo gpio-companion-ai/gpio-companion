@@ -46,6 +46,7 @@ import {
 import { useUserBoards } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useT } from "../locale";
+import ProjectFiles from "./ProjectFiles";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
@@ -885,9 +886,11 @@ export default function OpenCodeSession({
 		);
 	}
 
+	const owner = repos.find((item) => item.name === repo)?.owner ?? "";
 	return (
 		<div className="oc-shell">
 			<div className="oc-card">
+				<ProjectFiles uuid={selected} owner={owner} name={repo}>
 				{error && mode === "home" ? (
 					<p className="oc-error">
 						<span>{error}</span>
@@ -1237,6 +1240,7 @@ export default function OpenCodeSession({
 						{composer(Boolean(permission || question))}
 					</div>
 				) : null}
+				</ProjectFiles>
 			</div>
 		</div>
 	);

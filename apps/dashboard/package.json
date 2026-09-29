@@ -8,15 +8,18 @@
 		"@types/react": "^19.2.18",
 		"@types/react-dom": "^19.2.5",
 		"@cloudflare/workers-types": "^4.20260702.1",
+		"drizzle-kit": "^0.31.11",
 		"wrangler": "^4.131.0",
 		"typescript": "^7.0.2"
 	},
 	"dependencies": {
-		"@community-jlcpcb/client": "0.1.0",
+		"@community-jlcpcb/client": "0.2.0",
 		"@material-design-icons/svg": "^0.14.15",
+		"@monaco-editor/react": "^4.7.0",
 		"@shpaw415/mui-lite": "^0.1.6",
 		"@tailwindcss/cli": "^4.3.3",
 		"@wokwi/elements": "^1.9.2",
+		"drizzle-orm": "^0.45.3",
 		"frame-master": "^4.0.3",
 		"frame-master-plugin-apply-react": "^3.0.0",
 		"frame-master-plugin-assets-to-build": "^0.1.1",
@@ -35,11 +38,13 @@
 		"frame-master-svg-to-jsx-loader": "^0.1.0",
 		"gpio-companion": "workspace:*",
 		"marked": "^18.0.11",
-		"openauthster-shared": "^1.0.3",
+		"monaco-editor": "^0.57.0",
+		"openauthster-shared": "^1.0.7",
 		"react": "^19.2.8",
 		"react-dom": "^19.2.8",
 		"superjson": "^2.2.6",
 		"tailwindcss": "^4.3.3",
+		"three": "0.170.0",
 		"uqr": "^0.1.3"
 	},
 	"scripts": {
@@ -47,6 +52,9 @@
 		"build": "NODE_ENV=production bun frame-master build",
 		"build:dev": "NODE_ENV=development bun frame-master build",
 		"typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+		"db:generate": "drizzle-kit generate",
+		"db:apply:local": "wrangler d1 migrations apply DASHBOARD_DB --local",
+		"db:apply:remote": "wrangler d1 migrations apply DASHBOARD_DB --remote",
 		"deploy": "bun run build && wrangler pages deploy .frame-master/build --project-name gpio-companion"
 	}
 }

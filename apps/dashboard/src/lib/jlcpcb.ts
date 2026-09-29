@@ -1,6 +1,5 @@
 import { JLCPCBClient } from "@community-jlcpcb/client";
-import type { ShippingAddress } from "gpio-companion";
-import { loadShippingAddress } from "./address.ts";
+import { partsQueryKind, type ShippingAddress } from "gpio-companion";
 import { errorStatus, jsonFail, jsonOk } from "./mobile-http.ts";
 
 export const JLCPCB_CREDENTIALS_REQUIRED = "jlcpcb credentials required";
@@ -11,9 +10,10 @@ export const ADDRESS_REQUIRED = "address is required";
 export const CONFIRM_REQUIRED = "confirm is required";
 export const ORDER_KIND_INVALID = "order kind is invalid";
 
-const CODE_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+const CODE_RE = /^C\d{1,12}$/i;
 const MAX_CODES = 20;
 const MAX_SECRET = 1024;
+const CATALOG_PAGE_SIZE = 20;
 
 export type JlcpcbEnv = {
 	JLCPCB_APP_ID?: string;
@@ -114,16 +114,49 @@ export async function handleJlcpcbSearch(input: {
 	userId: string;
 	body: Record<string, unknown>;
 	clientFor?: JlcpcbClientFactory;
+	searchParts?: PartsSearch;
 }): Promise<{ parts: JlcpcbPart[] }> {
 	requireUserId(input.userId);
+	const kind = searchKind(input.body);
+	if (kind.kind === "keyword") {
+		return {
+			parts: await searchJlcpcbCatalog(kind.query, input.searchParts),
+		};
+	}
 	const parts = input.clientFor
-		? await searchJlcpcbParts(
-				input.env,
-				codesFromBody(input.body),
-				input.clientFor,
-			)
-		: await searchJlcpcbParts(input.env, codesFromBody(input.body));
+		? await searchJlcpcbParts(input.env, kind.codes, input.clientFor)
+		: await searchJlcpcbParts(input.env, kind.codes);
 	return { parts };
+}
+
+type PartsSearch = (body: {
+	keyword: string;
+	currentPage?: number;
+	pageSize?: number;
+}) => Promise<{ raiseForStatus(): void; data: unknown }>;
+
+export async function searchJlcpcbCatalog(
+	query: string,
+	search: PartsSearch = (body) => JLCPCBClient.searchParts(body),
+): Promise<JlcpcbPart[]> {
+	const keyword = query.trim();
+	if (partsQueryKind(keyword) !== "keyword") {
+		throw new Error(JLCPCB_CODE_INVALID);
+	}
+	try {
+		const response = await search({
+			keyword,
+			currentPage: 1,
+			pageSize: CATALOG_PAGE_SIZE,
+		});
+		response.raiseForStatus();
+		return partsFrom(response.data);
+	} catch (caught) {
+		if (caught instanceof Error && caught.message === JLCPCB_CODE_INVALID) {
+			throw caught;
+		}
+		throw new Error(JLCPCB_REQUEST_FAILED);
+	}
 }
 
 export async function jlcpcbResponse(
@@ -178,26 +211,43 @@ function credentialsFrom(
 	return { appId, accessKey, secretKey };
 }
 
-function codesFromBody(body: Record<string, unknown>): string[] {
+function searchKind(
+	body: Record<string, unknown>,
+): { kind: "codes"; codes: string[] } | { kind: "keyword"; query: string } {
 	const raw = body.componentCodes ?? body.query;
-	if (Array.isArray(raw)) {
-		return raw.filter((item): item is string => typeof item === "string");
-	}
 	if (typeof raw === "string") {
-		return raw.split(/[\s,]+/);
+		const kind = partsQueryKind(raw);
+		if (kind === "keyword") {
+			return { kind: "keyword", query: raw.trim() };
+		}
+		if (kind === "codes") {
+			return { kind: "codes", codes: raw.split(/[\s,]+/) };
+		}
+		throw new Error(raw.trim() ? JLCPCB_CODE_INVALID : JLCPCB_CODE_REQUIRED);
 	}
-	return [];
+	if (Array.isArray(raw)) {
+		return {
+			kind: "codes",
+			codes: raw.filter((item): item is string => typeof item === "string"),
+		};
+	}
+	throw new Error(JLCPCB_CODE_REQUIRED);
 }
 
 function normalizeCodes(codes: readonly string[]): string[] {
-	const next = [...new Set(codes.map((code) => code.trim()).filter(Boolean))];
-	if (next.length === 0) {
+	const trimmed = [
+		...new Set(codes.map((code) => code.trim()).filter(Boolean)),
+	];
+	if (trimmed.length === 0) {
 		throw new Error(JLCPCB_CODE_REQUIRED);
 	}
-	if (next.length > MAX_CODES || next.some((code) => !CODE_RE.test(code))) {
+	if (
+		trimmed.length > MAX_CODES ||
+		trimmed.some((code) => !CODE_RE.test(code))
+	) {
 		throw new Error(JLCPCB_CODE_INVALID);
 	}
-	return next;
+	return trimmed.map((code) => `C${code.slice(1)}`);
 }
 
 function redact(caught: unknown, credentials: JlcpcbCredentials): Error {
@@ -241,7 +291,10 @@ function partFrom(value: unknown): JlcpcbPart | null {
 	}
 	const part: JlcpcbPart = { componentCode };
 	const name = text(record.name) ?? text(record.componentName);
-	const pack = text(record.package) ?? text(record.componentSpecification);
+	const pack =
+		text(record.package) ??
+		text(record.componentSpecification) ??
+		text(record.componentSpecificationEn);
 	const stock = scalar(record.stock) ?? scalar(record.stockCount);
 	const price = priceOf(record);
 	if (name) {
@@ -296,8 +349,8 @@ function scalar(value: unknown): string | number | undefined {
 
 export async function handleJlcpcbOrder(input: {
 	env: JlcpcbEnv;
-	kv: KVNamespace;
 	userId: string;
+	address: ShippingAddress | null;
 	body: Record<string, unknown>;
 	clientFor?: JlcpcbOrderClientFactory;
 }): Promise<{ order: unknown }> {
@@ -307,7 +360,7 @@ export async function handleJlcpcbOrder(input: {
 	const kind = orderKind(input.body.kind);
 	const stored = requireCredentials(input.env);
 	requireUserId(input.userId);
-	const address = await loadShippingAddress(input.kv, input.userId);
+	const address = input.address;
 	if (!address) {
 		throw new Error(ADDRESS_REQUIRED);
 	}
@@ -331,15 +384,15 @@ export async function handleJlcpcbOrder(input: {
 
 export async function handleJlcpcbQuote(input: {
 	env: JlcpcbEnv;
-	kv: KVNamespace;
 	userId: string;
+	address: ShippingAddress | null;
 	body: Record<string, unknown>;
 	clientFor?: JlcpcbOrderClientFactory;
 }): Promise<{ quote: unknown }> {
 	const kind = orderKind(input.body.kind);
 	const stored = requireCredentials(input.env);
 	requireUserId(input.userId);
-	const address = await loadShippingAddress(input.kv, input.userId);
+	const address = input.address;
 	const client = (input.clientFor ?? orderClient)(stored);
 	const payload =
 		kind === "pcb"

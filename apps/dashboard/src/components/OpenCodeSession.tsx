@@ -40,6 +40,7 @@ import {
 	useState,
 } from "react";
 import { useT } from "../hooks/useLocale.tsx";
+import ProjectFiles from "./ProjectFiles.tsx";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
@@ -869,8 +870,10 @@ export default function OpenCodeSession({
 		);
 	}
 
+	const owner = repos.find((item) => item.name === repo)?.owner ?? "";
 	return (
 		<div className="oc-card">
+			<ProjectFiles uuid={uuid} owner={owner} name={repo}>
 			{error && mode === "home" ? (
 				<p className="oc-error">
 					<span>{error}</span>
@@ -1212,6 +1215,7 @@ export default function OpenCodeSession({
 					{composer(Boolean(permission || question))}
 				</div>
 			) : null}
+			</ProjectFiles>
 		</div>
 	);
 }

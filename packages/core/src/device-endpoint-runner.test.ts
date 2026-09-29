@@ -54,6 +54,7 @@ describe("device-endpoint-runner", () => {
 			"POST /v1/projects/push",
 			"GET /v1/ai",
 			"GET /v1/jlcpcb",
+			"GET /v1/jlcpcb/draft",
 			"GET /v1/opencode/global/health",
 			"offline GET /v1/info",
 			"offline GET /v1/gpio",

@@ -32,6 +32,24 @@ export {
 	headerPinsForBoard,
 } from "./gpio.ts";
 export {
+	decodeModelBase64,
+	isModelRepoPath,
+	MODEL_EMBED_BRIDGE_KEY,
+	MODEL_EMBED_MESSAGE_TYPE,
+	MODEL_EMBED_PATH,
+	MODEL_EMBED_PENDING_KEY,
+	MODEL_EMBED_READY_TYPE,
+	MODEL_MANIFEST_PATH,
+	type ModelEmbedPayload,
+	type ModelManifest,
+	type ModelPart,
+	modelEmbedInjectSource,
+	modelEmbedUrl,
+	modelPartRepoPath,
+	parseModelEmbedMessage,
+	parseModelManifest,
+} from "./model-view.ts";
+export {
 	type CircuitVerifyItem,
 	type CircuitVerifyOverlay,
 	type CircuitVerifyStatus,

@@ -49,6 +49,8 @@ Packages include: git, zip/unzip, bun, build-essential, node-gyp toolchain, libg
 
 Device binary: compiled `gpio-companion` on PATH (`/usr/local/bin/gpio-companion`).
 
+Printable parts: `/usr/local/bin/gpio-3d` runs a venv at `/usr/local/lib/gpio-companion/gpio-3d` (`trimesh`, `numpy`, `manifold3d`, wheels only). Code is `native/gpio-3d` on `PYTHONPATH`, so an Update companion picks up helper changes without reinstalling wheels. armhf is skipped (no wheel, no compile). Install is refused under 200MB free on `/`.
+
 Systemd:
 
 - `gpio-companion.service` — `gpio-companion serve` on port **4150**, after network + bluetooth, as the GPIO user (`User=` / `GPIO_USER` / `SupplementaryGroups=gpio`, typically `companion` when first-setup is run with sudo). OpenCode is that same user’s systemd user unit (`gpio-opencode.service` on `127.0.0.1:4096`). Updater/cleanup/cloudflared stay root.

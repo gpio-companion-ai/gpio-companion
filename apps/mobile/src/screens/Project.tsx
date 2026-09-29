@@ -1,5 +1,10 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import {
+	type ModelPart,
+	modelPartRepoPath,
+	parseModelManifest,
+} from "gpio-companion-model";
+import {
 	type ReactNode,
 	useCallback,
 	useEffect,
@@ -11,8 +16,8 @@ import { Linking, Modal, Pressable, Text, View } from "react-native";
 import BreadboardWebView from "../components/BreadboardWebView.tsx";
 import FlashPanel from "../components/FlashPanel.tsx";
 import GpioPanel from "../components/GpioPanel.tsx";
-import OrderReviewPanel from "../components/OrderReviewPanel.tsx";
-import PartsSearchPanel from "../components/PartsSearchPanel.tsx";
+import JlcpcbCard from "../components/JlcpcbCard.tsx";
+import ModelWebView from "../components/ModelWebView.tsx";
 import RunPanel from "../components/RunPanel.tsx";
 import {
 	Body,
@@ -315,6 +320,10 @@ export default function Project() {
 		name: string;
 	} | null>(null);
 	const [breadboardJson, setBreadboardJson] = useState<string | null>(null);
+	const [modelParts, setModelParts] = useState<ModelPart[]>([]);
+	const [activePart, setActivePart] = useState<string | null>(null);
+	const [modelGlb, setModelGlb] = useState<string | null>(null);
+	const modelToken = useRef(0);
 	const [livePins, setLivePins] = useState<Record<number, 0 | 1>>({});
 	const [arduinoLivePins, setArduinoLivePins] = useState<Record<number, 0 | 1>>(
 		{},
@@ -398,6 +407,102 @@ export default function Project() {
 			cancelled = true;
 		};
 	}, [bundle, token]);
+
+	useEffect(() => {
+		if (!bundle || !token) {
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+			return;
+		}
+		const listed = bundle.model ?? [];
+		const hasManifest =
+			Boolean(bundle.modelManifestUrl) ||
+			listed.some(
+				(file) =>
+					file.name === "manifest.json" || file.path === "model/manifest.json",
+			);
+		if (bundle.model && !hasManifest) {
+			setModelParts([]);
+			setActivePart(null);
+			setModelGlb(null);
+			return;
+		}
+		const generation = ++modelToken.current;
+		let cancelled = false;
+		setModelParts([]);
+		setActivePart(null);
+		setModelGlb(null);
+		void readProjectFile(
+			token,
+			bundle.owner,
+			bundle.repo,
+			"model/manifest.json",
+			bundle.ref,
+		)
+			.then(async (file) => {
+				if (cancelled || modelToken.current !== generation) {
+					return;
+				}
+				const manifest = parseModelManifest(file.text);
+				const part = manifest.parts[0];
+				setModelParts(manifest.parts);
+				if (!part) {
+					return;
+				}
+				setActivePart(part.name);
+				const glb = await readProjectFile(
+					token,
+					bundle.owner,
+					bundle.repo,
+					modelPartRepoPath(part.file),
+					bundle.ref,
+				);
+				if (!cancelled && modelToken.current === generation) {
+					setModelGlb(glb.base64 || null);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setModelParts([]);
+					setActivePart(null);
+					setModelGlb(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [bundle, token]);
+
+	function selectModelPart(name: string) {
+		if (!bundle || !token) {
+			return;
+		}
+		const part = modelParts.find((item) => item.name === name);
+		if (!part) {
+			return;
+		}
+		const generation = ++modelToken.current;
+		setActivePart(name);
+		setModelGlb(null);
+		void readProjectFile(
+			token,
+			bundle.owner,
+			bundle.repo,
+			modelPartRepoPath(part.file),
+			bundle.ref,
+		)
+			.then((file) => {
+				if (modelToken.current === generation) {
+					setModelGlb(file.base64 || null);
+				}
+			})
+			.catch(() => {
+				if (modelToken.current === generation) {
+					setModelGlb(null);
+				}
+			});
+	}
 
 	const onRun = useCallback((next: RunStatus) => {
 		setRunRunning(next.running);
@@ -712,7 +817,12 @@ export default function Project() {
 			},
 		}));
 		const files = bundle
-			? [...bundle.pcb, ...bundle.breadboard, ...bundle.technical].slice(0, 16)
+			? [
+					...bundle.pcb,
+					...bundle.breadboard,
+					...bundle.technical,
+					...(bundle.model ?? []),
+				].slice(0, 16)
 			: [];
 		const fileEntries = files.map((file) => ({
 			id: `file:${file.path}`,
@@ -767,8 +877,7 @@ export default function Project() {
 					}}
 				/>
 			) : null}
-			{token ? <PartsSearchPanel token={token} /> : null}
-			{token ? <OrderReviewPanel token={token} /> : null}
+			{token ? <JlcpcbCard token={token} /> : null}
 			<ErrorText>
 				{translateError(
 					t,
@@ -1021,6 +1130,52 @@ export default function Project() {
 							verifyResults={verifyResults}
 							boardModel={activeBoard?.status?.model}
 						/>
+						{modelParts.length > 0 ? (
+							<View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+								{modelParts.map((part) => {
+									const active = part.name === activePart;
+									return (
+										<Pressable
+											key={part.name}
+											onPress={() => selectModelPart(part.name)}
+											style={{
+												borderWidth: 1,
+												borderColor: active ? colors.primary : colors.border,
+												borderRadius: 8,
+												paddingHorizontal: 12,
+												paddingVertical: 6,
+												backgroundColor: active ? colors.chipBg : "transparent",
+											}}
+										>
+											<Text
+												style={{
+													color: colors.text,
+													fontWeight: "600",
+												}}
+											>
+												{part.name}
+											</Text>
+											<Text style={{ color: colors.muted, fontSize: 12 }}>
+												{part.fits
+													.map((fit) => modelFitLabel(t, fit))
+													.join(", ")}
+											</Text>
+										</Pressable>
+									);
+								})}
+							</View>
+						) : null}
+						{modelGlb ? (
+							<ModelWebView glbBase64={modelGlb} />
+						) : (
+							<Paper>
+								<Muted>
+									{modelParts.length
+										? t("project.modelLoading")
+										: t("project.noModel")}
+								</Muted>
+							</Paper>
+						)}
 					</View>
 					<View style={{ gap: 8 }}>
 						<FileGroup title={t("project.pcb")} files={bundle.pcb} />
@@ -1032,6 +1187,7 @@ export default function Project() {
 							title={t("project.technical")}
 							files={bundle.technical}
 						/>
+						<FileGroup title={t("project.model")} files={bundle.model ?? []} />
 						<BoardSketchGroup
 							title={t("project.hostSketches")}
 							action={t("project.run")}
@@ -1211,4 +1367,20 @@ export default function Project() {
 			</Modal>
 		</Screen>
 	);
+}
+
+function modelFitLabel(t: ReturnType<typeof useT>, fit: string): string {
+	if (fit === "companion-header") {
+		return t("project.fitsCompanion");
+	}
+	if (fit === "arduino-uno") {
+		return t("project.fitsUno");
+	}
+	if (fit === "arduino-nano") {
+		return t("project.fitsNano");
+	}
+	if (fit === "arduino-mega") {
+		return t("project.fitsMega");
+	}
+	return fit;
 }

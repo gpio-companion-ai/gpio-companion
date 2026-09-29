@@ -35,9 +35,10 @@ function acceptBearer(auth: ReturnType<typeof createClient>, token: string) {
 	client.isAuthenticated = true;
 }
 
-export async function requireIdentity(
-	ctx: SessionContext,
-): Promise<SignedInIdentity> {
+export async function requireSession(ctx: SessionContext): Promise<{
+	auth: ReturnType<typeof createClient>;
+	identity: SignedInIdentity;
+}> {
 	const auth = createClient({
 		ctx: ctx as never,
 	});
@@ -93,7 +94,19 @@ export async function requireIdentity(
 		});
 		throw new Error(message);
 	}
-	return probe.identity as SignedInIdentity;
+	return { auth, identity: probe.identity as SignedInIdentity };
+}
+
+export async function requireAuthedClient(
+	ctx: SessionContext,
+): Promise<ReturnType<typeof createClient>> {
+	return (await requireSession(ctx)).auth;
+}
+
+export async function requireIdentity(
+	ctx: SessionContext,
+): Promise<SignedInIdentity> {
+	return (await requireSession(ctx)).identity;
 }
 
 export function requireAdmin(identity: UserIdentity): SignedInIdentity {

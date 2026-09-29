@@ -48,6 +48,7 @@ describe("parts search gate", () => {
 		})) {
 			if (
 				!path.includes("PartsSearch") &&
+				!path.includes("JlcpcbCard") &&
 				!path.includes("JlcpcbCredentials")
 			) {
 				continue;

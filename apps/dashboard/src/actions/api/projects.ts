@@ -10,6 +10,7 @@ import {
 	loadProjectBundle,
 	parseProjectRef,
 	readRepoFile,
+	readRepoModelFile,
 } from "../../lib/github.ts";
 import type { GithubAppEnv } from "../../lib/github-app.ts";
 import {
@@ -81,8 +82,16 @@ export const PUT = wrapAction(async function PUT(
 	if (!githubConfigured(account)) {
 		throw new Error("github is not configured");
 	}
+	const selected = parseProjectRef(ref);
+	if (path.endsWith(".glb")) {
+		return {
+			text: "",
+			base64: (await readRepoModelFile(account, owner, repo, path, selected))
+				.base64,
+		};
+	}
 	return {
-		text: await readRepoFile(account, owner, repo, path, parseProjectRef(ref)),
+		text: await readRepoFile(account, owner, repo, path, selected),
 	};
 });
 
@@ -115,11 +124,5 @@ export const DELETE = wrapAction(async function DELETE(
 	if (!githubConfigured(account)) {
 		throw new Error("github is not configured");
 	}
-	return deleteProjectForUser(
-		ctx.env,
-		identity.id,
-		owner,
-		name,
-		account,
-	);
+	return deleteProjectForUser(ctx.env, identity.id, owner, name, account);
 });

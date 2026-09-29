@@ -9,8 +9,15 @@ import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
 import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
+import { translateError } from "gpio-companion-i18n";
 import { useState } from "react";
-import { type BoardView, deviceDisplayName, patchDeviceLabel } from "../api";
+import {
+	type BoardView,
+	deviceDisplayName,
+	openExternal,
+	patchDeviceLabel,
+	startCliLogin,
+} from "../api";
 import { formatNetworkLabel } from "../device-info";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useDashboardMode } from "../hooks/useDashboardMode";
@@ -199,12 +206,12 @@ export default function BoardCard({
 												status.secrets?.githubReady ? "success" : "warning"
 											}
 											variant="outlined"
-										size="small"
-									/>
-								</>
-							) : null}
-						</Stack>
-						{isEasy ? null : (
+											size="small"
+										/>
+									</>
+								) : null}
+							</Stack>
+							{isEasy ? null : (
 								<CompanionInfo key={device.uuid} uuid={device.uuid} />
 							)}
 							{selected ? (
@@ -228,6 +235,7 @@ export default function BoardCard({
 								>
 									{t("project.openCode")}
 								</Button>
+								<CliAuthButton uuid={device.uuid} />
 								{!isEasy && onUnpair ? (
 									<Button
 										color="error"
@@ -266,5 +274,40 @@ export default function BoardCard({
 				</DialogActions>
 			</Dialog>
 		</Paper>
+	);
+}
+
+function CliAuthButton({ uuid }: { uuid: string }) {
+	const t = useT();
+	const [busy, setBusy] = useState(false);
+	const [error, setError] = useState("");
+
+	async function start() {
+		setBusy(true);
+		setError("");
+		try {
+			const started = await startCliLogin(uuid);
+			await openExternal(started.authorizeUrl);
+		} catch (caught) {
+			setError(caught instanceof Error ? caught.message : "cli login failed");
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<>
+			<Button
+				variant="outlined"
+				size="small"
+				disabled={busy}
+				onClick={() => void start()}
+			>
+				{busy ? t("devices.authenticatingCli") : t("devices.authenticateCli")}
+			</Button>
+			{error ? (
+				<Typography color="secondary">{translateError(t, error)}</Typography>
+			) : null}
+		</>
 	);
 }

@@ -1,0 +1,24 @@
+{
+	"name": "gpio-jlcpcb",
+	"private": true,
+	"type": "module",
+	"version": "0.0.0",
+	"description": "On-device JLCPCB parts search and order draft CLI",
+	"license": "MIT",
+	"bin": {
+		"gpio-jlcpcb": "./src/index.ts"
+	},
+	"scripts": {
+		"dev": "bun run src/index.ts",
+		"typecheck": "tsc --noEmit",
+		"test": "bun test"
+	},
+	"dependencies": {
+		"gpio-companion": "workspace:*",
+		"openauthster-shared": "^1.0.7"
+	},
+	"devDependencies": {
+		"@types/bun": "catalog:",
+		"typescript": "catalog:"
+	}
+}

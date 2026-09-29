@@ -22,6 +22,7 @@ export default function BreadboardWebView({
 	arduinoLivePins,
 	verifyResults,
 	boardModel,
+	fill = false,
 }: {
 	diagramText?: string | null;
 	previewUrl?: string | null;
@@ -29,6 +30,7 @@ export default function BreadboardWebView({
 	arduinoLivePins?: Record<number, 0 | 1>;
 	verifyResults?: BreadboardEmbedPayload["verifyResults"];
 	boardModel?: string | null;
+	fill?: boolean;
 }) {
 	const t = useT();
 	const colors = useColors();
@@ -55,6 +57,49 @@ export default function BreadboardWebView({
 			<Paper>
 				<Muted>{t("project.noBreadboard")}</Muted>
 			</Paper>
+		);
+	}
+
+	if (fill) {
+		return (
+			<View style={{ flex: 1, minHeight: 0 }}>
+				<Pressable
+					onPress={() => setOpen(true)}
+					style={{
+						position: "absolute",
+						top: 8,
+						right: 8,
+						zIndex: 1,
+						paddingVertical: 4,
+						paddingHorizontal: 8,
+					}}
+				>
+					<Text style={{ color: colors.primary, fontWeight: "600" }}>
+						{t("board.fullScreen")}
+					</Text>
+				</Pressable>
+				<View style={{ flex: 1, minHeight: 0 }}>
+					<EmbedFrame
+						payload={payload}
+						locale={locale}
+						theme={mode}
+						onFail={() => setFailed(true)}
+					/>
+				</View>
+				<Modal
+					animationType="fade"
+					onRequestClose={() => setOpen(false)}
+					visible={open}
+				>
+					<EmbedModal
+						locale={locale}
+						onClose={() => setOpen(false)}
+						payload={payload}
+						theme={mode}
+						title={t("project.breadboard")}
+					/>
+				</Modal>
+			</View>
 		);
 	}
 

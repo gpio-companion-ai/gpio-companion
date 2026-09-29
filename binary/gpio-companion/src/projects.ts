@@ -212,17 +212,24 @@ export async function pushProject(
 		);
 		committed = true;
 	}
-	await gitOk(git, ["push"], dest, "git push failed");
+	await gitOk(git, ["push", "-u", "origin", "HEAD"], dest, "git push failed");
 	const rev = await gitOk(
 		git,
 		["rev-parse", "HEAD"],
 		dest,
 		"git rev-parse failed",
 	);
+	const branch = await gitOk(
+		git,
+		["rev-parse", "--abbrev-ref", "HEAD"],
+		dest,
+		"git branch failed",
+	);
 	return {
 		committed,
 		pushed: true,
 		sha: rev.stdout.trim(),
+		branch: branch.stdout.trim(),
 		message: put.message,
 	};
 }

@@ -494,6 +494,15 @@ export function deviceEndpointProbes(): DeviceEndpointProbe[] {
 			expect: { kind: "error", includes: ["local-only"], status: 403 },
 		}),
 		probe({
+			id: "get-jlcpcb-draft",
+			name: "GET /v1/jlcpcb/draft",
+			method: "GET",
+			path: "/v1/jlcpcb/draft",
+			auth: "none",
+			via: "http",
+			expect: { kind: "error", includes: ["local-only"], status: 403 },
+		}),
+		probe({
 			id: "get-opencode-health",
 			name: "GET /v1/opencode/global/health",
 			method: "GET",
