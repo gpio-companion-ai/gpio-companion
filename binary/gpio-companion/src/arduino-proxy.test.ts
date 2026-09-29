@@ -72,6 +72,28 @@ describe("memory arduino proxy", () => {
 });
 
 describe("live handshake", () => {
+	test("capability overrides a usb uno label on mega", async () => {
+		const proxy = createArduinoProxy({
+			probeMs: 200,
+			openSerial: (_port, _baud, onData) => {
+				return {
+					write() {
+						onData(Uint8Array.from([0xf0, 0x79, 2, 5, 0xf7]));
+						const pins = Array.from({ length: 70 }, () => 0x7f);
+						onData(Uint8Array.from([0xf0, 0x6c, ...pins, 0xf7]));
+					},
+					close() {
+						undefined;
+					},
+				};
+			},
+		});
+		const status = await proxy.attach("/dev/ttyACM0", "arduino:avr:uno");
+		expect(status.board).toBe("mega");
+		expect(status.fqbn).toBe("arduino:avr:mega");
+		expect(status.pins.some((pin) => pin.physical === 54)).toBe(true);
+	});
+
 	test("retries firmware query until the board answers", async () => {
 		let writes = 0;
 		let onData: (bytes: Uint8Array) => void = () => undefined;

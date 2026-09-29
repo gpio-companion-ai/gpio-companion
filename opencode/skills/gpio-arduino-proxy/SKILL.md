@@ -14,30 +14,39 @@ When a USB Arduino (AVR Uno/Nano/Mega, SAMD, or ESP32) is a **proxy**, this
 companion drives every pin over Firmata. The MCU firmware stays the proxy.
 Sketches run **on this Pi** (`POST /v1/run`), not as `/v1/flash` uploads.
 
-Check first — before any blink, LED, sketch, breadboard, or pin drive:
+Check first — before creating any sketch file, breadboard, or pin drive:
 
 ```sh
 curl -s http://127.0.0.1:4150/v1/arduino-proxy
 ```
 
-You call loopback yourself. **Never** tell the user to curl it.
+You call loopback yourself. **Never** tell the user to curl it. Do **not** write
+`host/arduino-proxy-*` or a companion-header sketch until this GET returns.
+
+If `connected` is false: do **not** invent a proxy sketch or assume Uno. Skill
+`gpio-host` only when the user asked for this companion header. If they want the
+USB board as a proxy, they flash from **Devices → Flash Arduino as proxy**. You
+may `POST /v1/flash/proxy` `{ fqbn, port? }` only with the FQBN from
+`GET /v1/flash/ports` (do not guess `arduino:avr:uno`).
 
 If `connected` is true:
 
-1. Write C in `~/projects/<repo>/host/arduino-proxy-<kebab>/` (prefix required).
-2. Use **Arduino pin numbers** (13 = LED_BUILTIN, A0 = 14 on Uno). Not companion header seats.
-   `analogRead(A0)`, `analogRead(14)`, and `analogRead(0)` all read A0 on Uno (0–1023 AVR). Live GPIO `dir:in` on analog pins reports `adc`.
-3. `POST /v1/run` `{ dir }` with that absolute folder.
-4. Write `breadboard/diagram.json` with a `gpio-arduino-proxy` part (`attrs.board`
-   from `fqbn`, e.g. `uno`). Wires use Arduino pins (`uno:13`, `uno:A0`, `uno:GND`).
-   Skill `gpio-breadboard`. Do **not** map that circuit to `gpio-companion-header`.
-5. Do **not** flash a project sketch unless the user asked — that replaces the proxy.
-6. Skip D0/D1 on UART-USB AVR (Uno/Nano/Mega). SAMD/ESP32 native USB may use Serial1.
+1. Read `board`, `fqbn`, and `pins` from that JSON. Do not assume Uno.
+2. Write C in `~/projects/<repo>/host/arduino-proxy-<kebab>/` (prefix required).
+3. Use **that board's** Arduino pin numbers, not companion header seats.
+   LED_BUILTIN is 13. On Uno, A0 is pin 14. On Mega, A0 is pin **54** (not 14);
+   digital pins run 0–53. Prefer `analogRead(A0)` over a hardcoded number.
+   Live GPIO `dir:in` on analog pins reports `adc`.
+4. `POST /v1/run` `{ dir }` with that absolute folder.
+5. Write `breadboard/diagram.json` with a `gpio-arduino-proxy` part. `attrs.board`
+   is `board` (`mega`, not `uno`, when the GET says mega). Wire prefix is that
+   same id (`mega:13`, `mega:A0`, `mega:GND`). Skill `gpio-breadboard`. Do **not**
+   map that circuit to `gpio-companion-header`.
+6. Do **not** flash a project sketch unless the user asked — that replaces the proxy.
+7. Skip D0/D1 on UART-USB AVR (Uno/Nano/Mega). SAMD/ESP32 native USB may use Serial1.
 
-If not connected: skill `gpio-host` for this companion header. If a USB board is
-present and the user wants a proxy: user flashes from dashboard
-**Devices → Flash Arduino as proxy**. You may `POST /v1/flash/proxy`
-`{ fqbn?, port? }` yourself. First flash of a family installs only that
+If a USB board is present and the user wants a proxy but it is not connected yet:
+user flashes from dashboard **Devices → Flash Arduino as proxy**. First flash of a family installs only that
 `arduino-cli` core (`arduino:avr`, `arduino:samd`, or `esp32:esp32`) — never
 install cores during companion update. Supported FQBNs: `arduino:avr:uno`,
 `arduino:avr:nano`, `arduino:avr:mega`, `arduino:samd:nano_33_iot`,

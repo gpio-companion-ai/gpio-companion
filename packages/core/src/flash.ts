@@ -138,18 +138,27 @@ export function parseArduinoBoardList(input: unknown): FlashPort[] {
 		if (!address) {
 			continue;
 		}
-		const boards = Array.isArray(row.matching_boards)
-			? row.matching_boards
-			: [];
-		const board =
-			boards[0] && typeof boards[0] === "object"
-				? (boards[0] as Record<string, unknown>)
+		const props =
+			port.properties && typeof port.properties === "object"
+				? (port.properties as Record<string, unknown>)
 				: {};
+		const picked = pickArduinoProxyFqbn({
+			boards: listedBoards(row.matching_boards),
+			vid: stringField(props.vid) || stringField(props.VID),
+			pid: stringField(props.pid) || stringField(props.PID),
+			label: [
+				stringField(port.label),
+				stringField(props.product),
+				stringField(props.Product),
+			]
+				.filter(Boolean)
+				.join(" "),
+		});
 		ports.push({
 			address,
 			protocol: stringField(port.protocol) || undefined,
-			fqbn: stringField(board.fqbn) || undefined,
-			name: stringField(board.name) || undefined,
+			fqbn: picked.fqbn,
+			name: picked.name,
 		});
 	}
 	return ports;
@@ -191,6 +200,80 @@ function requiredDir(value: unknown): string {
 		throw new FlashError("dir must be an absolute path");
 	}
 	return dir;
+}
+
+const MEGA_USB_IDS = new Set([
+	"2341:0010",
+	"2341:0042",
+	"2341:0210",
+	"2341:0242",
+	"2a03:0010",
+	"2a03:0042",
+]);
+
+function listedBoards(
+	value: unknown,
+): Array<{ fqbn: string; name: string }> {
+	if (!Array.isArray(value)) {
+		return [];
+	}
+	const boards: Array<{ fqbn: string; name: string }> = [];
+	for (const item of value) {
+		if (!item || typeof item !== "object") {
+			continue;
+		}
+		const board = item as Record<string, unknown>;
+		const fqbn = stringField(board.fqbn);
+		const name = stringField(board.name);
+		if (!fqbn && !name) {
+			continue;
+		}
+		boards.push({ fqbn, name });
+	}
+	return boards;
+}
+
+export function pickArduinoProxyFqbn(input: {
+	boards: Array<{ fqbn?: string; name?: string }>;
+	vid?: string;
+	pid?: string;
+	label?: string;
+}): { fqbn?: string; name?: string } {
+	const vid = usbToken(input.vid ?? "");
+	const pid = usbToken(input.pid ?? "");
+	const usb = vid && pid ? `${vid}:${pid}` : "";
+	const label = (input.label ?? "").toLowerCase();
+	const megaNamed = input.boards.find((board) =>
+		/mega/i.test(`${board.fqbn ?? ""} ${board.name ?? ""}`),
+	);
+	if (MEGA_USB_IDS.has(usb) || megaNamed || label.includes("mega")) {
+		return {
+			fqbn: "arduino:avr:mega",
+			name: megaNamed?.name || "Arduino Mega 2560",
+		};
+	}
+	const known = input.boards.filter((board) => board.fqbn);
+	if (known.length !== 1) {
+		return {};
+	}
+	const only = known[0];
+	if (!only?.fqbn) {
+		return {};
+	}
+	return {
+		fqbn: only.fqbn.startsWith("arduino:avr:mega")
+			? "arduino:avr:mega"
+			: only.fqbn,
+		name: only.name || undefined,
+	};
+}
+
+function usbToken(value: string): string {
+	const trimmed = value.trim().toLowerCase().replace(/^0x/, "");
+	if (!trimmed) {
+		return "";
+	}
+	return trimmed.padStart(4, "0");
 }
 
 function stringField(value: unknown): string {

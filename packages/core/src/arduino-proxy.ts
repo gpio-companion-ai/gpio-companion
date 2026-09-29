@@ -312,6 +312,20 @@ export function normalizeFqbn(fqbn: string): string {
 	return board?.fqbn ?? trimmed;
 }
 
+export function arduinoProxyBoardFromProbe(input: {
+	pinCount?: number;
+	analogMap?: number[];
+}): ArduinoProxyBoard | undefined {
+	const map = input.analogMap ?? [];
+	const a0 = map.findIndex((value) => value === 0);
+	const count =
+		input.pinCount && input.pinCount > 0 ? input.pinCount : map.length;
+	if (a0 >= 54 || count >= 54) {
+		return arduinoProxyBoard("mega");
+	}
+	return undefined;
+}
+
 export function arduinoProxyBoard(fqbnOrId: string): ArduinoProxyBoard | undefined {
 	const trimmed = fqbnOrId.trim();
 	return ARDUINO_PROXY_BOARDS.find(

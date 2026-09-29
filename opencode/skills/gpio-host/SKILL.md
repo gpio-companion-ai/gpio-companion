@@ -15,7 +15,7 @@ Arduino proxy is connected**. Prioritize a C script over direct GPIO control.
 
 ## Check proxy first
 
-Before writing any sketch, breadboard, or pin drive:
+Before creating any sketch file, breadboard, or pin drive:
 
 ```sh
 curl -s http://127.0.0.1:4150/v1/arduino-proxy

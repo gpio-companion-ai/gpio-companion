@@ -1209,10 +1209,17 @@ async function handleFlash(
 			listed.ports.find((port) =>
 				put.port ? port.address === put.port : true,
 			) ?? listed.ports[0];
-		const fqbn = put.fqbn || selected?.fqbn;
-		const port = put.port || selected?.address;
-		if (!fqbn || !port) {
+		const live = extras?.proxy?.status();
+		const fqbn =
+			put.fqbn ||
+			(live?.connected ? live.fqbn : undefined) ||
+			selected?.fqbn;
+		const port = put.port || live?.port || selected?.address;
+		if (!port) {
 			throw new ArduinoProxyError("no arduino connected");
+		}
+		if (!fqbn) {
+			throw new ArduinoProxyError("fqbn is required");
 		}
 		if (!isArduinoProxyFqbn(fqbn)) {
 			throw new ArduinoProxyError(`unsupported fqbn ${fqbn}`);

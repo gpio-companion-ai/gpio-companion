@@ -17,10 +17,13 @@ import {
 	ArduinoProxyError,
 	arduinoProxyBaud,
 	arduinoProxyBoard,
+	arduinoProxyBoardFromProbe,
 	arduinoProxyPins,
 	arduinoProxySnapshot,
 	createFirmataParser,
 	emptyArduinoProxyStatus,
+	FIRMWARE_BAUD_AVR,
+	encodeAnalogMappingQuery,
 	encodeAnalogWrite,
 	encodeCapabilityQuery,
 	encodeDigitalPin,
@@ -272,14 +275,12 @@ export function createArduinoProxy(
 			return status;
 		}
 		parser = createFirmataParser();
-		const board =
-			arduinoProxyBoard(fqbn || "") || arduinoProxyBoard("arduino:avr:uno");
-		if (!board) {
-			throw new ArduinoProxyError("unsupported board");
-		}
+		const usbBoard = arduinoProxyBoard(fqbn || "");
 		serial?.close();
-		const baud = arduinoProxyBaud(board);
+		const baud = usbBoard ? arduinoProxyBaud(usbBoard) : FIRMWARE_BAUD_AVR;
 		let sawFirmware = false;
+		let pinCount = 0;
+		let analogMap: number[] | undefined;
 		serial = openSerial(
 			port,
 			baud,
@@ -287,6 +288,12 @@ export function createArduinoProxy(
 				for (const event of parser.push(bytes)) {
 					if (event.type === "firmware" || event.type === "version") {
 						sawFirmware = true;
+					}
+					if (event.type === "capability") {
+						pinCount = event.pins.length;
+					}
+					if (event.type === "analog-map") {
+						analogMap = event.map;
 					}
 					if (event.type === "digital" || event.type === "analog") {
 						ingestEvent(event);
@@ -311,16 +318,35 @@ export function createArduinoProxy(
 		serial.write(encodeSystemReset());
 		const probeMs = options.probeMs ?? PROBE_MS;
 		const deadline = Date.now() + probeMs;
-		while (!sawFirmware && Date.now() < deadline) {
+		const suspectUno =
+			!options.openSerial && (!usbBoard || usbBoard.id === "uno");
+		while (Date.now() < deadline) {
 			serial.write(encodeQueryFirmware());
 			serial.write(encodeCapabilityQuery());
-			await Bun.sleep(Math.min(QUERY_EVERY_MS, Math.max(0, deadline - Date.now())));
+			serial.write(encodeAnalogMappingQuery());
+			if (sawFirmware && pinCount > 0) {
+				break;
+			}
+			if (sawFirmware && !suspectUno) {
+				break;
+			}
+			await Bun.sleep(
+				Math.min(QUERY_EVERY_MS, Math.max(0, deadline - Date.now())),
+			);
 		}
 		if (!sawFirmware && !options.openSerial) {
 			disconnect();
 			throw new ArduinoProxyError("arduino-proxy not detected");
 		}
-		setBoard(board, port, fqbn);
+		const board =
+			arduinoProxyBoardFromProbe({ pinCount, analogMap }) ??
+			usbBoard ??
+			(options.openSerial ? arduinoProxyBoard("uno") : undefined);
+		if (!board) {
+			disconnect();
+			throw new ArduinoProxyError("arduino-proxy board unknown");
+		}
+		setBoard(board, port, board.fqbn);
 		return status;
 	}
 

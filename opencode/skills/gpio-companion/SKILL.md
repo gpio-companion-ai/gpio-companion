@@ -23,11 +23,11 @@ You control a GPIO-equipped Linux OS (Armbian on Orange Pi or Raspberry Pi).
 
 ## C-first GPIO (locked)
 
-Drive pins with Arduino-style C. Direct GPIO PUT is not the default. **Always** `GET /v1/arduino-proxy` before a blink, LED, sketch, or breadboard.
+Drive pins with Arduino-style C. Direct GPIO PUT is not the default. **Always** `GET /v1/arduino-proxy` before creating a sketch or breadboard. Do not assume Uno.
 
 | Job | Do this |
 | --- | --- |
-| Blink, PWM, tone, loops, lasting pin control | `GET /v1/arduino-proxy` first. If `connected`: skill `gpio-arduino-proxy` — `host/arduino-proxy-<name>/`, Arduino pins, `gpio-arduino-proxy` in `breadboard/diagram.json`, `POST /v1/run`. Else skill `gpio-host` — `host/<name>/`, physical pins, `POST /v1/run` |
+| Blink, PWM, tone, loops, lasting pin control | `GET /v1/arduino-proxy` first; do not write a sketch until it returns. If `connected`: skill `gpio-arduino-proxy` — use `board` (Mega A0 is 54, not 14), `host/arduino-proxy-<name>/`, `gpio-arduino-proxy` in `breadboard/diagram.json`, `POST /v1/run`. If not connected, do not invent a proxy sketch. Else skill `gpio-host` — `host/<name>/`, physical pins, `POST /v1/run` |
 | Snapshot pins | `GET http://127.0.0.1:4150/v1/gpio` |
 | User asked to probe a pin or verify Live GPIO | One-shot `PUT /v1/gpio` (digital) or skill `gpio-pwm` (analogWrite/tone), then stop |
 | USB Arduino flash | Skill `gpio-arduino`, `POST /v1/flash` — never this header; replaces a live proxy |

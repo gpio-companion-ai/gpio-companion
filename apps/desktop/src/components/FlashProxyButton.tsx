@@ -73,7 +73,7 @@ export default function FlashProxyButton({
 	const [notice, setNotice] = useState("");
 	const [ports, setPorts] = useState<FlashPort[]>([]);
 	const [port, setPort] = useState("");
-	const [fqbn, setFqbn] = useState("arduino:avr:uno");
+	const [fqbn, setFqbn] = useState("");
 	const [proxy, setProxy] = useState<ArduinoProxyStatus | null>(null);
 	const [status, setStatus] = useState<FlashStatus | null>(null);
 	const waitingRef = useRef(false);
@@ -137,7 +137,11 @@ export default function FlashProxyButton({
 			setFqbn(first.fqbn);
 		}
 		try {
-			setProxy(await loadArduinoProxy(uuid));
+			const nextProxy = await loadArduinoProxy(uuid);
+			setProxy(nextProxy);
+			if (nextProxy.connected && nextProxy.fqbn && isProxyFqbn(nextProxy.fqbn)) {
+				setFqbn(nextProxy.fqbn);
+			}
 		} catch {
 			setProxy(null);
 		}
@@ -298,7 +302,7 @@ export default function FlashProxyButton({
 					type="button"
 					variant="contained"
 					size="small"
-					disabled={busy || flashing || !uuid}
+					disabled={busy || flashing || !uuid || !fqbn.trim()}
 					onClick={() => {
 						beforeKeyRef.current = lastKey(status?.last ?? null);
 						seenRunningRef.current = false;

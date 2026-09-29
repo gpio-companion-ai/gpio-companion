@@ -20,10 +20,14 @@ curl -s http://127.0.0.1:4150/v1/arduino-proxy
 
 You call loopback yourself. **Never** tell the user to curl it.
 
+Do not write `diagram.json` until this GET returns.
+
 If `connected` is true: the circuit is on the USB Arduino. Require a
-`gpio-arduino-proxy` part (`attrs.board` from `fqbn`). MCU wires use Arduino
-pins (`uno:13`, `uno:A0`, `uno:GND`) — never `header:13` for that net. Drive
-pins with skill `gpio-arduino-proxy` (`host/arduino-proxy-<name>/`). Do not mix
+`gpio-arduino-proxy` part. `attrs.board` and the wire prefix are `board` from
+that JSON (`mega`, not `uno`, when the proxy is a Mega). MCU wires use that
+prefix (`mega:13`, `mega:A0`, `mega:GND` — or `uno:` only when `board` is
+`uno`). Never `header:13` for that net. Drive pins with skill
+`gpio-arduino-proxy` (`host/arduino-proxy-<name>/`). Do not mix
 companion GPIO and Arduino GPIO on one net. Do not mix 3V3 and 5V. AVR 5V must
 not jumper to this companion's 3.3V header.
 
@@ -118,7 +122,7 @@ USB Arduino proxy live (`connected` true) — MCU wires on `uno:*`, not `header:
 
 - Load `gpio-pinout-raspberrypi` or `gpio-pinout-orangepi` from `/etc/gpio-companion/config.json` `hardware` before placing jumpers.
 - `gpio-companion-header` pins are **physical** 1–40. `attrs.hardware` must be `raspberrypi` or `orangepi`.
-- `gpio-arduino-proxy` is the USB Arduino (Uno/Nano/Mega/MKR/Zero/ESP32). Required when `GET /v1/arduino-proxy` is connected. `attrs.board` is `uno`, `nano`, `mega`, `nano_33_iot`, `mkrwifi1010`, `mkrzero`, `mzero`, `esp32`, `esp32s3`, `esp32c3`, or an FQBN. Pins are Arduino numbers: `uno:13`, `uno:D13`, `uno:A0`, plus `5V` / `3V3` / `GND` / `VIN`. Place it beside the breadboard like the companion header. Do not mix AVR 5V with companion 3V3.
+- `gpio-arduino-proxy` is the USB Arduino (Uno/Nano/Mega/MKR/Zero/ESP32). Required when `GET /v1/arduino-proxy` is connected. `attrs.board` is the GET `board` (`uno`, `nano`, `mega`, `nano_33_iot`, `mkrwifi1010`, `mkrzero`, `mzero`, `esp32`, `esp32s3`, `esp32c3`). Wire prefix matches that id: `mega:13` / `mega:A0` on a Mega, `uno:13` only on an Uno, plus `5V` / `3V3` / `GND` / `VIN`. Mega A0 is pin 54, not 14. Place it beside the breadboard like the companion header. Do not mix AVR 5V with companion 3V3.
 - Always include one `wokwi-breadboard-half` (30 rows), `wokwi-breadboard` (63), or `wokwi-breadboard-mini`.
 - Portrait plug map: columns `a`–`e` then `f`–`j` on X, rows `1`–`30` down Y. Power rails are vertical on both long sides. Left: `tp.*` (+) then `tn.*` (−). Right: `bn.*` (−) then `bp.*` (+). Rail index matches the row (`tn.10` is beside `10a`). Mini has no rails.
 - Breadboard holes: `{row}{column}` such as `10a` … `10e` / `10f` … `10j`. Rails: `tp.1`, `tn.1`, `bp.1`, `bn.1`.

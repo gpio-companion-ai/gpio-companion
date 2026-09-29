@@ -79,6 +79,7 @@ export {
 	arduinoCoreForFqbn,
 	arduinoProxyBaud,
 	arduinoProxyBoard,
+	arduinoProxyBoardFromProbe,
 	arduinoProxyPins,
 	arduinoProxySketchName,
 	arduinoProxySnapshot,
@@ -385,6 +386,7 @@ export {
 	isFlashPath,
 	parseArduinoBoardList,
 	parseFlashPut,
+	pickArduinoProxyFqbn,
 	pickFlashTarget,
 } from "./flash.ts";
 export {

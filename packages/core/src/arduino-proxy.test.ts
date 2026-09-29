@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	arduinoCoreForFqbn,
 	arduinoProxyBoard,
+	arduinoProxyBoardFromProbe,
 	arduinoProxyPins,
 	arduinoProxySketchName,
 	ArduinoProxyError,
@@ -50,6 +51,16 @@ describe("arduino proxy boards", () => {
 		expect(parseArduinoCoreList({ platforms: [{ id: "arduino:avr" }] })).toEqual(
 			["arduino:avr"],
 		);
+	});
+
+	test("capability pin count identifies a mega mislabeled as uno", () => {
+		expect(arduinoProxyBoardFromProbe({ pinCount: 70 })?.id).toBe("mega");
+		const map = Array.from({ length: 70 }, () => 127);
+		map[54] = 0;
+		expect(arduinoProxyBoardFromProbe({ analogMap: map })?.fqbn).toBe(
+			"arduino:avr:mega",
+		);
+		expect(arduinoProxyBoardFromProbe({ pinCount: 20 })).toBeUndefined();
 	});
 
 	test("uno reserves D0/D1 and exposes A0 as 14", () => {

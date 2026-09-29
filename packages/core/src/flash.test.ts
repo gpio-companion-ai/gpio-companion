@@ -5,6 +5,7 @@ import {
 	FlashError,
 	isFlashPath,
 	parseArduinoBoardList,
+	pickArduinoProxyFqbn,
 	parseFlashPut,
 	pickFlashTarget,
 } from "./flash.ts";
@@ -99,6 +100,52 @@ describe("parseArduinoBoardList", () => {
 				name: "Arduino Uno",
 			},
 		]);
+	});
+
+	test("prefers mega when uno is listed first", () => {
+		expect(
+			parseArduinoBoardList({
+				detected_ports: [
+					{
+						port: {
+							address: "/dev/ttyACM0",
+							protocol: "serial",
+							properties: { vid: "0x2341", pid: "0x0042" },
+						},
+						matching_boards: [
+							{ name: "Arduino Uno", fqbn: "arduino:avr:uno" },
+							{
+								name: "Arduino Mega or Mega 2560",
+								fqbn: "arduino:avr:mega",
+							},
+						],
+					},
+				],
+			}),
+		).toEqual([
+			{
+				address: "/dev/ttyACM0",
+				protocol: "serial",
+				fqbn: "arduino:avr:mega",
+				name: "Arduino Mega or Mega 2560",
+			},
+		]);
+	});
+
+	test("does not assume uno when the port is ambiguous", () => {
+		expect(
+			pickArduinoProxyFqbn({
+				boards: [
+					{ name: "Arduino Uno", fqbn: "arduino:avr:uno" },
+					{ name: "Arduino Nano", fqbn: "arduino:avr:nano" },
+				],
+			}),
+		).toEqual({});
+		expect(
+			parseArduinoBoardList({
+				detected_ports: [{ port: { address: "/dev/ttyUSB0" } }],
+			})[0]?.fqbn,
+		).toBeUndefined();
 	});
 
 	test("parses json string", () => {
