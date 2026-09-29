@@ -28,6 +28,18 @@ import { storageGet, storageSet } from "../lib/storage.ts";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
+function formatSessionTime(updated: number): string {
+	if (!updated) {
+		return "";
+	}
+	return new Date(updated).toLocaleString(undefined, {
+		month: "short",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+	});
+}
+
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
 
@@ -541,11 +553,24 @@ export default function Code() {
 												}));
 												setMode("session");
 											}}
-											style={row}
+											style={[
+												row,
+												{
+													flexDirection: "row",
+													alignItems: "center",
+													justifyContent: "space-between",
+													gap: 8,
+												},
+											]}
 										>
-											<Text style={ink} numberOfLines={1}>
+											<Text style={[ink, { flex: 1 }]} numberOfLines={1}>
 												{session.title}
 											</Text>
+											{session.updated ? (
+												<Text style={[muted, { fontSize: 11 }]}>
+													{formatSessionTime(session.updated)}
+												</Text>
+											) : null}
 										</Pressable>
 									))}
 								</View>

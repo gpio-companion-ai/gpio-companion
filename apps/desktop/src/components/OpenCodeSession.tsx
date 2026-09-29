@@ -65,6 +65,18 @@ function BackIcon() {
 	);
 }
 
+function formatSessionTime(updated: number): string {
+	if (!updated) {
+		return "";
+	}
+	return new Date(updated).toLocaleString(undefined, {
+		month: "short",
+		day: "numeric",
+		hour: "2-digit",
+		minute: "2-digit",
+	});
+}
+
 function Blocks({ text }: { text: string }) {
 	const blocks = formatOpencodeBlocks(text);
 	if (blocks.length === 0 && text) {
@@ -602,6 +614,14 @@ export default function OpenCodeSession({
 													<span className="oc-session-title">
 														{session.title}
 													</span>
+													{session.updated ? (
+														<time
+															className="oc-session-time"
+															dateTime={new Date(session.updated).toISOString()}
+														>
+															{formatSessionTime(session.updated)}
+														</time>
+													) : null}
 												</button>
 											))}
 										</div>

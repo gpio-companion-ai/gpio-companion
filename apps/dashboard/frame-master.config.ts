@@ -17,6 +17,7 @@ import AutoSiteMap from "frame-master-plugin-auto-sitemap";
 import SSRPlugin from "frame-master-plugin-cloudflare-pages-dynamic-ssr";
 import CFActionPlugin from "frame-master-plugin-cloudflare-pages-functions-action";
 import CloudflareRouteFilePlugin from "frame-master-plugin-cloudflare-route-file-generator";
+import CloudflareUpdateManager from "frame-master-plugin-cloudflare-update-manager";
 import EnvInHTML from "frame-master-plugin-env-in-html";
 import imageOptimizer from "frame-master-plugin-image-optimizer";
 import NodePolyfills from "frame-master-plugin-node-polyfills";
@@ -186,6 +187,16 @@ export default {
 						);
 					},
 				},
+				CloudflareUpdateManager({
+					paths: {
+						notFound: () =>
+							renderToString(
+								createElement(LocaleProvider, null, createElement(NotFound)),
+							),
+						actionBasePath: "src/actions",
+					},
+					autoInjectCheckVersion: true,
+				}),
 			],
 		}),
 		ServeFromBuild({
@@ -348,15 +359,6 @@ export default {
 					naming: {
 						asset: "[dir]/[name].[ext]",
 					},
-				},
-			},
-			virtualModules: {
-				"404.html": {
-					contents: renderToString(
-						createElement(LocaleProvider, null, createElement(NotFound)),
-					),
-					loader: "html",
-					injectRuntime: false,
 				},
 			},
 		},
