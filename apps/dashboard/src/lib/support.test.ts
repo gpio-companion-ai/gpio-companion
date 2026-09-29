@@ -4,10 +4,10 @@ import {
 	SUPPORT_FROM,
 	SUPPORT_RATE_MAX,
 	SUPPORT_TO,
-	type SupportEmail,
 	stripSecrets,
 	supportAccepted,
 	supportResponse,
+	type SupportEnv,
 } from "./support.ts";
 
 class MemoryKv {
@@ -20,11 +20,57 @@ class MemoryKv {
 	}
 }
 
-function env(email?: SupportEmail) {
+type SentCall = {
+	url: string;
+	authorization: string;
+	body: Record<string, unknown>;
+};
+
+function env(overrides?: Partial<SupportEnv>): SupportEnv {
 	return {
 		DYNAMIC_PAGE_KV: new MemoryKv() as unknown as KVNamespace,
-		EMAIL: email,
+		CLOUDFLARE_ACCOUNT_ID: "",
+		CLOUDFLARE_EMAIL_API_TOKEN: "",
+		...overrides,
 	};
+}
+
+function configuredEnv(kv?: MemoryKv): SupportEnv {
+	return env({
+		DYNAMIC_PAGE_KV: (kv ?? new MemoryKv()) as unknown as KVNamespace,
+		CLOUDFLARE_ACCOUNT_ID: "account-1",
+		CLOUDFLARE_EMAIL_API_TOKEN: "token-1",
+	});
+}
+
+function delivery(to: string, queued = false) {
+	return {
+		success: true,
+		result: {
+			delivered: queued ? [] : [to],
+			permanent_bounces: [],
+			queued: queued ? [to] : [],
+		},
+	};
+}
+
+function mockFetch(
+	handler: (call: number) => Response,
+): { fetch: typeof fetch; calls: SentCall[] } {
+	const calls: SentCall[] = [];
+	const fetchImpl = (async (
+		input: Parameters<typeof fetch>[0],
+		init?: Parameters<typeof fetch>[1],
+	) => {
+		const headers = new Headers(init?.headers);
+		calls.push({
+			url: String(input),
+			authorization: headers.get("Authorization") ?? "",
+			body: JSON.parse(String(init?.body)) as Record<string, unknown>,
+		});
+		return handler(calls.length);
+	}) as unknown as typeof fetch;
+	return { fetch: fetchImpl, calls };
 }
 
 describe("support", () => {
@@ -40,16 +86,11 @@ describe("support", () => {
 		expect(stripped).toContain("[redacted]");
 	});
 
-	test("sends a mocked binding and does not claim success without one", async () => {
-		const sent: unknown[] = [];
-		const binding: SupportEmail = {
-			async send(message) {
-				sent.push(message);
-				return { messageId: "msg-1" };
-			},
-		};
+	test("posts the Email Sending REST API and does not claim success without config", async () => {
+		const sent = mockFetch(() => Response.json(delivery(SUPPORT_TO)));
 		const result = await handleSupport({
-			env: env(binding),
+			env: configuredEnv(),
+			fetch: sent.fetch,
 			userId: "user-1",
 			userEmail: "owner@example.com",
 			now: 1_000,
@@ -61,26 +102,41 @@ describe("support", () => {
 			},
 		});
 		expect(supportAccepted(result)).toBe(true);
-		expect(sent).toHaveLength(1);
-		const message = sent[0] as {
-			to: string;
-			from: { email: string };
-			text: string;
-		};
-		expect(message.to).toBe(SUPPORT_TO);
-		expect(message.from.email).toBe(SUPPORT_FROM);
-		expect(message.text).toContain("User: user-1");
-		expect(message.text).toContain("Surface: web");
-		expect(message.text).toContain("11111111-1111-4111-8111-111111111111");
-		expect(message.text).toContain("Orange Pi 3 LTS");
-		expect(message.text).toContain("blink failed");
-		expect(message.text).not.toContain("ghp_");
+		expect(sent.calls).toHaveLength(1);
+		const call = sent.calls[0];
+		expect(call?.url).toBe(
+			"https://api.cloudflare.com/client/v4/accounts/account-1/email/sending/send",
+		);
+		expect(call?.authorization).toBe("Bearer token-1");
+		expect(call?.body.to).toBe(SUPPORT_TO);
+		expect(call?.body.from).toEqual({
+			address: SUPPORT_FROM,
+			name: "gpio-companion",
+		});
+		expect(call?.body.reply_to).toBe("owner@example.com");
+		expect(call?.body.subject).toBe("gpio-companion bug report");
+		const text = String(call?.body.text);
+		expect(text).toContain("User: user-1");
+		expect(text).toContain("Surface: web");
+		expect(text).toContain("11111111-1111-4111-8111-111111111111");
+		expect(text).toContain("Orange Pi 3 LTS");
+		expect(text).toContain("blink failed");
+		expect(text).not.toContain("ghp_");
+		expect(JSON.stringify(call?.body)).not.toContain("token-1");
 		await expect(
 			handleSupport({
 				env: env(),
 				userId: "user-1",
 				userEmail: null,
-				body: { surface: "desktop", text: "no binding" },
+				body: { surface: "desktop", text: "no token" },
+			}),
+		).rejects.toThrow("support email is not configured");
+		await expect(
+			handleSupport({
+				env: env({ CLOUDFLARE_ACCOUNT_ID: "account-1" }),
+				userId: "user-1",
+				userEmail: null,
+				body: { surface: "mobile", text: "no token" },
 			}),
 		).rejects.toThrow("support email is not configured");
 		expect(supportAccepted(null)).toBe(false);
@@ -90,7 +146,7 @@ describe("support", () => {
 				env: env(),
 				userId: "user-1",
 				userEmail: null,
-				body: { surface: "web", text: "binding missing" },
+				body: { surface: "web", text: "token missing" },
 			}),
 		);
 		expect(missing.status).toBe(503);
@@ -104,30 +160,64 @@ describe("support", () => {
 		});
 	});
 
-	test("rate-limits per user and does not send when the binding throws", async () => {
+	test("accepts a queued recipient", async () => {
+		const sent = mockFetch(() => Response.json(delivery(SUPPORT_TO, true)));
+		const result = await handleSupport({
+			env: configuredEnv(),
+			fetch: sent.fetch,
+			userId: "user-queued",
+			userEmail: null,
+			now: 2_000,
+			body: { surface: "desktop", text: "queued" },
+		});
+		expect(supportAccepted(result)).toBe(true);
+		expect(sent.calls[0]?.body.reply_to).toBeUndefined();
+	});
+
+	test("rate-limits per user and does not keep a slot when send fails", async () => {
 		let calls = 0;
-		const binding: SupportEmail = {
-			async send() {
-				calls += 1;
-				if (calls === 1) {
-					throw new Error("E_SENDER_NOT_VERIFIED");
-				}
-				return { messageId: "ok" };
-			},
-		};
-		const shared = env(binding);
+		const sent = mockFetch(() => {
+			calls += 1;
+			if (calls === 1) {
+				return Response.json({
+					success: true,
+					result: {
+						delivered: [],
+						permanent_bounces: [SUPPORT_TO],
+						queued: [],
+					},
+				});
+			}
+			if (calls === 2) {
+				return new Response("no", { status: 500 });
+			}
+			return Response.json(delivery(SUPPORT_TO));
+		});
+		const shared = configuredEnv();
 		await expect(
 			handleSupport({
 				env: shared,
+				fetch: sent.fetch,
 				userId: "user-2",
 				userEmail: null,
 				now: 5_000,
-				body: { surface: "mobile", text: "first" },
+				body: { surface: "mobile", text: "bounce" },
+			}),
+		).rejects.toThrow("support email is not configured");
+		await expect(
+			handleSupport({
+				env: shared,
+				fetch: sent.fetch,
+				userId: "user-2",
+				userEmail: null,
+				now: 6_000,
+				body: { surface: "mobile", text: "upstream" },
 			}),
 		).rejects.toThrow("support email is not configured");
 		for (let i = 0; i < SUPPORT_RATE_MAX; i += 1) {
 			await handleSupport({
 				env: shared,
+				fetch: sent.fetch,
 				userId: "user-2",
 				userEmail: null,
 				now: 10_000 + i,
@@ -137,11 +227,13 @@ describe("support", () => {
 		await expect(
 			handleSupport({
 				env: shared,
+				fetch: sent.fetch,
 				userId: "user-2",
 				userEmail: null,
 				now: 20_000,
 				body: { surface: "mobile", text: "too many" },
 			}),
 		).rejects.toThrow("too many bug reports");
+		expect(sent.calls).toHaveLength(2 + SUPPORT_RATE_MAX);
 	});
 });

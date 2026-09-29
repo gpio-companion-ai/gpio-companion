@@ -26,21 +26,22 @@ const SECRET_PATTERNS: RegExp[] = [
 
 export type SupportSurface = "web" | "desktop" | "mobile";
 
-export type SupportEmail = {
-	send(message: {
-		to: string;
-		from: string | { email: string; name?: string };
-		replyTo?: string;
-		subject: string;
-		text: string;
-		html: string;
-	}): Promise<{ messageId?: string }>;
-};
-
 export type SupportEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
-	EMAIL?: SupportEmail;
+	CLOUDFLARE_ACCOUNT_ID?: string;
+	CLOUDFLARE_EMAIL_API_TOKEN?: string;
 	SUPPORT_FROM_EMAIL?: string;
+};
+
+type SupportFetch = typeof fetch;
+
+type SendResult = {
+	success?: boolean;
+	result?: {
+		delivered?: string[];
+		permanent_bounces?: string[];
+		queued?: string[];
+	} | null;
 };
 
 export type SupportBody = {
@@ -88,6 +89,100 @@ function asTrimmed(value: unknown, max: number): string {
 		return "";
 	}
 	return stripSecrets(value).trim().slice(0, max);
+}
+
+function configuredValue(
+	explicit: string | undefined,
+	fallback: string | undefined,
+): string {
+	if (explicit !== undefined) {
+		return explicit.trim();
+	}
+	return fallback?.trim() || "";
+}
+
+function cloudflareAccountId(env: SupportEnv): string {
+	return configuredValue(
+		env.CLOUDFLARE_ACCOUNT_ID,
+		process.env.CLOUDFLARE_ACCOUNT_ID,
+	);
+}
+
+function cloudflareEmailToken(env: SupportEnv): string {
+	return configuredValue(
+		env.CLOUDFLARE_EMAIL_API_TOKEN,
+		process.env.CLOUDFLARE_EMAIL_API_TOKEN,
+	);
+}
+
+function emailConfigured(env: SupportEnv): boolean {
+	return Boolean(cloudflareAccountId(env) && cloudflareEmailToken(env));
+}
+
+function acceptedSend(result: SendResult, to: string): boolean {
+	if (result.success !== true || !result.result) {
+		return false;
+	}
+	const bounced = result.result.permanent_bounces ?? [];
+	if (bounced.includes(to)) {
+		return false;
+	}
+	const delivered = result.result.delivered ?? [];
+	const queued = result.result.queued ?? [];
+	return delivered.includes(to) || queued.includes(to);
+}
+
+async function sendSupportMail(
+	env: SupportEnv,
+	message: {
+		to: string;
+		from: { address: string; name?: string };
+		replyTo?: string;
+		subject: string;
+		text: string;
+		html: string;
+	},
+	fetchImpl: SupportFetch,
+): Promise<void> {
+	const accountId = cloudflareAccountId(env);
+	const token = cloudflareEmailToken(env);
+	if (!accountId || !token) {
+		throw new Error("support email is not configured");
+	}
+	const payload: Record<string, unknown> = {
+		to: message.to,
+		from: message.from,
+		subject: message.subject,
+		text: message.text,
+		html: message.html,
+	};
+	if (message.replyTo) {
+		payload.reply_to = message.replyTo;
+	}
+	const response = await fetchImpl(
+		`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/email/sending/send`,
+		{
+			method: "POST",
+			headers: {
+				Authorization: `Bearer ${token}`,
+				"Content-Type": "application/json",
+			},
+			body: JSON.stringify(payload),
+		},
+	);
+	if (!response.ok) {
+		await response.text().catch(() => "");
+		throw new Error("support email is not configured");
+	}
+	let parsed: SendResult;
+	try {
+		parsed = (await response.json()) as SendResult;
+	} catch {
+		throw new Error("support email is not configured");
+	}
+	if (!acceptedSend(parsed, message.to)) {
+		throw new Error("support email is not configured");
+	}
 }
 
 function fromAddress(env: SupportEnv): string {
@@ -174,9 +269,9 @@ export async function handleSupport(input: {
 	userEmail: string | null;
 	body: SupportBody;
 	now?: number;
+	fetch?: SupportFetch;
 }): Promise<{ sent: true }> {
-	const email = input.env.EMAIL;
-	if (!email || typeof email.send !== "function") {
+	if (!emailConfigured(input.env)) {
 		throw new Error("support email is not configured");
 	}
 	const from = fromAddress(input.env);
@@ -208,17 +303,20 @@ export async function handleSupport(input: {
 	];
 	const plain = lines.join("\n");
 	const html = `<pre>${escapeHtml(plain)}</pre>`;
+	const userReply = replyTo(input.userEmail);
 	try {
-		await email.send({
-			to: SUPPORT_TO,
-			from: { email: from, name: "gpio-companion" },
-			...(replyTo(input.userEmail)
-				? { replyTo: replyTo(input.userEmail) }
-				: {}),
-			subject: "gpio-companion bug report",
-			text: plain,
-			html,
-		});
+		await sendSupportMail(
+			input.env,
+			{
+				to: SUPPORT_TO,
+				from: { address: from, name: "gpio-companion" },
+				...(userReply ? { replyTo: userReply } : {}),
+				subject: "gpio-companion bug report",
+				text: plain,
+				html,
+			},
+			input.fetch ?? fetch,
+		);
 	} catch {
 		await releaseRate(input.env.DYNAMIC_PAGE_KV, userId, now);
 		throw new Error("support email is not configured");

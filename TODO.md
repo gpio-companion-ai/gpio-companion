@@ -178,6 +178,8 @@ Done when a user can ask to move a part and see the updated glb without leaving 
 
 Status: done
 
+Correction 2026-09-29: Pages rejects `send_email`. The dashboard Pages Function sends via the Email Sending REST API (`CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_EMAIL_API_TOKEN`). Do not add the binding back.
+
 ### Prompt
 
 ```

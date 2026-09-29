@@ -19,6 +19,7 @@
 		"PAYPAL_ENV": "live",
 		"PUBLIC_PAYPAL_CLIENT_ID": "BAABxmBqK6EERDGyRgTKlhLfu_RX3xOfuSJJj1i4QcrdUgfe4MR_LgAVC59uVJonileGPQJk0RLwkoGPbc",
 		"JLCPCB_APP_ID": "626910717980270593",
+		"CLOUDFLARE_ACCOUNT_ID": "17b0a92da13df078f38bcd297ee71f81",
 	},
 	"kv_namespaces": [
 		{
@@ -31,20 +32,14 @@
 		"binding": "AI",
 		"remote": true
 	},
-	"send_email": [
-		{
-			"name": "EMAIL",
-			"allowed_sender_addresses": [
-				"noreply@gpio-companion.com"
-			]
-		}
-	],
 	// GPIO_COMPANION_DEVICE_PRIVATE_KEY Pages secret (Ed25519 PEM)
 	// PAYPAL_CLIENT_SECRET Pages secret
 	// PUBLIC_PAYPAL_CLIENT_ID wrangler var (do not bake empty)
 	// JLCPCB_APP_ID Pages secret
 	// JLCPCB_ACCESS_KEY Pages secret
 	// JLCPCB_SECRET_KEY Pages secret
+	// CLOUDFLARE_EMAIL_API_TOKEN Pages secret (Email Sending: Edit)
+	// CLOUDFLARE_ACCOUNT_ID wrangler var (do not bake empty)
 	"durable_objects": {
 		"bindings": [
 			{

@@ -196,8 +196,10 @@ Committed `vars` override dashboard-only values if they are empty strings. Set r
 | `PUBLIC_PAYPAL_CLIENT_ID` | PayPal REST app client id (wrangler var; do not bake empty) |
 | `PAYPAL_CLIENT_SECRET` | PayPal REST app secret (Pages secret) |
 | `PAYPAL_ENV` | `sandbox` or `live` (wrangler var; start sandbox) |
+| `CLOUDFLARE_EMAIL_API_TOKEN` | Email Sending REST token, permission Email Sending: Edit (Pages secret). Not the Pi tunnel token. |
+| `CLOUDFLARE_ACCOUNT_ID` | Cloudflare account id for Email Sending (wrangler var). Do not bake empty. |
 
-`PUBLIC_*` is injected into the browser. Never put `GPIO_COMPANION_DEVICE_PRIVATE_KEY`, `AUTH_SECRET`, `GITHUB_APP_PRIVATE_KEY`, or `PAYPAL_CLIENT_SECRET` under a `PUBLIC_` name.
+`PUBLIC_*` is injected into the browser. Never put `GPIO_COMPANION_DEVICE_PRIVATE_KEY`, `AUTH_SECRET`, `GITHUB_APP_PRIVATE_KEY`, `PAYPAL_CLIENT_SECRET`, or `CLOUDFLARE_EMAIL_API_TOKEN` under a `PUBLIC_` name. Bug reports use Email Sending REST (`POST /accounts/{account_id}/email/sending/send`). Pages rejects `send_email`.
 
 ### Local
 
