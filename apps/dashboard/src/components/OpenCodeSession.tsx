@@ -574,7 +574,7 @@ export default function OpenCodeSession({
 								</div>
 							) : (
 								grouped.map((group) => (
-									<div key={group.id}>
+									<div key={group.id} className="oc-bucket">
 										<div className="oc-group">{group.title}</div>
 										{group.sessions.map((session) => (
 											<button

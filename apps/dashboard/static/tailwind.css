@@ -393,6 +393,8 @@ body {
 }
 
 .b6-stage-content.is-fill {
+	height: 100%;
+	min-height: 0;
 	overflow: hidden;
 }
 
@@ -1343,8 +1345,9 @@ mark {
 	height: 100%;
 	min-width: 0;
 	min-height: 0;
-	flex: 1;
+	flex: 1 1 0;
 	flex-direction: column;
+	overflow: hidden;
 	color: rgb(var(--text-main));
 	font-size: 13px;
 	line-height: 20px;
@@ -1368,9 +1371,11 @@ mark {
 
 .oc-card {
 	display: flex;
+	width: 100%;
+	height: 100%;
 	min-width: 0;
 	min-height: 0;
-	flex: 1;
+	flex: 1 1 0;
 	flex-direction: column;
 	overflow: hidden;
 	border-radius: 10px;
@@ -1380,9 +1385,12 @@ mark {
 
 .oc-home {
 	display: grid;
+	height: 100%;
 	min-height: 0;
-	flex: 1;
+	flex: 1 1 0;
 	grid-template-columns: 220px minmax(0, 1fr);
+	grid-template-rows: minmax(0, 1fr);
+	overflow: hidden;
 }
 
 .oc-projects,
@@ -1390,10 +1398,11 @@ mark {
 .oc-transcript {
 	min-width: 0;
 	min-height: 0;
-	overflow: auto;
+	overflow: hidden;
 }
 
 .oc-projects {
+	overflow-y: auto;
 	padding: 20px 8px 16px;
 	border-right: 1px solid rgba(var(--text-main), 0.08);
 }
@@ -1408,11 +1417,14 @@ mark {
 }
 
 .oc-row {
+	position: relative;
 	display: flex;
 	width: 100%;
 	height: 40px;
+	flex: 0 0 40px;
 	align-items: center;
 	gap: 8px;
+	margin: 0;
 	border-radius: 6px;
 	padding: 0 12px;
 	color: rgb(var(--text-secondary));
@@ -1532,11 +1544,10 @@ mark {
 }
 
 .oc-group {
-	position: sticky;
-	top: 48px;
-	z-index: 1;
+	position: relative;
 	display: flex;
 	height: 28px;
+	flex: 0 0 28px;
 	align-items: center;
 	background: rgb(var(--bg-surface));
 	color: rgb(var(--text-secondary));
@@ -1559,13 +1570,30 @@ mark {
 
 .oc-sessions {
 	position: relative;
+	display: flex;
+	min-height: 0;
+	flex-direction: column;
 	overflow: hidden;
 }
 
 .oc-session-list {
+	display: flex;
 	min-height: 0;
-	flex: 1;
-	overflow: auto;
+	flex: 1 1 0;
+	flex-direction: column;
+	align-items: stretch;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
+}
+
+.oc-bucket,
+.oc-session-list > div {
+	display: flex;
+	width: 100%;
+	flex: 0 0 auto;
+	flex-direction: column;
+	align-items: stretch;
 }
 
 .oc-empty {
@@ -1623,9 +1651,11 @@ mark {
 .oc-draft,
 .oc-session {
 	display: flex;
+	height: 100%;
 	min-height: 0;
-	flex: 1;
+	flex: 1 1 0;
 	flex-direction: column;
+	overflow: hidden;
 }
 
 .oc-draft-body {
@@ -1668,7 +1698,11 @@ mark {
 }
 
 .oc-transcript {
-	flex: 1;
+	min-height: 0;
+	flex: 1 1 0;
+	overflow-x: hidden;
+	overflow-y: auto;
+	overscroll-behavior: contain;
 	padding: 16px 20px 8px;
 }
 
