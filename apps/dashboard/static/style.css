@@ -8277,10 +8277,10 @@ mark {
 .MUI_Chip_Root._warning._filled {
   color: #201500;
 }
-.MUI_Chip_Root._warning._filled	> .MUI_Chip_Delete_Icon_Wrapper	> svg {
+.MUI_Chip_Root._warning._filled > .MUI_Chip_Delete_Icon_Wrapper > svg {
   color: rgba(32, 21, 0, 0.6);
 }
-.MUI_Chip_Root._warning._filled	> .MUI_Chip_Delete_Icon_Wrapper	> svg:hover {
+.MUI_Chip_Root._warning._filled > .MUI_Chip_Delete_Icon_Wrapper > svg:hover {
   color: rgba(32, 21, 0, 0.9);
 }
 .oc-shell {
@@ -8608,6 +8608,80 @@ mark {
 .oc-turn p, .oc-turn li {
   margin: 0 0 8px;
 }
+.oc-turn h1, .oc-turn h2, .oc-turn h3, .oc-turn h4, .oc-turn h5, .oc-turn h6 {
+  margin: 12px 0 6px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+.oc-turn h1:first-child, .oc-turn h2:first-child, .oc-turn h3:first-child, .oc-turn h4:first-child, .oc-turn h5:first-child, .oc-turn h6:first-child {
+  margin-top: 0;
+}
+.oc-turn h1 {
+  font-size: 1.25rem;
+}
+.oc-turn h2 {
+  font-size: 1.1rem;
+}
+.oc-turn h3, .oc-turn h4, .oc-turn h5, .oc-turn h6 {
+  font-size: 1rem;
+}
+.oc-turn a {
+  color: rgb(var(--text-primary));
+  text-decoration: underline;
+}
+.oc-turn code {
+  border-radius: 4px;
+  padding: 0 4px;
+  background: rgba(var(--text-main), 0.06);
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+.oc-turn pre code {
+  padding: 0;
+  background: none;
+}
+.oc-turn .oc-code-lang {
+  display: block;
+  margin-bottom: 4px;
+  padding: 0;
+  background: none;
+  color: rgb(var(--text-secondary));
+  font-size: 11px;
+}
+.oc-turn blockquote {
+  margin: 0 0 8px;
+  border-left: 2px solid rgba(var(--text-main), 0.2);
+  padding-left: 10px;
+  color: rgb(var(--text-secondary));
+}
+.oc-turn ul, .oc-turn ol {
+  margin: 0 0 8px;
+  padding-left: 1.25rem;
+}
+.oc-turn hr {
+  margin: 12px 0;
+  border: 0;
+  border-top: 1px solid rgba(var(--text-main), 0.12);
+}
+.oc-table {
+  overflow-x: auto;
+  margin: 0 0 8px;
+}
+.oc-turn table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.oc-turn th, .oc-turn td {
+  border: 1px solid rgba(var(--text-main), 0.12);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.oc-turn th {
+  font-weight: 600;
+}
 .oc-user {
   margin: 0 0 8px;
   border-radius: 8px;
@@ -8721,7 +8795,7 @@ mark {
   border-radius: 12px;
   padding: 8px 8px 8px 12px;
   background: rgba(var(--text-main), 0.05);
-  transition: border-color 120ms ease, background-color 120ms ease;
+  transition: border-color 120ms ease,	background-color 120ms ease;
 }
 .oc-composer:focus-within {
   border-color: rgba(var(--text-primary), 0.45);

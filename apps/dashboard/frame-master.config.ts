@@ -10,7 +10,7 @@ import {
 	getGlobalPluginContext,
 } from "frame-master/plugin";
 import type { FrameMasterConfig } from "frame-master/server/types";
-import { isBuildMode, isProd } from "frame-master/utils";
+import { isBuildMode, isDev, isProd } from "frame-master/utils";
 import ApplyReact from "frame-master-plugin-apply-react/plugin";
 import AssetsToBuild from "frame-master-plugin-assets-to-build";
 import AutoSiteMap from "frame-master-plugin-auto-sitemap";

@@ -57,10 +57,12 @@ export type OpencodeTurn = {
 	text: string;
 };
 
-export type OpencodeBlock =
-	| { type: "paragraph"; text: string }
-	| { type: "code"; text: string }
-	| { type: "list"; items: string[] };
+export type {
+	OpencodeInline,
+	OpencodeListItem,
+	OpencodeMarkdown,
+} from "./opencode-markdown.ts";
+export { parseOpencodeMarkdown } from "./opencode-markdown.ts";
 
 export type OpencodeSessionBucket = "today" | "yesterday" | "earlier";
 
@@ -544,58 +546,6 @@ export function opencodeSessionBucket(
 		return "yesterday";
 	}
 	return "earlier";
-}
-
-export function formatOpencodeBlocks(source: string): OpencodeBlock[] {
-	const blocks: OpencodeBlock[] = [];
-	const text = source.replace(/\r\n/g, "\n");
-	let last = 0;
-	for (const match of text.matchAll(/```[^\n]*\n([\s\S]*?)```/g)) {
-		const index = match.index ?? 0;
-		pushOpencodeProse(blocks, text.slice(last, index));
-		const code = (match[1] ?? "").replace(/\n$/, "");
-		if (code) {
-			blocks.push({ type: "code", text: code });
-		}
-		last = index + match[0].length;
-	}
-	pushOpencodeProse(blocks, text.slice(last));
-	return blocks;
-}
-
-function pushOpencodeProse(blocks: OpencodeBlock[], raw: string) {
-	const paragraph: string[] = [];
-	const list: string[] = [];
-	const flushParagraph = () => {
-		const text = paragraph.join(" ").trim();
-		paragraph.length = 0;
-		if (text) {
-			blocks.push({ type: "paragraph", text });
-		}
-	};
-	const flushList = () => {
-		if (list.length > 0) {
-			blocks.push({ type: "list", items: list.slice() });
-			list.length = 0;
-		}
-	};
-	for (const line of raw.split("\n")) {
-		const item = /^[-*]\s+(.+)$/.exec(line) ?? /^\d+\.\s+(.+)$/.exec(line);
-		if (item?.[1]) {
-			flushParagraph();
-			list.push(item[1]);
-			continue;
-		}
-		if (!line.trim()) {
-			flushParagraph();
-			flushList();
-			continue;
-		}
-		flushList();
-		paragraph.push(line.trim());
-	}
-	flushParagraph();
-	flushList();
 }
 
 function eventBody(value: unknown): {

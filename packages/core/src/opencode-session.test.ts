@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	applyOpencodeEvent,
 	emptyOpencodeView,
-	formatOpencodeBlocks,
 	opencodeClientRequest,
 	opencodeProjectDirectory,
 	opencodeProxyAllows,
@@ -10,6 +9,7 @@ import {
 	opencodeSessionBucket,
 	opencodeSessions,
 	opencodeTurns,
+	parseOpencodeMarkdown,
 	parseOpencodeSse,
 	pendingOpencodeTurn,
 	scopeOpencodeSearch,
@@ -217,13 +217,88 @@ describe("opencode session client", () => {
 		expect(settled.map((turn) => turn.id)).toEqual(["msg_1", pending.id]);
 	});
 
-	test("formats fenced code and lists without treating them as HTML", () => {
+	test("parses headings, lists, and fenced code", () => {
 		expect(
-			formatOpencodeBlocks("See\n\n- pin 7\n- GND\n\n```c\nloop();\n```"),
+			parseOpencodeMarkdown("See\n\n- pin 7\n- GND\n\n```c\nloop();\n```"),
 		).toEqual([
-			{ type: "paragraph", text: "See" },
-			{ type: "list", items: ["pin 7", "GND"] },
-			{ type: "code", text: "loop();" },
+			{ type: "paragraph", inlines: [{ type: "text", text: "See" }] },
+			{
+				type: "list",
+				ordered: false,
+				start: 1,
+				items: [
+					{ inlines: [{ type: "text", text: "pin 7" }], blocks: [] },
+					{ inlines: [{ type: "text", text: "GND" }], blocks: [] },
+				],
+			},
+			{ type: "code", lang: "c", text: "loop();" },
+		]);
+	});
+
+	test("parses inline marks, links, and tables", () => {
+		expect(
+			parseOpencodeMarkdown(
+				"Use **pin** `7` and [docs](https://gpio-companion.com).",
+			),
+		).toEqual([
+			{
+				type: "paragraph",
+				inlines: [
+					{ type: "text", text: "Use " },
+					{ type: "strong", inlines: [{ type: "text", text: "pin" }] },
+					{ type: "text", text: " " },
+					{ type: "code", text: "7" },
+					{ type: "text", text: " and " },
+					{
+						type: "link",
+						href: "https://gpio-companion.com",
+						inlines: [{ type: "text", text: "docs" }],
+					},
+					{ type: "text", text: "." },
+				],
+			},
+		]);
+		expect(
+			parseOpencodeMarkdown("| Pin | Net |\n| --- | --- |\n| 7 | LED |"),
+		).toEqual([
+			{
+				type: "table",
+				aligns: [null, null],
+				header: [
+					[{ type: "text", text: "Pin" }],
+					[{ type: "text", text: "Net" }],
+				],
+				rows: [
+					[[{ type: "text", text: "7" }], [{ type: "text", text: "LED" }]],
+				],
+			},
+		]);
+	});
+
+	test("keeps raw HTML and unsafe links as text", () => {
+		expect(parseOpencodeMarkdown("<script>alert(1)</script>")).toEqual([
+			{
+				type: "paragraph",
+				inlines: [{ type: "text", text: "<script>alert(1)</script>" }],
+			},
+		]);
+		expect(parseOpencodeMarkdown("[x](javascript:alert(1))")).toEqual([
+			{
+				type: "paragraph",
+				inlines: [{ type: "text", text: "x" }],
+			},
+		]);
+	});
+
+	test("treats an unclosed fence as code and leaves unclosed marks literal", () => {
+		expect(parseOpencodeMarkdown("```ts\nconst x = 1")).toEqual([
+			{ type: "code", lang: "ts", text: "const x = 1" },
+		]);
+		expect(parseOpencodeMarkdown("wait **for")).toEqual([
+			{
+				type: "paragraph",
+				inlines: [{ type: "text", text: "wait **for" }],
+			},
 		]);
 	});
 

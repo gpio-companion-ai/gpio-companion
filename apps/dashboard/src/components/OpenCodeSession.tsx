@@ -3,20 +3,21 @@ import { GET as getProjects } from "@api/projects";
 import {
 	applyOpencodeEvent,
 	emptyOpencodeView,
-	formatOpencodeBlocks,
-	type OpencodeBlock,
 	type OpencodeClientCall,
+	type OpencodeInline,
+	type OpencodeMarkdown,
 	type OpencodePermissionResponse,
 	type OpencodeTurn,
 	type OpencodeView,
 	opencodeSessionBucket,
 	opencodeSessions,
 	opencodeTurns,
+	parseOpencodeMarkdown,
 	pendingOpencodeTurn,
 	readOpencodeEventStream,
 	settleOpencodeTurns,
 } from "gpio-companion";
-import { useEffect, useRef, useState } from "react";
+import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
 import { useT } from "../hooks/useLocale.tsx";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
@@ -100,37 +101,143 @@ function formatSessionTime(updated: number): string {
 	});
 }
 
-function Blocks({ text }: { text: string }) {
-	const blocks = formatOpencodeBlocks(text);
-	if (blocks.length === 0 && text) {
-		return <p>{text}</p>;
-	}
-	return blocks.map((block) => (
-		<Block
-			key={
-				block.type === "list"
-					? `list:${block.items.join("\n")}`
-					: `${block.type}:${block.text}`
-			}
-			block={block}
-		/>
+function at<T>(
+	items: readonly T[],
+	render: (item: T, index: number) => ReactNode,
+) {
+	return items.map((item, index) => (
+		// biome-ignore lint/suspicious/noArrayIndexKey: markdown nodes stay in source order
+		<Fragment key={index}>{render(item, index)}</Fragment>
 	));
 }
 
-function Block({ block }: { block: OpencodeBlock }) {
-	if (block.type === "code") {
-		return <pre className="oc-code">{block.text}</pre>;
+function Blocks({ text }: { text: string }) {
+	const blocks = parseOpencodeMarkdown(text);
+	if (blocks.length === 0 && text) {
+		return <p>{text}</p>;
 	}
-	if (block.type === "list") {
+	return at(blocks, (block) => <MdBlock block={block} />);
+}
+
+function Inlines({ inlines }: { inlines: OpencodeInline[] }) {
+	return at(inlines, (node) => <Inline node={node} />);
+}
+
+function Inline({ node }: { node: OpencodeInline }) {
+	if (node.type === "text") {
+		return node.text;
+	}
+	if (node.type === "break") {
+		return <br />;
+	}
+	if (node.type === "code") {
+		return <code>{node.text}</code>;
+	}
+	if (node.type === "strong") {
 		return (
-			<ul>
-				{block.items.map((item) => (
-					<li key={item}>{item}</li>
-				))}
-			</ul>
+			<strong>
+				<Inlines inlines={node.inlines} />
+			</strong>
 		);
 	}
-	return <p>{block.text}</p>;
+	if (node.type === "em") {
+		return (
+			<em>
+				<Inlines inlines={node.inlines} />
+			</em>
+		);
+	}
+	if (node.type === "strike") {
+		return (
+			<s>
+				<Inlines inlines={node.inlines} />
+			</s>
+		);
+	}
+	return (
+		<a href={node.href} target="_blank" rel="noopener noreferrer">
+			<Inlines inlines={node.inlines} />
+		</a>
+	);
+}
+
+function MdBlock({ block }: { block: OpencodeMarkdown }) {
+	if (block.type === "heading") {
+		const Tag = `h${block.level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+		return (
+			<Tag>
+				<Inlines inlines={block.inlines} />
+			</Tag>
+		);
+	}
+	if (block.type === "code") {
+		return (
+			<pre className="oc-code">
+				{block.lang ? <span className="oc-code-lang">{block.lang}</span> : null}
+				{block.text}
+			</pre>
+		);
+	}
+	if (block.type === "list") {
+		const Tag = block.ordered ? "ol" : "ul";
+		return (
+			<Tag start={block.ordered && block.start !== 1 ? block.start : undefined}>
+				{at(block.items, (item) => (
+					<li>
+						<Inlines inlines={item.inlines} />
+						{at(item.blocks, (child) => (
+							<MdBlock block={child} />
+						))}
+					</li>
+				))}
+			</Tag>
+		);
+	}
+	if (block.type === "quote") {
+		return (
+			<blockquote>
+				{at(block.blocks, (child) => (
+					<MdBlock block={child} />
+				))}
+			</blockquote>
+		);
+	}
+	if (block.type === "table") {
+		return (
+			<div className="oc-table">
+				<table>
+					<thead>
+						<tr>
+							{at(block.header, (cell, index) => (
+								<th style={{ textAlign: block.aligns[index] ?? undefined }}>
+									<Inlines inlines={cell} />
+								</th>
+							))}
+						</tr>
+					</thead>
+					<tbody>
+						{at(block.rows, (row) => (
+							<tr>
+								{at(row, (cell, index) => (
+									<td style={{ textAlign: block.aligns[index] ?? undefined }}>
+										<Inlines inlines={cell} />
+									</td>
+								))}
+							</tr>
+						))}
+					</tbody>
+				</table>
+			</div>
+		);
+	}
+	if (block.type === "hr") {
+		return <hr />;
+	}
+	return (
+		<p>
+			<Inlines inlines={block.inlines} />
+		</p>
+	);
 }
 
 function TurnView({ turn, caret }: { turn: OpencodeTurn; caret: boolean }) {
