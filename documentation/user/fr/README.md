@@ -4,7 +4,7 @@ Bienvenue sur votre établi électronique. gpio-companion relie trois espaces :
 
 - **Projet** conserve vos circuits et votre code sur GitHub.
 - **Appareils** gère votre Raspberry Pi ou Orange Pi, le WiFi, Code et les mises à jour.
-- **Code** ouvre T3 Code, où vous décrivez à l’agent ce que vous souhaitez construire.
+- **Code** ouvre l’agent intégré, où vous décrivez ce que vous souhaitez construire.
 
 Vous n’avez pas besoin de connaître Linux, Git ou C pour commencer. Débutez avec une LED, posez des questions et laissez l’agent préparer le câblage et le code.
 

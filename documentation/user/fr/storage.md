@@ -1,6 +1,6 @@
 # Stockage amovible
 
-Une carte SD ou une clé USB supplémentaire offre plus de place à Code pour les fichiers, références et projets. Il n’existe pas de page Stockage dans l’application : le support s’ouvre depuis T3 Code.
+Une carte SD ou une clé USB supplémentaire offre plus de place à Code pour les fichiers, références et projets. Il n’existe pas de page Stockage dans l’application : le support s’ouvre depuis Ouvrir Code.
 
 ## Trouver le support
 

@@ -18,6 +18,7 @@
 		"GPIO_AI_MARKUP": "1.25",
 		"PAYPAL_ENV": "live",
 		"PUBLIC_PAYPAL_CLIENT_ID": "BAABxmBqK6EERDGyRgTKlhLfu_RX3xOfuSJJj1i4QcrdUgfe4MR_LgAVC59uVJonileGPQJk0RLwkoGPbc",
+		"JLCPCB_APP_ID": "626910717980270593",
 	},
 	"kv_namespaces": [
 		{
@@ -30,15 +31,26 @@
 		"binding": "AI",
 		"remote": true
 	},
+	"send_email": [
+		{
+			"name": "EMAIL",
+			"allowed_sender_addresses": [
+				"noreply@gpio-companion.com"
+			]
+		}
+	],
 	// GPIO_COMPANION_DEVICE_PRIVATE_KEY Pages secret (Ed25519 PEM)
 	// PAYPAL_CLIENT_SECRET Pages secret
 	// PUBLIC_PAYPAL_CLIENT_ID wrangler var (do not bake empty)
+	// JLCPCB_APP_ID Pages secret
+	// JLCPCB_ACCESS_KEY Pages secret
+	// JLCPCB_SECRET_KEY Pages secret
 	"durable_objects": {
 		"bindings": [
 			{
 				"name": "DEVICE_HUB",
 				"class_name": "DeviceHub",
-				"script_name": "gpio-companion-hub",
+				"script_name": "gpio-companion-hub"
 			}
 		]
 	}

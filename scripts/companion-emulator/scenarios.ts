@@ -27,9 +27,9 @@ export async function runScenarios(
 	await flashJobs(handle, sketchDir);
 	await consoleUsb(handle);
 	await sockets(handle);
-	await t3Cli(handle);
+	await removedT3Routes(handle);
 	await circuitVerify(handle);
-	assertNoHolds(pid, root, "after t3", ["python3"]);
+	assertNoHolds(pid, root, "after t3 removal", ["python3"]);
 	const warmup = census(pid, root);
 	for (let i = 0; i < CYCLES; i += 1) {
 		await gpioHold(handle);
@@ -226,21 +226,19 @@ async function sockets(handle: CompanionHandle): Promise<void> {
 	}
 }
 
-async function t3Cli(handle: CompanionHandle): Promise<void> {
+async function removedT3Routes(handle: CompanionHandle): Promise<void> {
 	const { client } = handle;
-	await Promise.all([
+	const removed = await Promise.all([
 		deviceJson(client, "/v1/t3/status"),
 		deviceJson(client, "/v1/t3/status"),
-		deviceJson(client, "/v1/t3/status"),
+		deviceJson(client, "/v1/t3/pair", { method: "POST", body: "{}" }),
 	]);
-	const pair = await deviceJson(client, "/v1/t3/pair", {
-		method: "POST",
-		body: "{}",
-	});
-	if (pair.status !== 200) {
-		throw new Error(
-			`t3 pair failed ${pair.status} ${JSON.stringify(pair.body)}`,
-		);
+	for (const response of removed) {
+		if (response.status !== 404) {
+			throw new Error(
+				`t3 route still served ${response.status} ${JSON.stringify(response.body)}`,
+			);
+		}
 	}
 }
 

@@ -43,11 +43,9 @@ Ouvrez **Appareils → WiFi**, choisissez la carte associée, saisissez le nom d
 
 Les informations WiFi vont directement vers la carte proche. Elles ne sont pas ajoutées au projet. Pour les options selon le navigateur ou l’iPhone, consultez [WiFi et Bluetooth](./wifi-bluetooth.md).
 
-## 5. Associer T3 Code
+## 5. Ouvrir Code
 
-Dans **Appareils → Ma carte**, trouvez votre carte et choisissez **Associer T3 Code**. Ouvrez le lien affiché ou scannez le code QR, puis confirmez l’association.
-
-Ensuite, **Ouvrir Code** lance votre espace T3 Code privé. Cette opération ne se fait normalement qu’une fois par carte.
+Dans **Appareils → Ma carte** ou **Projet**, choisissez **Ouvrir Code**. Cela ouvre la session intégrée de la carte sélectionnée. Aucun code d’association n’est nécessaire.
 
 ## 6. Connecter GitHub
 
@@ -72,7 +70,7 @@ L’agent doit reconnaître votre carte, préparer une breadboard visuelle et ex
 Vous êtes prêt lorsque :
 
 - la carte indique **En ligne** dans Appareils
-- **Ouvrir Code** donne accès à T3 Code
+- **Ouvrir Code** ouvre la session intégrée
 - la connexion GitHub est active
 - `bonjour-led` apparaît dans Projet
 
@@ -83,6 +81,6 @@ Vous êtes prêt lorsque :
 | Aucun appareil Bluetooth proche | Rapprochez-vous, autorisez le Bluetooth et fermez toute autre application connectée à la carte |
 | La carte reste hors ligne | Gardez Ethernet branché ou renvoyez le WiFi depuis **Appareils → WiFi** |
 | Les informations d’association sont refusées | Vérifiez que les trois informations proviennent de la même carte physique |
-| L’association T3 a expiré | Choisissez à nouveau **Associer T3 Code** pour obtenir un code récent |
+| Ouvrir Code ne répond pas | Laissez la carte en ligne, puis choisissez à nouveau **Ouvrir Code** |
 | Le projet n’arrive pas sur la carte | Laissez la carte en ligne quelques minutes, puis actualisez Projet |
 | Une fonction récente manque | Passez en mode **Expert**, ouvrez **Appareils → Débogage**, puis choisissez **Mettre à jour le compagnon** |

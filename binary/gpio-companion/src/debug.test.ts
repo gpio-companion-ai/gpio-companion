@@ -290,8 +290,6 @@ describe("device debug suite", () => {
 				filePairingStore(join(dir, "pairing.json"), "pair-uuid", "pair-key"),
 				async () => undefined,
 				undefined,
-				undefined,
-				undefined,
 				{ keyId: keys.keyId, publicKeyPem: keys.publicKeyPem },
 			),
 		).rejects.toThrow("debug event is local-only");

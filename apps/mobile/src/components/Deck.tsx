@@ -25,10 +25,10 @@ import {
 	type ArduinoProxyStatus,
 	type BoardSketch,
 	type BoardView,
+	deviceDisplayName,
 	type FlashPort,
 	type FlashStatus,
 	type GpioSnapshot,
-	deviceDisplayName,
 	listDeviceStatus,
 	loadArduinoProxy,
 	loadFlash,
@@ -105,7 +105,7 @@ type NavigationDeckKey = Extract<
 const deviceLabelKeys: Record<DeviceTabId, NavigationDeckKey> = {
 	overview: "deck.overview",
 	docs: "deck.docs",
-	t3: "deck.t3",
+	code: "deck.code",
 	pair: "deck.pair",
 	wifi: "deck.wifi",
 	requests: "deck.requests",
@@ -439,10 +439,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 								workItems={workItems}
 								docsItems={docsItems}
 								profileSection={profileSection}
-								deviceTabs={deviceTabs(
-									mode,
-									auth.session?.role === "admin",
-								)}
+								deviceTabs={deviceTabs(mode, auth.session?.role === "admin")}
 								activeTab={tab}
 								section={
 									pathname.includes("profile")
@@ -627,6 +624,7 @@ function ContextDrawer({
 		{ id: "account", label: t("deck.account") },
 		{ id: "github", label: t("deck.github") },
 		{ id: "credits", label: t("deck.credits") },
+		{ id: "address", label: t("deck.address") },
 	];
 
 	function press(action: () => void) {
@@ -1139,9 +1137,7 @@ function DockFlash({
 						</View>
 					))
 				)}
-				{error ? (
-					<ErrorText>{translateError(tCore, error)}</ErrorText>
-				) : null}
+				{error ? <ErrorText>{translateError(tCore, error)}</ErrorText> : null}
 			</ScrollView>
 		</View>
 	);
@@ -1493,7 +1489,12 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 				>
 					<Text
 						numberOfLines={1}
-						style={{ color: colors.primary, fontSize: 12, fontWeight: "700", maxWidth: 110 }}
+						style={{
+							color: colors.primary,
+							fontSize: 12,
+							fontWeight: "700",
+							maxWidth: 110,
+						}}
 					>
 						{boardLabel}
 					</Text>
@@ -1501,7 +1502,9 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 				<Pressable
 					onPress={() => setDockCollapsed(!collapsed)}
 					accessibilityRole="button"
-					accessibilityLabel={t(collapsed ? "deck.expandDock" : "deck.collapseDock")}
+					accessibilityLabel={t(
+						collapsed ? "deck.expandDock" : "deck.collapseDock",
+					)}
 					hitSlop={8}
 					style={{
 						alignItems: "center",

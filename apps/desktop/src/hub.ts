@@ -3,7 +3,6 @@ import type {
 	FlashStatus,
 	GpioSnapshot,
 	RunStatus,
-	T3Status,
 } from "./api";
 
 const START_MS = 500;
@@ -13,7 +12,6 @@ export type HubHandlers = {
 	onGpio?: (snapshot: GpioSnapshot) => void;
 	onFlash?: (status: FlashStatus) => void;
 	onRun?: (status: RunStatus) => void;
-	onT3?: (status: T3Status) => void;
 	onArduinoProxy?: (status: ArduinoProxyStatus) => void;
 };
 
@@ -164,24 +162,6 @@ export function asArduinoProxyStatus(
 		return null;
 	}
 	return record;
-}
-
-export function asHubT3Status(payload: unknown): T3Status | null {
-	if (!payload || typeof payload !== "object") {
-		return null;
-	}
-	const record = payload as T3Status;
-	if (typeof record.paired !== "boolean") {
-		return null;
-	}
-	return {
-		running: Boolean(record.running),
-		pairingUrl: typeof record.pairingUrl === "string" ? record.pairingUrl : "",
-		pairingToken:
-			typeof record.pairingToken === "string" ? record.pairingToken : "",
-		paired: record.paired,
-		serviceInstalled: Boolean(record.serviceInstalled),
-	};
 }
 
 export type ReconnectSocket = {
@@ -359,10 +339,6 @@ export function startHubClient(options: {
 				return;
 			}
 			if (message.type === "t3") {
-				const status = asHubT3Status(message.payload);
-				if (status) {
-					options.handlers.onT3?.(status);
-				}
 				return;
 			}
 			if (message.type === "arduinoProxy") {

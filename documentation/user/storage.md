@@ -1,6 +1,6 @@
 # Removable storage
 
-An extra SD card or USB drive gives Code more room for files, references, and projects. There is no separate storage page in the app; you open the drive from T3 Code.
+An extra SD card or USB drive gives Code more room for files, references, and projects. There is no separate storage page in the app; you open the drive from Open Code.
 
 ## Find your drive
 

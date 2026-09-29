@@ -856,7 +856,7 @@ export default function ProjectBrowser({
 									</Typography>
 									{paired ? (
 										<Button
-											href="/devices/t3"
+											href="/devices/code"
 											variant="contained"
 											className={mobile ? "w-full" : undefined}
 										>

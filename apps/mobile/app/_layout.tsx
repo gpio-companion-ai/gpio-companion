@@ -13,7 +13,7 @@ import { LocaleProvider, useT } from "../src/lib/locale.tsx";
 function SignedInTree({ children }: { children: ReactNode }) {
 	const { setTab } = useDeviceHub();
 	return (
-		<BoardSelectionProvider onOpenT3={() => setTab("t3")}>
+		<BoardSelectionProvider onOpenCode={() => setTab("code")}>
 			<ApiCacheProvider>{children}</ApiCacheProvider>
 		</BoardSelectionProvider>
 	);

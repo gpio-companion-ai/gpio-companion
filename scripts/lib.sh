@@ -407,6 +407,138 @@ update_opencode() {
 		sudo -u "$GPIO_USER" -H "$bin" upgrade
 	fi
 	link_opencode_bin || true
+	if [[ -f "$(opencode_user_unit_path)" ]]; then
+		restart_opencode_service || true
+		reap_leaked_opencode_servers || true
+	fi
+}
+
+opencode_server_env_path() {
+	printf '%s\n' "${GPIO_COMPANION_OPENCODE_SERVER_ENV:-$CONFIG_DIR/opencode-server.env}"
+}
+
+opencode_user_unit_path() {
+	printf '%s\n' "$(gpio_user_home)/.config/systemd/user/gpio-opencode.service"
+}
+
+ensure_opencode_server_password() {
+	local dest existing
+	dest="$(opencode_server_env_path)"
+	install -d -m 0755 "$(dirname "$dest")"
+	if [[ -f "$dest" ]]; then
+		existing="$(sed -n 's/^OPENCODE_SERVER_PASSWORD=//p' "$dest" | tail -n1)"
+		if [[ -n "$existing" ]]; then
+			chmod 600 "$dest"
+			if [[ "$GPIO_USER" != "root" ]]; then
+				chown "$GPIO_USER:$GPIO_USER" "$dest" 2>/dev/null || true
+			fi
+			return 0
+		fi
+	fi
+	rotate_opencode_server_password
+}
+
+rotate_opencode_server_password() {
+	local dest password
+	dest="$(opencode_server_env_path)"
+	install -d -m 0755 "$(dirname "$dest")"
+	if command -v openssl >/dev/null 2>&1; then
+		password="$(openssl rand -hex 32)"
+	else
+		password="$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
+	fi
+	umask 077
+	cat >"$dest" <<EOF
+OPENCODE_SERVER_USERNAME=opencode
+OPENCODE_SERVER_PASSWORD=$password
+EOF
+	chmod 600 "$dest"
+	if [[ "$GPIO_USER" != "root" ]]; then
+		chown "$GPIO_USER:$GPIO_USER" "$dest" 2>/dev/null || true
+	fi
+}
+
+install_opencode_service() {
+	local home unit_dir unit bin dest projects
+	bin="$(opencode_wrapper_bin)"
+	if [[ ! -x "$bin" ]]; then
+		bin="$(opencode_bin || true)"
+	fi
+	if [[ -z "$bin" || ! -x "$bin" ]]; then
+		echo "gpio-companion: opencode binary missing, skipping service" >&2
+		return 1
+	fi
+	ensure_opencode_server_password
+	if ! ensure_user_systemd; then
+		echo "gpio-companion: skipping opencode service install (systemd user manager unreachable)" >&2
+		return 1
+	fi
+	home="$(gpio_user_home)"
+	projects="$home/projects"
+	install -d -m 0755 "$projects"
+	unit_dir="$home/.config/systemd/user"
+	unit="$unit_dir/gpio-opencode.service"
+	install -d -m 0755 "$unit_dir"
+	dest="$(mktemp)"
+	sed \
+		-e "s|__OPENCODE_BIN__|$bin|g" \
+		-e "s|__OPENCODE_SERVER_ENV__|$(opencode_server_env_path)|g" \
+		"$SCRIPT_DIR/systemd/gpio-opencode.service" >"$dest"
+	install -m 0644 "$dest" "$unit"
+	rm -f "$dest"
+	if [[ "$GPIO_USER" != "root" ]]; then
+		chown -R "$GPIO_USER:$GPIO_USER" "$home/.config" "$projects" 2>/dev/null || true
+	fi
+	run_as_gpio_user_session systemctl --user daemon-reload
+	run_as_gpio_user_session systemctl --user enable --now gpio-opencode.service
+}
+
+restart_opencode_service() {
+	local unit
+	if [[ "${GPIO_COMPANION_OPENCODE_SKIP_RESTART:-}" == "1" ]]; then
+		return 0
+	fi
+	unit="$(opencode_user_unit_path)"
+	if [[ ! -f "$unit" ]]; then
+		return 0
+	fi
+	if ! command -v systemctl >/dev/null 2>&1; then
+		return 0
+	fi
+	if ! ensure_user_systemd; then
+		echo "gpio-companion: skipping opencode restart (systemd user manager unreachable)" >&2
+		return 0
+	fi
+	run_as_gpio_user_session systemctl --user restart gpio-opencode.service
+}
+
+reap_leaked_opencode_servers() {
+	local uid main pgid pid this
+	if [[ "${GPIO_COMPANION_OPENCODE_SKIP_RESTART:-}" == "1" ]]; then
+		return 0
+	fi
+	uid="$(gpio_user_uid)" || return 0
+	if [[ -z "$uid" ]]; then
+		return 0
+	fi
+	main="$(run_as_gpio_user_session systemctl --user show -p MainPID --value gpio-opencode.service 2>/dev/null || true)"
+	if [[ -z "$main" || "$main" == "0" ]]; then
+		return 0
+	fi
+	pgid="$(ps -o pgid= -p "$main" 2>/dev/null | tr -d '[:space:]')" || true
+	while read -r pid; do
+		if [[ -z "$pid" || "$pid" == "$main" ]]; then
+			continue
+		fi
+		if [[ -n "$pgid" ]]; then
+			this="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" || true
+			if [[ "$this" == "$pgid" ]]; then
+				continue
+			fi
+		fi
+		echo "gpio-companion update: stopping leaked opencode pid $pid" >&2
+		kill "$pid" 2>/dev/null || true
+	done < <(pgrep -u "$uid" -f 'opencode serve --hostname 127.0.0.1 --port 4096' || true)
 }
 
 gpio_user_home() {
@@ -419,111 +551,6 @@ gpio_user_home() {
 		return
 	fi
 	printf '%s\n' "/home/$GPIO_USER"
-}
-
-t3_home() {
-	if [[ -n "${GPIO_COMPANION_T3_HOME:-}" ]]; then
-		printf '%s\n' "$GPIO_COMPANION_T3_HOME"
-		return
-	fi
-	printf '%s\n' "$(gpio_user_home)/.t3"
-}
-
-configure_t3_opencode_only() {
-	local home dest result ocbin wrapper
-	home="$(t3_home)"
-	dest="$home/userdata/settings.json"
-	link_opencode_bin || true
-	wrapper="$(opencode_wrapper_bin)"
-	if [[ -x "$wrapper" ]]; then
-		ocbin="$wrapper"
-	else
-		ocbin="$(opencode_bin || true)"
-	fi
-	install -d -m 0755 "$(dirname "$dest")"
-	result="$(GPIO_T3_SETTINGS="$dest" GPIO_OPENCODE_BIN="${ocbin:-opencode}" python3 - <<'PY'
-import json
-import os
-from pathlib import Path
-
-path = Path(os.environ["GPIO_T3_SETTINGS"])
-bin_path = os.environ.get("GPIO_OPENCODE_BIN") or "opencode"
-data = {}
-if path.exists():
-    try:
-        loaded = json.loads(path.read_text())
-        if isinstance(loaded, dict):
-            data = loaded
-    except json.JSONDecodeError:
-        data = {}
-
-providers = data.get("providers")
-if not isinstance(providers, dict):
-    providers = {}
-for key, val in list(providers.items()):
-    if not isinstance(val, dict):
-        val = {}
-        providers[key] = val
-    val["enabled"] = key == "opencode"
-for extra in ("cursor", "grok"):
-    entry = providers.get(extra)
-    if not isinstance(entry, dict):
-        entry = {}
-        providers[extra] = entry
-    entry["enabled"] = False
-opencode = providers.get("opencode")
-if not isinstance(opencode, dict):
-    opencode = {}
-    providers["opencode"] = opencode
-opencode["enabled"] = True
-data["providers"] = providers
-
-instances = data.get("providerInstances")
-if not isinstance(instances, dict):
-    instances = {}
-has_opencode = False
-for key, inst in list(instances.items()):
-    if not isinstance(inst, dict):
-        continue
-    driver = inst.get("driver")
-    if driver == "opencode" or key == "opencode":
-        inst["driver"] = "opencode"
-        inst["enabled"] = True
-        cfg = inst.get("config")
-        if not isinstance(cfg, dict):
-            cfg = {}
-            inst["config"] = cfg
-        cfg["binaryPath"] = bin_path
-        has_opencode = True
-    else:
-        inst["enabled"] = False
-if not has_opencode:
-    instances["opencode"] = {
-        "driver": "opencode",
-        "enabled": True,
-        "config": {
-            "binaryPath": bin_path,
-            "serverUrl": "",
-            "serverPassword": "",
-            "customModels": [],
-        },
-    }
-data["providerInstances"] = instances
-text = json.dumps(data, indent=2) + "\n"
-if path.exists() and path.read_text() == text:
-    print("unchanged")
-else:
-    path.write_text(text)
-    print("changed")
-PY
-)"
-	if [[ "$GPIO_USER" != "root" ]]; then
-		chown -R "$GPIO_USER:$GPIO_USER" "$home" 2>/dev/null || true
-	fi
-	if [[ "$result" == "changed" ]]; then
-		echo "gpio-companion: T3 Code providers locked to OpenCode"
-		restart_t3_service || true
-	fi
 }
 
 gpio_user_uid() {
@@ -604,145 +631,6 @@ run_as_gpio_user_session() {
 		"XDG_RUNTIME_DIR=${runtime}" \
 		"DBUS_SESSION_BUS_ADDRESS=unix:path=${runtime}/bus" \
 		bash -c 'cd "$1" && shift && exec "$@"' bash "$home" "$@"
-}
-
-restart_t3_service() {
-	if [[ "${GPIO_COMPANION_T3_SKIP_RESTART:-}" == "1" ]]; then
-		return 0
-	fi
-	ensure_user_systemd || return 1
-	run_as_gpio_user_session systemctl --user restart t3code.service
-}
-
-t3_installed_npm_version() {
-	local ver=""
-	if ! command -v npm >/dev/null 2>&1; then
-		return 1
-	fi
-	ver="$(npm list -g t3 --depth=0 2>/dev/null | sed -n 's/.*t3@//p' | head -n1 | tr -d '[:space:]')" || true
-	if [[ -z "$ver" ]]; then
-		return 1
-	fi
-	printf '%s\n' "$ver"
-}
-
-t3_latest_npm_version() {
-	local ver=""
-	if ! command -v npm >/dev/null 2>&1; then
-		return 1
-	fi
-	ver="$(npm view t3 version 2>/dev/null | tr -d '[:space:]')" || true
-	if [[ -z "$ver" ]]; then
-		return 1
-	fi
-	printf '%s\n' "$ver"
-}
-
-install_t3_package() {
-	npm install -g t3@latest --allow-scripts=msgpackr-extract,node-pty
-}
-
-install_t3code() {
-	install_t3_package
-	install_t3_service
-	configure_t3_opencode_only
-}
-
-t3_service_is_installed() {
-	local out=""
-	if ! command -v t3 >/dev/null 2>&1; then
-		return 1
-	fi
-	out="$(run_as_gpio_user_session t3 service status 2>/dev/null || true)"
-	if [[ -z "$out" ]]; then
-		return 1
-	fi
-	if grep -qi 'not installed' <<<"$out"; then
-		return 1
-	fi
-	return 0
-}
-
-install_t3_service() {
-	if ! command -v t3 >/dev/null 2>&1; then
-		return 1
-	fi
-	if ! ensure_user_systemd; then
-		echo "gpio-companion: skipping t3 service install (systemd user manager unreachable)" >&2
-		return 1
-	fi
-	run_as_gpio_user_session t3 service install
-}
-
-sync_t3_service() {
-	if ! command -v t3 >/dev/null 2>&1; then
-		return 1
-	fi
-	if ! ensure_user_systemd; then
-		echo "gpio-companion: skipping t3 service sync (systemd user manager unreachable)" >&2
-		return 1
-	fi
-	if t3_service_is_installed; then
-		run_as_gpio_user_session t3 service update
-	else
-		run_as_gpio_user_session t3 service install
-	fi
-	reap_leaked_t3_servers
-}
-
-reap_leaked_t3_servers() {
-	local uid main pgid pid this
-	if [[ "${GPIO_COMPANION_T3_SKIP_RESTART:-}" == "1" ]]; then
-		return 0
-	fi
-	uid="$(gpio_user_uid)" || return 0
-	if [[ -z "$uid" ]]; then
-		return 0
-	fi
-	main="$(run_as_gpio_user_session systemctl --user show -p MainPID --value t3code.service 2>/dev/null || true)"
-	if [[ -z "$main" || "$main" == "0" ]]; then
-		return 0
-	fi
-	pgid="$(ps -o pgid= -p "$main" 2>/dev/null | tr -d '[:space:]')" || true
-	while read -r pid; do
-		if [[ -z "$pid" || "$pid" == "$main" ]]; then
-			continue
-		fi
-		if [[ -n "$pgid" ]]; then
-			this="$(ps -o pgid= -p "$pid" 2>/dev/null | tr -d '[:space:]')" || true
-			if [[ "$this" == "$pgid" ]]; then
-				continue
-			fi
-		fi
-		echo "gpio-companion update: stopping leaked t3 pid $pid" >&2
-		kill "$pid" 2>/dev/null || true
-	done < <(pgrep -u "$uid" -f '/t3/.*/dist/bin\.mjs serve|/t3/runtime/service-launcher\.mjs' || true)
-}
-
-update_t3code() {
-	local force="${1:-0}" current="" latest=""
-	if ! command -v npm >/dev/null 2>&1; then
-		echo "gpio-companion update: npm not found, skipping t3" >&2
-		return 1
-	fi
-	current="$(t3_installed_npm_version || true)"
-	latest="$(t3_latest_npm_version || true)"
-	if [[ -z "$latest" ]]; then
-		echo "gpio-companion update: t3@latest unavailable, keeping ${current:-none}" >&2
-		reap_leaked_t3_servers || true
-		configure_t3_opencode_only || true
-		return 0
-	fi
-	if [[ "$force" != "1" && -n "$current" && "$current" == "$latest" ]]; then
-		echo "gpio-companion update: t3 $current is current"
-		reap_leaked_t3_servers || true
-		configure_t3_opencode_only || true
-		return 0
-	fi
-	echo "gpio-companion update: t3 ${current:-none} -> $latest"
-	install_t3_package
-	sync_t3_service
-	configure_t3_opencode_only || true
 }
 
 install_arduino_udev() {
@@ -1379,7 +1267,7 @@ PY
 	fi
 	if [[ "$result" == "changed" ]]; then
 		echo "gpio-companion: OpenCode gpio-companion models refreshed"
-		restart_t3_service || true
+		restart_opencode_service || true
 	fi
 }
 
@@ -1901,7 +1789,7 @@ install_common() {
 	add_user_groups
 	grant_gpio_user_nopasswd_sudo
 	install_opencode
-	install_t3code
+	install_opencode_service
 	write_device_config "$hardware"
 	write_pairing_env
 	write_repo_metadata
@@ -1909,5 +1797,5 @@ install_common() {
 	sync_opencode_agent
 	install_systemd_units "$hardware"
 	echo "gpio-companion $hardware install complete"
-	echo "T3 Code service is installed; pairing runs from the dashboard after claim"
+	echo "OpenCode server is a GPIO user unit on 127.0.0.1:4096"
 }

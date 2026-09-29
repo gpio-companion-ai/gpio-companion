@@ -137,7 +137,7 @@ describe("removeProjectFromLiveBoards", () => {
 				now: 1_000,
 				fetchImpl: async (input, init) => {
 					calls.push(`${init?.method} ${String(input)}`);
-					return Response.json({ removed: true, t3: "removed" });
+					return Response.json({ removed: true });
 				},
 			},
 		);

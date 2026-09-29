@@ -617,8 +617,6 @@ describe("signed flash proxy", () => {
 			stores.pairing,
 			async () => undefined,
 			undefined,
-			undefined,
-			undefined,
 			{ keyId: "k", publicKeyPem: keys.publicKeyPem },
 			undefined,
 			undefined,

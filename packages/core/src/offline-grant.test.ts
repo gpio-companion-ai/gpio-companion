@@ -72,7 +72,7 @@ describe("offline-grant", () => {
 	test("rejects pairing and other out-of-scope paths", async () => {
 		expect(isOfflineGrantScope("POST", "/v1/pairing/claim")).toBe(false);
 		expect(isOfflineGrantScope("GET", "/v1/pairing/credentials")).toBe(false);
-		expect(isOfflineGrantScope("POST", "/v1/t3/pair")).toBe(false);
+		expect(isOfflineGrantScope("POST", "/v1/opencode/session")).toBe(false);
 		expect(isOfflineGrantScope("POST", "/v1/update")).toBe(false);
 		expect(isOfflineGrantScope("POST", "/v1/projects/sync")).toBe(false);
 		expect(isOfflineGrantScope("POST", "/v1/projects/remove")).toBe(false);

@@ -1,5 +1,10 @@
 import { readFileSync } from "node:fs";
 import {
+	AGENT_PATH,
+	AGENT_STOP_PATH,
+	AgentError,
+	ARDUINO_PROXY_PATH,
+	ArduinoProxyError,
 	CONSOLE_PATH,
 	CONSOLE_USB_PATH,
 	CONSOLE_USB_STOP_PATH,
@@ -8,8 +13,6 @@ import {
 	DEBUG_EVENT_PATH,
 	DEBUG_PATH,
 	DEFAULT_DEVICE_MAX_SKEW_MS,
-	ARDUINO_PROXY_PATH,
-	ArduinoProxyError,
 	type DebugEvent,
 	DeviceAuthError,
 	type DeviceConfig,
@@ -25,20 +28,22 @@ import {
 	grantHeaderValue,
 	hasDeviceSignature,
 	INFO_PATH,
+	isAgentPath,
 	isAllowedDebugOrigin,
-	isConsolePath,
 	isArduinoProxyFqbn,
 	isArduinoProxyPath,
+	isConsolePath,
 	isFlashPath,
 	isGpioBusCommand,
 	isGpioWsRefresh,
-	isAgentPath,
+	isOpencodeProxyPath,
 	isRunPath,
 	isVerifyPath,
 	LOGS_PATH,
 	LOGS_SINCE_HOURS,
 	mergeDeviceSecrets,
 	type NetworkStatus,
+	OPENCODE_REPO_HEADER,
 	PROJECTS_PUSH_PATH,
 	PROJECTS_REMOVE_PATH,
 	PROJECTS_SYNC_PATH,
@@ -58,42 +63,48 @@ import {
 	publicPairing,
 	publicWifiFailure,
 	publicWifiStatus,
-	AGENT_PATH,
-	AGENT_STOP_PATH,
-	AgentError,
 	RUN_PATH,
 	RUN_SKETCHES_PATH,
 	RUN_STOP_PATH,
 	RunError,
-	VERIFY_PATH,
-	VERIFY_STOP_PATH,
-	VerifyError,
 	redactDeviceConfig,
 	redactLogText,
+	scopeOpencodeSearch,
 	secretsStatus,
 	UPDATE_PATH,
+	VERIFY_PATH,
+	VERIFY_STOP_PATH,
 	VERSION,
+	VerifyError,
 	verifyDeviceRequest,
 	verifyOfflineEnvelope,
 	WifiConnectError,
 } from "gpio-companion";
+import { type AgentController, createAgentController } from "./agent.ts";
 import { type FetchLike, proxyAiRequest } from "./ai-credentials.ts";
+import {
+	type ArduinoProxyController,
+	createArduinoProxy,
+	resolveArduinoProxyDir,
+} from "./arduino-proxy.ts";
 import { readBoardModel } from "./board-model.ts";
 import { type ConsoleHub, createConsoleHub } from "./console.ts";
 import { createDebugHub } from "./debug.ts";
 import { readDiskStats } from "./disk.ts";
-import {
-	createArduinoProxy,
-	type ArduinoProxyController,
-	resolveArduinoProxyDir,
-} from "./arduino-proxy.ts";
 import { createArduinoFlash, type FlashController } from "./flash.ts";
 import type { GithubInstallationCreds } from "./github-credentials.ts";
 import { createLibgpiodGpio, type GpioController } from "./gpio.ts";
 import { createGpioStream } from "./gpio-stream.ts";
 import { readDeviceInfoJson } from "./info.ts";
+import { proxyJlcpcbRequest } from "./jlcpcb-proxy.ts";
 import { readJournalLogs } from "./logs.ts";
 import { readNetworkStatus } from "./network.ts";
+import {
+	assertOpencodeProxyGranted,
+	DEFAULT_OPENCODE_SERVER_ENV,
+	proxyOpencodeRequest,
+	readOpencodeServerAuth,
+} from "./opencode-proxy.ts";
 import {
 	applyClaim,
 	applyTransfer,
@@ -107,15 +118,13 @@ import {
 	type ApplyProjects,
 	projectsRoot,
 } from "./projects.ts";
-import { createAgentController, type AgentController } from "./agent.ts";
 import { createHostRun, type RunController } from "./run.ts";
-import { createCircuitVerify, type VerifyController } from "./verify.ts";
 import type { SecretsStore } from "./secrets.ts";
 import { listBoardSketches } from "./sketches.ts";
 import { type ConfigStore, DEFAULT_PORT } from "./store.ts";
-import type { T3Controller } from "./t3.ts";
 import type { ApplyTunnel } from "./tunnel.ts";
 import type { ApplyUpdate } from "./update.ts";
+import { createCircuitVerify, type VerifyController } from "./verify.ts";
 import type { ApplyWifi } from "./wifi.ts";
 
 export type DeviceAuthConfig = {
@@ -137,8 +146,7 @@ export type ServeOptions = {
 	applyProjects?: ApplyProjects;
 	applyProjectPush?: ApplyProjectPush;
 	applyProjectRemove?: ApplyProjectRemove;
-	revokeT3?: () => Promise<void>;
-	t3?: T3Controller;
+	revokeOpencode?: () => Promise<void>;
 	deviceAuth: DeviceAuthConfig;
 	githubCredentials?: () => Promise<GithubInstallationCreds>;
 	applyClock?: ApplyClock;
@@ -151,6 +159,9 @@ export type ServeOptions = {
 	};
 	dashboardUrl?: string;
 	fetchImpl?: FetchLike;
+	opencodeFetch?: FetchLike;
+	opencodeEnvPath?: string;
+	opencodeUpstream?: string;
 	readDisk?: () => DiskStats | null;
 	readLogs?: () => Promise<string>;
 	readNetwork?: () => NetworkStatus | null;
@@ -184,6 +195,10 @@ export type DeviceRequestExtras = {
 	applyProjectRemove?: ApplyProjectRemove;
 	dashboardUrl?: string;
 	fetchImpl?: FetchLike;
+	opencodeFetch?: FetchLike;
+	opencodeEnvPath?: string;
+	opencodeUpstream?: string;
+	revokeOpencode?: () => Promise<void>;
 	debug?: { publish(event: DebugEvent): void };
 	gpioStream?: { publish(): void };
 };
@@ -275,9 +290,11 @@ export function startDeviceApi(options: ServeOptions) {
 				},
 			}),
 		run,
-		agent: options.agent ?? createAgentController({
-			projectsDir: options.projectsDir,
-		}),
+		agent:
+			options.agent ??
+			createAgentController({
+				projectsDir: options.projectsDir,
+			}),
 		verify,
 		projectsDir: options.projectsDir,
 		applyUpdate: options.applyUpdate,
@@ -287,6 +304,10 @@ export function startDeviceApi(options: ServeOptions) {
 		dashboardUrl:
 			options.dashboardUrl ?? process.env.GPIO_COMPANION_DASHBOARD_URL,
 		fetchImpl: options.fetchImpl,
+		opencodeFetch: options.opencodeFetch,
+		opencodeEnvPath: options.opencodeEnvPath,
+		opencodeUpstream: options.opencodeUpstream,
+		revokeOpencode: options.revokeOpencode,
 		debug,
 	};
 	return Bun.serve<TunnelWsData>({
@@ -363,8 +384,6 @@ export function startDeviceApi(options: ServeOptions) {
 					options.pairing,
 					options.applyTunnel,
 					options.applyWifi,
-					options.revokeT3,
-					options.t3,
 					options.deviceAuth,
 					options.githubCredentials,
 					clock,
@@ -456,8 +475,6 @@ export async function handleDeviceRequest(
 	pairingStore: PairingStore,
 	applyTunnel: ApplyTunnel,
 	applyWifi: ApplyWifi | undefined,
-	revokeT3: (() => Promise<void>) | undefined,
-	t3: T3Controller | undefined,
 	deviceAuth: DeviceAuthConfig,
 	githubCredentials?: () => Promise<GithubInstallationCreds>,
 	clock?: ClockGate,
@@ -512,6 +529,21 @@ export async function handleDeviceRequest(
 		return proxyAiRequest({
 			request,
 			path,
+			bodyText,
+			uuid: pairing.uuid,
+			key: pairing.key,
+			origin: extras?.dashboardUrl,
+			fetchImpl: extras?.fetchImpl,
+		});
+	}
+
+	if (path === "/v1/jlcpcb") {
+		if (!isLoopback(url)) {
+			throw new Error("jlcpcb proxy is local-only");
+		}
+		const pairing = await pairingStore.read();
+		return proxyJlcpcbRequest({
+			request,
 			bodyText,
 			uuid: pairing.uuid,
 			key: pairing.key,
@@ -638,7 +670,7 @@ export async function handleDeviceRequest(
 		const current = await pairingStore.read();
 		const next = applyTransfer(current, claim);
 		await pairingStore.write(next);
-		await wipeOwnerSecrets(secretsStore, revokeT3);
+		await wipeOwnerSecrets(secretsStore, extras?.revokeOpencode);
 		return json(publicPairing(next));
 	}
 
@@ -647,8 +679,19 @@ export async function handleDeviceRequest(
 		const current = await pairingStore.read();
 		const next = applyUnpair(current, body.uuid, body.key);
 		await pairingStore.write(next);
-		await wipeOwnerSecrets(secretsStore, revokeT3);
+		await wipeOwnerSecrets(secretsStore, extras?.revokeOpencode);
 		return json(publicPairing(next));
+	}
+
+	if (isOpencodeProxyPath(path)) {
+		return proxySignedOpencode(
+			request,
+			path,
+			url,
+			bodyText,
+			pairingStore,
+			extras,
+		);
 	}
 
 	if (method === "GET" && path === "/v1/config") {
@@ -727,27 +770,6 @@ export async function handleDeviceRequest(
 		}
 		await secretsStore.write(next);
 		return json(secretsStatus(next));
-	}
-
-	if (
-		method === "POST" &&
-		(path === "/v1/t3/pair" || path === "/v1/t3/start")
-	) {
-		if (!t3) {
-			throw new Error("t3 is not configured");
-		}
-		const config = await store.read();
-		if (!config.tunnel.hostname) {
-			throw new Error("t3 hostname is not configured");
-		}
-		return json(await t3.pair(config.tunnel.hostname));
-	}
-
-	if (method === "GET" && path === "/v1/t3/status") {
-		if (!t3) {
-			throw new Error("t3 is not configured");
-		}
-		return json(await t3.status());
 	}
 
 	if (method === "GET" && path === LOGS_PATH) {
@@ -846,15 +868,6 @@ export async function handleDeviceRequest(
 		const config = await store.read();
 		const secrets = await secretsStore.read();
 		const pairing = await pairingStore.read();
-		const t3Status = t3
-			? await t3.status()
-			: {
-					running: false,
-					pairingUrl: "",
-					pairingToken: "",
-					paired: false,
-					serviceInstalled: false,
-				};
 		const disk = extras?.readDisk ? extras.readDisk() : null;
 		const network = extras?.readNetwork ? extras.readNetwork() : null;
 		return json({
@@ -867,8 +880,6 @@ export async function handleDeviceRequest(
 			},
 			secrets: secretsStatus(secrets),
 			pairing: publicPairing(pairing),
-			t3codePairing: "dashboard",
-			t3: t3Status,
 			disk: disk ?? undefined,
 			network: network ?? undefined,
 		});
@@ -1192,9 +1203,7 @@ async function handleFlash(
 		return json(flash.start(parseJson(bodyText)));
 	}
 	if (method === "POST" && path === FLASH_PROXY_PATH) {
-		const put = bodyText.trim()
-			? parseFlashProxyPut(parseJson(bodyText))
-			: {};
+		const put = bodyText.trim() ? parseFlashProxyPut(parseJson(bodyText)) : {};
 		const listed = await flash.ports();
 		const selected =
 			listed.ports.find((port) =>
@@ -1341,7 +1350,7 @@ function isLoopback(url: URL): boolean {
 
 async function wipeOwnerSecrets(
 	secretsStore: SecretsStore,
-	revokeT3: (() => Promise<void>) | undefined,
+	revokeOpencode: (() => Promise<void>) | undefined,
 ): Promise<void> {
 	const current = await secretsStore.read();
 	await secretsStore.write({
@@ -1350,7 +1359,85 @@ async function wipeOwnerSecrets(
 		githubUsername: "",
 		githubToken: "",
 	});
-	if (revokeT3) {
-		await revokeT3();
+	if (revokeOpencode) {
+		await revokeOpencode();
+	}
+}
+
+async function proxySignedOpencode(
+	request: Request,
+	path: string,
+	url: URL,
+	bodyText: string,
+	pairingStore: PairingStore,
+	extras: DeviceRequestExtras | undefined,
+): Promise<Response> {
+	let scoped: { search: string; directory: string };
+	try {
+		scoped = scopeOpencodeSearch({
+			path,
+			search: url.search,
+			repo: request.headers.get(OPENCODE_REPO_HEADER) ?? "",
+			projectsDir: extras?.projectsDir ?? projectsRoot(),
+		});
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "opencode route is not available";
+		return json(
+			{ error: message },
+			message === "opencode route is not available" ? 404 : 400,
+		);
+	}
+	const pairing = await pairingStore.read();
+	try {
+		await assertOpencodeProxyGranted({
+			claimed: pairing.claimed,
+			uuid: pairing.uuid,
+			key: pairing.key,
+			origin: extras?.dashboardUrl,
+			fetchImpl: extras?.fetchImpl,
+		});
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "opencode proxy revoked";
+		return json({ error: message }, 403);
+	}
+	const envPath =
+		extras?.opencodeEnvPath ??
+		process.env.GPIO_COMPANION_OPENCODE_SERVER_ENV ??
+		DEFAULT_OPENCODE_SERVER_ENV;
+	let auth: Awaited<ReturnType<typeof readOpencodeServerAuth>>;
+	try {
+		auth = await readOpencodeServerAuth(envPath);
+	} catch (error) {
+		const message =
+			error instanceof Error
+				? error.message
+				: "opencode server password is not set";
+		return json({ error: message }, 503);
+	}
+	const headers = new Headers(request.headers);
+	headers.delete(OPENCODE_REPO_HEADER);
+	if (scoped.directory) {
+		headers.set("x-opencode-directory", scoped.directory);
+	}
+	try {
+		return await proxyOpencodeRequest({
+			request: new Request(request.url, { method: request.method, headers }),
+			path,
+			search: scoped.search,
+			bodyText,
+			upstream:
+				extras?.opencodeUpstream ?? process.env.GPIO_COMPANION_OPENCODE_URL,
+			auth,
+			fetchImpl: extras?.opencodeFetch,
+		});
+	} catch (error) {
+		const message =
+			error instanceof Error ? error.message : "opencode proxy failed";
+		const status = message.includes("loopback") ? 500 : 502;
+		return json({ error: message }, status);
 	}
 }

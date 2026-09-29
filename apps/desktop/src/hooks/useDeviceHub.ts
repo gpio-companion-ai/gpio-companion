@@ -6,7 +6,6 @@ export function useDeviceHub(uuid: string, handlers: HubHandlers): void {
 	const onGpio = handlers.onGpio;
 	const onFlash = handlers.onFlash;
 	const onRun = handlers.onRun;
-	const onT3 = handlers.onT3;
 	const onArduinoProxy = handlers.onArduinoProxy;
 
 	useEffect(() => {
@@ -17,10 +16,10 @@ export function useDeviceHub(uuid: string, handlers: HubHandlers): void {
 		const client = startHubClient({
 			uuid: trimmed,
 			mintTicket: () => mintHubTicket(trimmed),
-			handlers: { onGpio, onFlash, onRun, onT3, onArduinoProxy },
+			handlers: { onGpio, onFlash, onRun, onArduinoProxy },
 		});
 		return () => {
 			client.stop();
 		};
-	}, [uuid, onGpio, onFlash, onRun, onT3, onArduinoProxy]);
+	}, [uuid, onGpio, onFlash, onRun, onArduinoProxy]);
 }

@@ -10,7 +10,7 @@ MARKER="${GPIO_COMPANION_SETUP_MARKER:-/etc/gpio-companion/first-setup-complete}
 need_root
 resolve_gpio_runtime_user
 grant_gpio_user_nopasswd_sudo
-echo "gpio-companion: runtime user $GPIO_USER (API + T3 Code)"
+echo "gpio-companion: runtime user $GPIO_USER (API + OpenCode)"
 
 if [[ -f "$MARKER" && "${GPIO_COMPANION_FORCE_SETUP:-}" != "1" ]]; then
 	echo "gpio-companion first-setup already complete ($MARKER)"
@@ -57,7 +57,7 @@ fi
 
 echo "gpio-companion first setup"
 echo "OpenCode API key and GitHub token are set from the dashboard, not this prompt."
-echo "T3 Code service is installed here; pairing starts on the dashboard after you claim this board."
+echo "Open Code runs in the dashboard after you claim this board. No public code hostname."
 echo
 
 export GPIO_COMPANION_DASHBOARD_URL="${GPIO_COMPANION_DASHBOARD_URL:-https://gpio-companion.com}"
@@ -113,11 +113,10 @@ unset cf_token
 cf_token=""
 
 tunnel_token="$(TUNNEL_JSON="$tunnel_json" python3 -c 'import json,os; print(json.loads(os.environ["TUNNEL_JSON"])["token"])')"
-t3_hostname="$(TUNNEL_JSON="$tunnel_json" python3 -c 'import json,os; print(json.loads(os.environ["TUNNEL_JSON"])["hostname"])')"
 api_hostname="$(TUNNEL_JSON="$tunnel_json" python3 -c 'import json,os; print(json.loads(os.environ["TUNNEL_JSON"])["apiHostname"])')"
 tunnel_id="$(TUNNEL_JSON="$tunnel_json" python3 -c 'import json,os; print(json.loads(os.environ["TUNNEL_JSON"])["tunnelId"])')"
 
-apply_runtime_config "$hardware" "$tunnel_token" "$t3_hostname" "$api_hostname" "$tunnel_id"
+apply_runtime_config "$hardware" "$tunnel_token" "" "$api_hostname" "$tunnel_id"
 unset tunnel_token
 tunnel_token=""
 
@@ -155,7 +154,6 @@ chmod 644 "$MARKER"
 
 echo "first-setup complete"
 echo "device API: https://${api_hostname}"
-echo "T3 Code:    https://${t3_hostname}"
 echo "pair this board on the dashboard /pair page with the UUID and key above"
-echo "OpenCode uses gpio-companion credits (AI key baked on this Pi); GitHub PAT is set from Keys after pairing"
-echo "T3 Code pairing runs from the dashboard after claim; T3 Code uses OpenCode only"
+echo "OpenCode uses gpio-companion credits via http://127.0.0.1:4150/v1/ai (default @cf/zai-org/glm-5.3)"
+echo "OpenCode server listens on 127.0.0.1:4096; the device API proxies it. No public hostname."

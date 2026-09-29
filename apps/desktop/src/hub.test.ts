@@ -3,7 +3,6 @@ import {
 	asArduinoProxyStatus,
 	asFlashStatus,
 	asGpioSnapshot,
-	asHubT3Status,
 	parseHubMessage,
 	startHubClient,
 } from "./hub";
@@ -42,7 +41,7 @@ class FakeSocket {
 }
 
 describe("hub protocol", () => {
-	test("parses gpio flash and t3 payloads", () => {
+	test("parses gpio flash and proxy payloads", () => {
 		expect(parseHubMessage('{"v":1,"type":"gpio"}')?.type).toBe("gpio");
 		expect(parseHubMessage("{")).toBeNull();
 		expect(asGpioSnapshot({ hardware: "orangepi", pins: [] })?.hardware).toBe(
@@ -50,8 +49,7 @@ describe("hub protocol", () => {
 		);
 		expect(asGpioSnapshot({ hardware: "x86", pins: [] })).toBeNull();
 		expect(asFlashStatus({ running: true, last: null })?.running).toBe(true);
-		expect(asHubT3Status({ paired: true })?.paired).toBe(true);
-		expect(asHubT3Status({})).toBeNull();
+		expect(parseHubMessage('{"v":1,"type":"t3"}')?.type).toBe("t3");
 		expect(parseHubMessage('{"v":1,"type":"arduinoProxy"}')?.type).toBe(
 			"arduinoProxy",
 		);

@@ -12,6 +12,7 @@
 		"typescript": "^7.0.2"
 	},
 	"dependencies": {
+		"@community-jlcpcb/client": "0.1.0",
 		"@material-design-icons/svg": "^0.14.15",
 		"@shpaw415/mui-lite": "^0.1.6",
 		"@tailwindcss/cli": "^4.3.3",

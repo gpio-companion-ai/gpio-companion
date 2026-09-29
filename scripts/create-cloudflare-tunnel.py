@@ -67,7 +67,6 @@ def main() -> None:
 	slug = uuid.replace("-", "").lower()
 	zone = request("GET", f"/zones/{args.zone_id}", token)
 	zone_name = zone["result"]["name"]
-	t3_host = f"t3-{slug}.{zone_name}"
 	api_host = f"api-{slug}.{zone_name}"
 	name = f"gpio-{uuid}"
 	query = urllib.parse.urlencode({"name": name, "is_deleted": "false"})
@@ -92,7 +91,6 @@ def main() -> None:
 		tunnel_token = result_token(created)
 	ingress = [
 		{"hostname": api_host, "service": "http://127.0.0.1:4150", "originRequest": {}},
-		{"hostname": t3_host, "service": "http://127.0.0.1:3773", "originRequest": {}},
 		{"service": "http_status:404"},
 	]
 	request(
@@ -102,12 +100,11 @@ def main() -> None:
 		{"config": {"ingress": ingress}},
 	)
 	ensure_cname(args.zone_id, token, api_host, tunnel_id)
-	ensure_cname(args.zone_id, token, t3_host, tunnel_id)
 	json.dump(
 		{
 			"tunnelId": tunnel_id,
 			"token": tunnel_token,
-			"hostname": t3_host,
+			"hostname": "",
 			"apiHostname": api_host,
 			"zone": zone_name,
 		},

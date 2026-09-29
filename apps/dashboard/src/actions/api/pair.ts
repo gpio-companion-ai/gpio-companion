@@ -192,7 +192,6 @@ export async function claimDevice(
 			login: pairing.login,
 			deviceUrl: origin,
 			uuid: pairing.uuid,
-			t3Hostname: hosts.t3Hostname,
 			envelope,
 		};
 	}
@@ -203,7 +202,6 @@ export async function claimDevice(
 		login: pairing.login,
 		deviceUrl: origin,
 		uuid: pairing.uuid,
-		t3Hostname: hosts.t3Hostname,
 	};
 }
 

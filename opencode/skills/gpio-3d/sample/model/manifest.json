@@ -1,0 +1,19 @@
+{
+	"version": 1,
+	"units": "mm",
+	"tool": "trimesh",
+	"parts": [
+		{
+			"name": "header-clip",
+			"file": "header-clip.glb",
+			"units": "mm",
+			"fits": ["companion-header"]
+		},
+		{
+			"name": "arduino-header-clip",
+			"file": "arduino-header-clip.glb",
+			"units": "mm",
+			"fits": ["arduino-uno", "arduino-nano", "arduino-mega"]
+		}
+	]
+}

@@ -80,14 +80,8 @@ fi
 : >"$GIT_CREDENTIALS"
 chmod 600 "$GIT_CREDENTIALS" 2>/dev/null || true
 
-if command -v t3 >/dev/null 2>&1; then
-	echo "gpio-companion unpair: t3 logout"
-	if [[ "$GPIO_USER" == root ]]; then
-		timeout 8 t3 logout >/dev/null 2>&1 || true
-	else
-		timeout 8 sudo -u "$GPIO_USER" -H t3 logout >/dev/null 2>&1 || true
-	fi
-fi
+rotate_opencode_server_password || true
+restart_opencode_service || true
 
 if timeout 5 systemctl cat gpio-companion.service >/dev/null 2>&1; then
 	echo "gpio-companion unpair: restarting gpio-companion.service"

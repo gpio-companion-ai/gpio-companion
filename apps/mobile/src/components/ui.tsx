@@ -2,7 +2,7 @@ import type { ReactNode, Ref } from "react";
 import {
 	ActivityIndicator,
 	Pressable,
-	ScrollView,
+	type ScrollView,
 	Text,
 	TextInput,
 	View,
@@ -215,6 +215,7 @@ export function Field({
 	placeholder,
 	secure,
 	autoCapitalize = "none",
+	multiline,
 }: {
 	label: string;
 	value: string;
@@ -222,6 +223,7 @@ export function Field({
 	placeholder?: string;
 	secure?: boolean;
 	autoCapitalize?: "none" | "sentences";
+	multiline?: boolean;
 }) {
 	const colors = useColors();
 	return (
@@ -233,8 +235,10 @@ export function Field({
 				placeholder={placeholder}
 				placeholderTextColor={colors.placeholder}
 				secureTextEntry={secure}
-				autoCapitalize={autoCapitalize}
-				autoCorrect={false}
+				autoCapitalize={multiline ? "sentences" : autoCapitalize}
+				autoCorrect={Boolean(multiline)}
+				multiline={multiline}
+				textAlignVertical={multiline ? "top" : "center"}
 				style={{
 					backgroundColor: colors.surface,
 					borderRadius: 10,
@@ -242,6 +246,7 @@ export function Field({
 					color: colors.text,
 					borderWidth: 1,
 					borderColor: colors.border,
+					minHeight: multiline ? 96 : undefined,
 				}}
 			/>
 		</View>

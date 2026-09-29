@@ -5,8 +5,9 @@ description: >-
   if connected, skill gpio-arduino-proxy (host/arduino-proxy-*, breadboard
   gpio-arduino-proxy); else gpio-host POST /v1/run. Direct PUT /v1/gpio is
   one-shot testing only. USB Arduino flash is gpio-arduino. tscircuit
-  breadboard/PCB, visual sheets, GitHub, Bun. Use on Orange Pi / Raspberry Pi
-  Armbian with OpenCode or T3Code, and in this monorepo.
+  breadboard/PCB, visual sheets, printable parts (skill gpio-3d), JLCPCB
+  parts lookup (skill gpio-jlcpcb), GitHub, Bun.
+  Use on Orange Pi / Raspberry Pi Armbian with OpenCode, and in this monorepo.
 ---
 
 # gpio-companion
@@ -40,12 +41,14 @@ You run loopback `http://127.0.0.1:4150` yourself. **Never** quote those curls t
 ## Do
 
 - Vibe-code breadboards and PCBs with tscircuit
+- Printable parts: skill `gpio-3d`. Write `~/projects/<repo>/model/` with trimesh (one `.glb` and one `.stl` per part, `manifest.json` in mm, fits companion header and/or Arduino Uno/Nano/Mega). Do not use tscircuit for meshes. Feature-branch rules below still apply.
+- JLCPCB parts: skill `gpio-jlcpcb`. Look up LCSC codes through loopback. Credentials are dashboard Pages secrets. If they are missing, stop. Do not ask the user to paste keys. Do not order parts.
 - Show the user visual technical sheets and helpers
 - Keep each electronics project on GitHub. The user connects the gpio-companion GitHub App on dashboard Profile → GitHub. `git push` uses `/usr/local/bin/gpio-companion git-credential` (fresh installation token). For API calls run `gpio-companion github-token`. `GITHUB_USERNAME` in `/etc/gpio-companion/secrets.env` is the account login.
 - Every project repo MUST have a `.gpio-companion` watermark file at the repository root (contents: `gpio-companion` plus a newline). The dashboard only lists repos with that file. When you create a new project: create the GitHub repo, write `.gpio-companion` at root, commit, and `git push` **to `main`** (bootstrap only). If an existing electronics repo is missing it, add the file on a feature branch (or `main` if that is the only change), then follow **Project git**.
 - Feature work (PCB, breadboard, sheets, C sketches) uses **Project git**: branch, push the branch, ask to save, merge `main` only when the user says yes. Do not push feature commits to `main`.
-- Extra SD / USB volumes are linked at `~/storage/<label>` for the T3 user; open projects there. Never mount or symlink the boot/root disk.
-- Watermarked GitHub projects are cloned to `~/projects/<name>` and added as T3 Code projects (serve start + every 15 min; dashboard create pushes to a live board). Prefer those paths.
+- Extra SD / USB volumes are linked at `~/storage/<label>` for the GPIO user; open projects there. Never mount or symlink the boot/root disk.
+- Watermarked GitHub projects are cloned to `~/projects/<name>` (serve start + every 15 min; dashboard create pushes to a live board). Prefer those paths. Open Code is scoped to the selected repo.
 - Use Bun for HTTP, dashboards, and automation scripts
 - Drive pins with Arduino-style C. `GET /v1/arduino-proxy` first. If connected: skill `gpio-arduino-proxy`, `~/projects/<repo>/host/arduino-proxy-<sketch>/*.c`, Arduino pin numbers, and a `gpio-arduino-proxy` part in `breadboard/diagram.json`. Else skill `gpio-host`: `~/projects/<repo>/host/<sketch>/*.c`, physical pins. Then `POST http://127.0.0.1:4150/v1/run` `{ dir }`. Do not shell gcc. Users launch by name from Project → Run on board. `Serial.print` shows live there.
 - Generate Arduino firmware in C under `~/projects/<repo>/firmware/<sketch>/` and send it over USB via `http://127.0.0.1:4150/v1/flash` (skill `gpio-arduino`). USB Arduino only — not this board's header. Users flash by name from Project → Flash Arduino.
@@ -63,6 +66,7 @@ Electronics clones live in `~/projects/<name>` (`https://github.com/<user>/<proj
    - `technical/` sheets
     - `host/<name>/` gpio-host C (`host/arduino-proxy-<name>/` when USB proxy is live)
     - `firmware/<name>/` USB Arduino C
+    - `model/<part>.glb` + `model/<part>.stl` and `model/manifest.json` (mm; fits companion header and/or Arduino Uno/Nano/Mega; skill `gpio-3d`; trimesh, not tscircuit)
 3. `git add`, commit, `git push -u origin feat/<kebab>`. Board clones are `--depth 1`; branch from HEAD. Do not unshallow unless a merge fails.
 4. When the slice is done, ask: **Want to save these changes to main?**
 5. Yes (save / keep / merge / yes): `git checkout main`, merge the feature branch, `git push origin main`, stay on `main`.
@@ -77,4 +81,6 @@ Dashboard **Save to GitHub** commits and pushes the current checkout. It is **no
 - Generate Arduino firmware in anything but C
 - Drive header GPIO with `PUT /v1/gpio` when a C sketch (`gpio-host`) would do — that PUT path is testing-only
 - Tell the user to `curl` `127.0.0.1:4150` (e.g. `/v1/run/stop`) — send them to the dashboard instead
+- Put a JLCPCB API key on this Pi, in a skill, or in git. Parts lookup is skill `gpio-jlcpcb`. Missing dashboard credentials means stop, not a guessed key
+- Order JLCPCB parts from this Pi
 - Commit feature work on `main`, merge to `main` without the user asking to save, or force-push `main`

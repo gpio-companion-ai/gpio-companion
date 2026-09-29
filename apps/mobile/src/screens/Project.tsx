@@ -1,4 +1,4 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import {
 	type ReactNode,
 	useCallback,
@@ -11,6 +11,8 @@ import { Linking, Modal, Pressable, Text, View } from "react-native";
 import BreadboardWebView from "../components/BreadboardWebView.tsx";
 import FlashPanel from "../components/FlashPanel.tsx";
 import GpioPanel from "../components/GpioPanel.tsx";
+import OrderReviewPanel from "../components/OrderReviewPanel.tsx";
+import PartsSearchPanel from "../components/PartsSearchPanel.tsx";
 import RunPanel from "../components/RunPanel.tsx";
 import {
 	Body,
@@ -279,6 +281,7 @@ export default function Project() {
 	const { boards, paired } = useUserBoards();
 	const { uuid: selectedUuid, setUuid: selectBoard } = useBoardSelection();
 	const { setTab } = useDeviceHub();
+	const router = useRouter();
 	const { setWorkItems } = useDeckNav();
 	const app = githubQuery.data ?? null;
 	const repos = projectsQuery.data?.repos ?? [];
@@ -758,9 +761,14 @@ export default function Project() {
 			{paired && activeUuid ? (
 				<TextButton
 					label={t("project.openCode")}
-					onPress={() => setTab("t3")}
+					onPress={() => {
+						setTab("code");
+						router.navigate("/");
+					}}
 				/>
 			) : null}
+			{token ? <PartsSearchPanel token={token} /> : null}
+			{token ? <OrderReviewPanel token={token} /> : null}
 			<ErrorText>
 				{translateError(
 					t,
@@ -988,7 +996,10 @@ export default function Project() {
 							{paired && activeUuid ? (
 								<PrimaryButton
 									label={t("project.openCode")}
-									onPress={() => setTab("t3")}
+									onPress={() => {
+										setTab("code");
+										router.navigate("/");
+									}}
 								/>
 							) : (
 								<Muted>{t("project.pairSoCodeOpens")}</Muted>

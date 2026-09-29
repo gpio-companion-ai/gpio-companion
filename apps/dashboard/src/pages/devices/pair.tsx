@@ -27,7 +27,6 @@ export default function PairPage() {
 	const [loaded, setLoaded] = useState(false);
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const mobile = useMobile();
-	const [t3AutoStartUuid, setT3AutoStartUuid] = useState("");
 	const [unpairing, setUnpairing] = useState("");
 
 	const refresh = useCallback(async () => {
@@ -82,8 +81,7 @@ export default function PairPage() {
 			) : null}
 			{showForm ? (
 				<PairForm
-					onComplete={({ uuid }) => {
-						setT3AutoStartUuid(uuid);
+					onComplete={() => {
 						void refresh();
 					}}
 				/>
@@ -94,7 +92,6 @@ export default function PairPage() {
 							key={board.device.uuid}
 							device={board.device}
 							status={board.status}
-							t3AutoStart={!dialogOpen && t3AutoStartUuid === board.device.uuid}
 							unpairing={unpairing === board.device.uuid}
 							onLabelSaved={(label) => {
 								setBoards((current) =>
@@ -111,9 +108,6 @@ export default function PairPage() {
 									setUnpairing("");
 									if (!result) {
 										return;
-									}
-									if (t3AutoStartUuid === uuid) {
-										setT3AutoStartUuid("");
 									}
 									void refresh();
 								});

@@ -219,7 +219,6 @@ info = {
 		"gpioCompanion": sh("gpio-companion version 2>/dev/null"),
 		"bun": sh("bun --version 2>/dev/null"),
 		"node": sh("node --version 2>/dev/null"),
-		"t3": sh("t3 --version 2>/dev/null | head -n1"),
 		"git": sh("git --version 2>/dev/null"),
 		"health": health,
 	},

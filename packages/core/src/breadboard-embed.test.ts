@@ -17,7 +17,7 @@ describe("breadboard embed path", () => {
 		expect(isEmbedPath("/embed")).toBe(true);
 		expect(isEmbedPath("/embed/breadboard/")).toBe(true);
 		expect(isEmbedPath("/project")).toBe(false);
-		expect(isEmbedPath("/devices/t3")).toBe(false);
+		expect(isEmbedPath("/devices/code")).toBe(false);
 	});
 });
 

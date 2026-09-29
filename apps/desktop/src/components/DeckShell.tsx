@@ -22,16 +22,16 @@ import { useT } from "../locale";
 import DockBody from "./DockBody";
 
 export type DeckSection = "project" | "devices" | "profile";
-type RailPane = "work" | "fleet" | "t3" | "you";
+type RailPane = "work" | "fleet" | "code" | "you";
 type FocusRegion = "primary" | "secondary";
 type DockTab = "console" | "gpio" | "flash" | "problems";
-type ProfileSection = "account" | "language" | "keys" | "credits";
+type ProfileSection = "account" | "language" | "keys" | "credits" | "address";
 
 function DeckIcon({ name }: { name: RailPane | "menu" | "search" | "theme" }) {
 	const paths = {
 		work: "M4 7h16v12H4zM9 7V4h6v3",
 		fleet: "M5 5h14v14H5zM8 9h8M8 13h5",
-		t3: "M7 4h10v4h3v12H4V8h3zM9 12h6M9 16h4",
+		code: "M7 4h10v4h3v12H4V8h3zM9 12h6M9 16h4",
 		you: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0",
 		menu: "M4 7h16M4 12h16M4 17h16",
 		search: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zm5-2 4 4",
@@ -101,6 +101,16 @@ export default function DeckShell({
 	const [dockHeight, setDockHeight] = useState(readDockHeight);
 	const [profileSection, setProfileSection] =
 		useState<ProfileSection>("account");
+
+	useEffect(() => {
+		function onAddress() {
+			setProfileSection("address");
+		}
+		window.addEventListener("gpio-profile-address", onAddress);
+		return () => {
+			window.removeEventListener("gpio-profile-address", onAddress);
+		};
+	}, []);
 	const paletteInput = useRef<HTMLInputElement>(null);
 
 	const pane: RailPane =
@@ -108,8 +118,8 @@ export default function DeckShell({
 			? "work"
 			: section === "profile"
 				? "you"
-				: deviceTab === "t3"
-					? "t3"
+				: deviceTab === "code"
+					? "code"
 					: "fleet";
 	const navigateRail = (next: RailPane) => {
 		if (next === "work") onNavigate("project");
@@ -117,9 +127,9 @@ export default function DeckShell({
 			onNavigate("devices");
 			onDeviceTab("overview");
 		}
-		if (next === "t3") {
+		if (next === "code") {
 			onNavigate("devices");
-			onDeviceTab("t3");
+			onDeviceTab("code");
 		}
 		if (next === "you") onNavigate("profile");
 		setDrawerOpen(false);
@@ -128,7 +138,7 @@ export default function DeckShell({
 	const commands = [
 		{ label: t("deck.command.work"), run: () => navigateRail("work") },
 		{ label: t("deck.command.fleet"), run: () => navigateRail("fleet") },
-		{ label: t("deck.command.t3"), run: () => navigateRail("t3") },
+		{ label: t("nav.code"), run: () => navigateRail("code") },
 		{ label: t("deck.command.you"), run: () => navigateRail("you") },
 		...deviceTabs(mode, admin).map((item) => ({
 			label: t(item.labelKey),
@@ -279,7 +289,7 @@ export default function DeckShell({
 			</header>
 
 			<nav className="b6-rail" aria-label={t("deck.rail.label")}>
-				{(["work", "fleet", "t3", "you"] as const).map((item) => (
+				{(["work", "fleet", "code", "you"] as const).map((item) => (
 					<button
 						key={item}
 						type="button"
@@ -301,7 +311,7 @@ export default function DeckShell({
 			) : null}
 			<aside className={`b6-sidebar ${drawerOpen ? "is-open" : ""}`}>
 				<div className="b6-mobile-rail">
-					{(["work", "fleet", "t3", "you"] as const).map((item) => (
+					{(["work", "fleet", "code", "you"] as const).map((item) => (
 						<button
 							key={item}
 							type="button"
@@ -324,7 +334,7 @@ export default function DeckShell({
 							{t("nav.project")}
 						</button>
 					) : null}
-					{pane === "fleet" || pane === "t3"
+					{pane === "fleet" || pane === "code"
 						? deviceTabs(mode, admin).map((item) => (
 								<button
 									type="button"
@@ -341,31 +351,31 @@ export default function DeckShell({
 							))
 						: null}
 					{pane === "you"
-						? (["account", "language", "keys", "credits"] as const).map(
-								(item) => (
-									<button
-										type="button"
-										key={item}
-										className={profileSection === item ? "is-active" : ""}
-										onClick={() => {
-											setProfileSection(item);
-											setDrawerOpen(false);
-											document
-												.getElementById(`profile-${item}`)
-												?.scrollIntoView({
-													behavior: "smooth",
-													block: "start",
-												});
-										}}
-									>
-										{item === "keys"
-											? t("nav.github")
-											: item === "language"
-												? t("language.title")
+						? (
+								["account", "language", "keys", "credits", "address"] as const
+							).map((item) => (
+								<button
+									type="button"
+									key={item}
+									className={profileSection === item ? "is-active" : ""}
+									onClick={() => {
+										setProfileSection(item);
+										setDrawerOpen(false);
+										document.getElementById(`profile-${item}`)?.scrollIntoView({
+											behavior: "smooth",
+											block: "start",
+										});
+									}}
+								>
+									{item === "keys"
+										? t("nav.github")
+										: item === "language"
+											? t("language.title")
+											: item === "address"
+												? t("nav.address")
 												: t(`nav.${item}`)}
-									</button>
-								),
-							)
+								</button>
+							))
 						: null}
 				</div>
 			</aside>
@@ -377,15 +387,7 @@ export default function DeckShell({
 					aria-label={t("deck.focus.primary")}
 					onFocus={() => setFocus("primary")}
 				>
-					<div
-						className={
-							deviceTab === "t3" && section === "devices"
-								? "b6-screen b6-screen-t3"
-								: "b6-screen workbench-bg"
-						}
-					>
-						{children}
-					</div>
+					<div className={"b6-screen workbench-bg"}>{children}</div>
 				</section>
 				<aside
 					className={`b6-context ${focus === "secondary" ? "is-focused" : ""}`}
@@ -471,9 +473,7 @@ export default function DeckShell({
 							<select
 								aria-label={t("deck.dock.connectBoard")}
 								value={
-									boards.some((board) => board.device.uuid === uuid)
-										? uuid
-										: ""
+									boards.some((board) => board.device.uuid === uuid) ? uuid : ""
 								}
 								disabled={boards.length === 0}
 								onChange={(event) => {

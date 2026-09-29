@@ -188,8 +188,8 @@ else
 	echo "gpio-companion update: serve binary already at $after"
 fi
 
-if ! update_t3code "$FORCE"; then
-	echo "gpio-companion update: t3 update skipped" >&2
+if ! install_opencode_service; then
+	echo "gpio-companion update: opencode service install skipped" >&2
 fi
 
 if ! update_opencode; then

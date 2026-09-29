@@ -47,12 +47,10 @@ export type ProjectPushOptions = {
 
 export type ProjectRemoveResult = {
 	removed: boolean;
-	t3: "removed" | "missing";
 };
 
 export type ProjectRemoveOptions = {
 	destRoot: string;
-	t3Remove: (path: string) => Promise<"removed" | "missing">;
 	exists?: (path: string) => boolean;
 	git?: GitRunner;
 	rm?: (path: string) => void;
@@ -66,14 +64,12 @@ export type GithubProject = {
 
 export type ProjectSyncResult = {
 	cloned: string[];
-	added: string[];
 	skipped: string[];
 };
 
 export type ProjectSyncOptions = {
 	destRoot: string;
 	token: () => Promise<string>;
-	t3Add: (path: string, title: string) => Promise<"added" | "exists">;
 	fetchImpl?: FetchLike;
 	gitClone?: (url: string, dest: string) => Promise<void>;
 	exists?: (path: string) => boolean;
@@ -115,12 +111,10 @@ export async function syncProjects(
 			: await listWatermarkedRepos(await options.token(), fetcher);
 	const result: ProjectSyncResult = {
 		cloned: [],
-		added: [],
 		skipped: [],
 	};
 	for (const project of projects) {
 		const dest = join(options.destRoot, project.name);
-		const title = project.name;
 		if (!exists(dest)) {
 			try {
 				await gitClone(githubCloneUrl(project.owner, project.name), dest);
@@ -133,10 +127,6 @@ export async function syncProjects(
 			}
 		} else {
 			result.skipped.push(project.name);
-		}
-		const added = await options.t3Add(dest, title);
-		if (added === "added") {
-			result.added.push(project.name);
 		}
 	}
 	return result;
@@ -255,7 +245,6 @@ export async function removeProject(
 			throw new Error("project origin does not match GitHub");
 		}
 	}
-	const t3 = await options.t3Remove(dest);
 	if (exists(dest)) {
 		const rm =
 			options.rm ??
@@ -263,9 +252,9 @@ export async function removeProject(
 				rmSync(path, { recursive: true, force: true });
 			});
 		rm(dest);
-		return { removed: true, t3 };
+		return { removed: true };
 	}
-	return { removed: false, t3 };
+	return { removed: false };
 }
 
 async function gitOk(

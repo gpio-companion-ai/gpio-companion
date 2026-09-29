@@ -32,7 +32,6 @@ import {
 } from "../lib/web-bluetooth.ts";
 import CopyBlock from "./CopyBlock.tsx";
 import DeviceSelect from "./DeviceSelect.tsx";
-import T3PairingPanel from "./T3PairingPanel.tsx";
 
 const LIGHTBLUE = "https://apps.apple.com/app/lightblue/id557428110";
 const NRF_CONNECT =
@@ -58,8 +57,6 @@ export default function PairForm({
 	const [paired, setPaired] = useState("");
 	const [devices, setDevices] = useState<StoredPairing[]>([]);
 	const [unpairUuid, setUnpairUuid] = useState("");
-	const [t3Uuid, setT3Uuid] = useState("");
-	const [t3AutoStart, setT3AutoStart] = useState(false);
 	const [pasteText, setPasteText] = useState("");
 	const [manualOpen, setManualOpen] = useState(false);
 
@@ -224,8 +221,6 @@ export default function PairForm({
 			setKey("");
 			const listing = await run(getPairing());
 			applyDevices(listing?.devices ?? []);
-			setT3Uuid(boardUuid);
-			setT3AutoStart(true);
 			onComplete?.({ deviceUrl: nextUrl, uuid: boardUuid });
 		} catch (caught) {
 			setStatus("");
@@ -349,10 +344,6 @@ export default function PairForm({
 									void run(getPairing()).then((listing) => {
 										applyDevices(listing?.devices ?? []);
 									});
-									if (t3Uuid === target) {
-										setT3Uuid("");
-										setT3AutoStart(false);
-									}
 									setStatus(t("pair.statusUnpaired"));
 								});
 							}}
@@ -364,12 +355,6 @@ export default function PairForm({
 				{pasteText ? (
 					<CopyBlock label={t("ble.signedCommand")} value={pasteText} />
 				) : null}
-				<T3PairingPanel
-					key={t3Uuid || "t3"}
-					devices={devices}
-					uuid={t3Uuid || undefined}
-					autoStart={t3AutoStart}
-				/>
 				{notice ? <Alert severity="info">{notice}</Alert> : null}
 				{status ? <Typography color="secondary">{status}</Typography> : null}
 				{error ? <Alert severity="error">{error}</Alert> : null}

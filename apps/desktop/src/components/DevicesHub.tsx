@@ -11,7 +11,7 @@ import Docs from "./Docs";
 import Overview from "./Overview";
 import Pair from "./Pair";
 import Requests from "./Requests";
-import T3 from "./T3";
+import OpenCodeSession from "./OpenCodeSession";
 import Wifi from "./Wifi";
 
 export type DeviceTab = DeviceTabId;
@@ -27,7 +27,6 @@ export default function DevicesHub({
 }) {
 	const { mode, isEasy, setMode } = useDashboardMode();
 	const t = useT();
-	const onT3 = tab === "t3";
 	const allowed = isAllowedDeviceTab(mode, admin, tab);
 
 	useEffect(() => {
@@ -43,32 +42,9 @@ export default function DevicesHub({
 			sx={{
 				minWidth: 0,
 				width: "100%",
-				height: onT3 ? "100%" : undefined,
-				...(onT3
-					? {
-							display: "flex",
-							flexDirection: "column",
-							flex: 1,
-							minHeight: 0,
-							overflow: "hidden",
-						}
-					: undefined),
 			}}
 		>
-			<Box
-				sx={
-					onT3
-						? {
-								mt: 0,
-								flex: 1,
-								minHeight: 0,
-								display: "flex",
-								flexDirection: "column",
-								overflow: "hidden",
-							}
-						: undefined
-				}
-			>
+			<Box>
 				{isEasy && expertOnly ? (
 					<Alert severity="info">
 						{t("mode.expertPage")}{" "}
@@ -86,7 +62,7 @@ export default function DevicesHub({
 							<Overview onAddBoard={() => onTab("pair")} />
 						) : null}
 						{tab === "docs" ? <Docs /> : null}
-						{tab === "t3" ? <T3 /> : null}
+						{tab === "code" ? <OpenCodeSession /> : null}
 						{tab === "pair" ? <Pair onBack={() => onTab("overview")} /> : null}
 						{tab === "wifi" ? <Wifi onBack={() => onTab("overview")} /> : null}
 						{tab === "requests" ? <Requests /> : null}

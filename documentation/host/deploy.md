@@ -230,7 +230,7 @@ The host does **not** run Gitea. Each dashboard user uses **their GitHub account
 
 If an old `gitea-container` Worker is still deployed, delete it (`wrangler delete gitea-container`).
 
-## 5. Cloudflare tunnel (T3 Code)
+## 5. Cloudflare tunnel (device API)
 
 Each board gets its **own remotely-managed Cloudflare Tunnel** at first-setup (not a shared replica). Zone: `gpio-companion.com`.
 
@@ -243,13 +243,10 @@ First-setup prompts for:
 It creates `gpio-<pairing-uuid>`, publishes:
 
 - `api-<uuid>.gpio-companion.com` → `http://127.0.0.1:4150`
-- `t3-<uuid>.gpio-companion.com` → `http://127.0.0.1:3773`
 
-`<uuid>` is the pairing UUID with dashes stripped. Replica token lives in `/etc/gpio-companion/cloudflared.env`. Signed `PUT /v1/config/tunnel` can still rewrite it.
+`<uuid>` is the pairing UUID with dashes stripped. There is no `t3-<uuid>` hostname and no public code hostname. OpenCode stays on `127.0.0.1:4096` and is reached through the signed device API proxy. Replica token lives in `/etc/gpio-companion/cloudflared.env`. Signed `PUT /v1/config/tunnel` can still rewrite it.
 
-T3 pairing stays on the dashboard: first-setup runs `t3 service install`; after claim the dashboard runs `t3 pair` and shows the pair code/QR and `https://t3-…/pair#token=…`.
-
-first-setup writes the OpenCode provider to `http://127.0.0.1:4150/v1/ai` (dummy `apiKey: local`). gpio-companion serve proxies that loopback path to `/api/ai/v1` with a short-lived device token minted from pairing uuid+key. Default model `@cf/zai-org/glm-5.3`. The T3 Code / OpenCode picker lists priced Workers AI text-generation models; reasoning models expose thinking-effort variants (`low` / `medium` / `high`). `GET /api/ai/v1/models` returns that same chat catalog. `POST /api/ai/v1/chat/completions` forwards OpenAI `tools`/`tool_calls` and `reasoning_effort`, and bills Cloudflare list in/out (cached-in when present) × `GPIO_AI_MARKUP`. Unpair deletes `pair:<uuid>` so the token stops working. Do not paste OpenCode or Cloudflare tokens on Keys. GitHub access is the App install on Keys, not a PAT.
+first-setup writes the OpenCode provider to `http://127.0.0.1:4150/v1/ai` (dummy `apiKey: local`). gpio-companion serve proxies that loopback path to `/api/ai/v1` with a short-lived device token minted from pairing uuid+key. Default model `@cf/zai-org/glm-5.3`. Open Code in the dashboard lists priced Workers AI text-generation models; reasoning models expose thinking-effort variants (`low` / `medium` / `high`). `GET /api/ai/v1/models` returns that same chat catalog. `POST /api/ai/v1/chat/completions` forwards OpenAI `tools`/`tool_calls` and `reasoning_effort`, and bills Cloudflare list in/out (cached-in when present) × `GPIO_AI_MARKUP`. Unpair deletes `pair:<uuid>` so the token stops working. Do not paste OpenCode or Cloudflare tokens on Keys. GitHub access is the App install on Keys, not a PAT.
 
 ## 6. What users need from you
 
@@ -258,4 +255,4 @@ Give every desk user:
 1. Dashboard origin (and that they must use Chrome/Edge for in-browser Bluetooth)
 2. That projects live on **their GitHub**; after pair they **Connect GitHub** on `/devices/keys` (install your App — no PAT)
 3. Cloudflare API token / account ID / zone ID for first-setup (Tunnel Edit + DNS Edit on `gpio-companion.com`)
-4. That pairing UUID + key and the `api-` / `t3-` URLs are printed **on the Pi console** at first-setup — you do not email those
+4. That pairing UUID + key and the `api-` URL are printed **on the Pi console** at first-setup — you do not email those

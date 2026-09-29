@@ -1,6 +1,6 @@
 # Device image and on-metal install (host)
 
-The board is Armbian with T3 Code + OpenCode. Exact image SKUs are **not locked**. What is locked: per-hardware install scripts and the snapshot first-boot path.
+The board is Armbian with OpenCode. Exact image SKUs are **not locked**. What is locked: per-hardware install scripts and the snapshot first-boot path.
 
 ## Snapshot first boot
 
@@ -25,14 +25,14 @@ The clone does **not** bake a production public key. First-setup fetches it from
 3. Cloudflare API token, account ID, and zone ID (creates a per-Pi tunnel; token is not written to disk)
 4. Runs `scripts/install-raspberrypi.sh` or `scripts/install-orangepi.sh`
 5. Generates pairing UUID + key into `/etc/gpio-companion/pairing.env` (mode 600) if unset
-6. Creates `gpio-<uuid>` on Cloudflare with `api-<slug>` → :4150 and `t3-<slug>` → :3773
+6. Creates `gpio-<uuid>` on Cloudflare with `api-<slug>` → :4150. No public code hostname.
 7. Writes `/etc/gpio-companion/config.json` and `cloudflared.env`, enables the replica
 8. Fetches the dashboard Ed25519 public key into `/etc/gpio-companion/device-auth.json` (fails closed if the dashboard is unreachable)
 9. Writes `/etc/gpio-companion/first-setup-complete`
 
-It does **not** collect OpenCode or GitHub secrets. It **does** run `t3 service install` and lock T3 Code to OpenCode as the only provider. It does **not** run `t3 pair` (dashboard does that after claim).
+It does **not** collect OpenCode or GitHub secrets. It installs the GPIO-user OpenCode server on `127.0.0.1:4096` and does not install T3 Code.
 
-Prints pairing UUID/key plus `https://api-…` and `https://t3-…`. Treat that console output as a physical possession secret.
+Prints pairing UUID/key plus `https://api-…`. Treat that console output as a physical possession secret.
 
 Non-interactive: `GPIO_COMPANION_HARDWARE`, `GPIO_COMPANION_CF_API_TOKEN`, `GPIO_COMPANION_CF_ACCOUNT_ID`, `GPIO_COMPANION_CF_ZONE_ID`, optional `GPIO_COMPANION_DASHBOARD_URL` (default `https://gpio-companion.com`).
 
@@ -42,7 +42,7 @@ Force re-run: `GPIO_COMPANION_FORCE_SETUP=1`.
 
 Shared work: `scripts/lib.sh` → `install_common`.
 
-Packages include: git, zip/unzip, bun, build-essential, node-gyp toolchain, libgpiod, Arduino USB (`avrdude`, `picocom`, …), cloudflared, OpenCode, T3 Code, **bluez**, **python3-dbus**, **python3-gi** (BLE GATT), **network-manager** (`nmcli` for `PUT /v1/config/wifi`), **dosfstools** (removable SD/USB → `~/storage/<label>`).
+Packages include: git, zip/unzip, bun, build-essential, node-gyp toolchain, libgpiod, Arduino USB (`avrdude`, `picocom`, …), cloudflared, OpenCode, **bluez**, **python3-dbus**, **python3-gi** (BLE GATT), **network-manager** (`nmcli` for `PUT /v1/config/wifi`), **dosfstools** (removable SD/USB → `~/storage/<label>`).
 
 - Raspberry Pi extras: optional `pigpio` / `raspi-gpio`
 - Orange Pi extras: optional WiringOP — SoC lines are **not** BCM; agents must use `gpioinfo`
@@ -51,7 +51,7 @@ Device binary: compiled `gpio-companion` on PATH (`/usr/local/bin/gpio-companion
 
 Systemd:
 
-- `gpio-companion.service` — `gpio-companion serve` on port **4150**, after network + bluetooth, as the GPIO user (`User=` / `GPIO_USER` / `SupplementaryGroups=gpio`, typically `companion` when first-setup is run with sudo). T3 Code is the same user’s systemd user unit. Updater/cleanup/cloudflared stay root.
+- `gpio-companion.service` — `gpio-companion serve` on port **4150**, after network + bluetooth, as the GPIO user (`User=` / `GPIO_USER` / `SupplementaryGroups=gpio`, typically `companion` when first-setup is run with sudo). OpenCode is that same user’s systemd user unit (`gpio-opencode.service` on `127.0.0.1:4096`). Updater/cleanup/cloudflared stay root.
 - `gpio-companion-update.timer` — updater OnBootSec=2min and every 24h (`Persistent=true`). Unit runs `/usr/local/sbin/gpio-companion-update` as root. The same wrapper is on PATH at `/usr/local/bin/gpio-companion-update`; if the GPIO user runs it, it re-execs with `sudo -n` (NOPASSWD, no TTY) then `scripts/update-script.sh`. `gpio-companion-force-update` is the `--force` variant.
 - `gpio-companion-cleanup.timer` — disk/log cleanup OnBootSec=1min and every hour (`Persistent=true`); journals `MaxRetentionSec=1day`, `SystemMaxUse=64M`, `ForwardToSyslog=no` (drop-in `/etc/systemd/journald.conf.d/zz-gpio-companion.conf` so it sorts after Debian `syslog.conf`)
 - `gpio` group + udev `99-gpio-companion-gpiochip.rules` — `/dev/gpiochip*` is `0660` `gpio`; `gpio-companion.service` has `SupplementaryGroups=gpio` so Live GPIO does not `sudo` `gpioget`/`gpioinfo` (sudo remains fallback on EACCES)
@@ -73,9 +73,9 @@ The binary also reads `/etc/gpio-companion/device-auth.json` (`keyId`, `publicKe
 | Route | Auth |
 | --- | --- |
 | `GET /health` | none |
-| `GET /v1/status`, `GET /v1/logs`, pairing, config, secrets, github, **wifi**, **t3** | Ed25519 dashboard signature (60s skew once NTP/clock is trusted; nonce replay list while offline) |
+| `GET /v1/status`, `GET /v1/logs`, pairing, config, secrets, github, **wifi**, **opencode** | Ed25519 dashboard signature (60s skew once NTP/clock is trusted; nonce replay list while offline) |
 | `POST /v1/pairing/claim` | signature **and** pairing UUID + key |
-| `POST /v1/t3/pair` | signature |
+| `GET /v1/opencode/global/health` | signature |
 
 Signature headers: `X-Gpio-Key-Id`, `X-Gpio-Timestamp`, `X-Gpio-Nonce`, `X-Gpio-Signature`. 60s skew. Canonical version `gpio-companion-device-v1`.
 
@@ -106,11 +106,10 @@ Script path, first existing file: env `GPIO_COMPANION_BLE_SCRIPT` (unit default 
 - Copies `opencode/skills` and `opencode/preferences` into the device OpenCode config
 - Fetches `GET /api/device-public-key` and writes `/etc/gpio-companion/device-auth.json` if it changed
 - Rebuilds/restarts `gpio-companion` if `binary/`, `packages/core/`, the unit file, or lockfile changed, or if the registered public key changed
-- Compares installed `t3` to npm `t3@latest` and runs `npm install -g t3@latest --allow-scripts=msgpackr-extract,node-pty` plus `t3 service update` (or `t3 service install` if the unit is missing) when behind or on `--force`. Already-current t3 skips the service command so the updater does not stack extra T3 processes. Registry miss keeps the current package; re-locks T3 Code to OpenCode-only providers. Service install/update runs in the GPIO user's systemd session (`loginctl enable-linger`, `user@UID.service`, `XDG_RUNTIME_DIR`) from that user's home (not the installer cwd under `/root`) so T3 does not `mkdir` a root-owned path and the updater does not hit `user-manager-unavailable`
-- Runs `opencode upgrade` as the GPIO user
+- Installs or restarts the GPIO-user OpenCode unit and runs `opencode upgrade`. It does not install or start T3 Code.
 - Force rebuild even when HEAD did not move: `sudo ./scripts/force-update.sh` or `sudo gpio-companion-force-update` (`--force` / `GPIO_COMPANION_UPDATE_FORCE=1`)
 - Dashboard owner or admin can start the same timer job remotely: signed `POST /v1/update` → `systemctl start --no-block gpio-companion-update.service` (HTTP returns immediately; the board may restart)
-- Dashboard project create signs `POST /v1/projects/sync` `{ owner, name }` to each hub-live paired board (clone `~/projects/<name>`, `t3 project add`). Offline boards are skipped. Serve also lists watermarked installation repos at start and every 15 min.
-- Dashboard project delete signs `POST /v1/projects/remove` `{ owner, name }` to each hub-live paired board (`t3 project remove`, delete `~/projects/<name>` when origin matches). Offline boards are skipped. GitHub delete still works without a live board. Board must Update companion.
+- Dashboard project create signs `POST /v1/projects/sync` `{ owner, name }` to each hub-live paired board (clone `~/projects/<name>`). Offline boards are skipped. Serve also lists watermarked installation repos at start and every 15 min.
+- Dashboard project delete signs `POST /v1/projects/remove` `{ owner, name }` to each hub-live paired board (delete `~/projects/<name>` when origin matches). Offline boards are skipped. GitHub delete still works without a live board.
 
 Public-key rotations are **dashboard-only** (new Pages secret); Pis pick them up on the next updater run without a git commit. Fetch failure keeps the current file.

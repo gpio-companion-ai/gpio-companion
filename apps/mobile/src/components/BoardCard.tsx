@@ -14,7 +14,6 @@ import { useT } from "../lib/locale.tsx";
 import CompanionInfo from "./CompanionInfo.tsx";
 import FlashProxyButton from "./FlashProxyButton.tsx";
 import GpioPanel from "./GpioPanel.tsx";
-import T3Pairing from "./T3Pairing.tsx";
 import { Chip, Field, Paper, PrimaryButton, Row, TextButton } from "./ui.tsx";
 
 export default function BoardCard({
@@ -177,25 +176,12 @@ export default function BoardCard({
 											? t("devices.githubReady")
 											: t("devices.githubKeysPending")
 									}
-									tone={status.secrets?.githubReady ? "success" : "warning"}
-								/>
-								<Chip
-									label={
-										status.t3?.paired
-											? t("devices.t3Paired")
-											: status.t3?.running
-												? t("devices.t3Running")
-												: t("devices.t3Idle")
-									}
-									tone={status.t3?.paired ? "success" : "muted"}
-								/>
-							</>
-						) : null}
-					</Row>
-					{isEasy && status?.t3?.paired ? null : (
-						<T3Pairing uuid={device.uuid} initial={status?.t3} />
-					)}
-					{isEasy ? null : (
+								tone={status.secrets?.githubReady ? "success" : "warning"}
+							/>
+						</>
+					) : null}
+				</Row>
+				{isEasy ? null : (
 						<CompanionInfo key={device.uuid} uuid={device.uuid} />
 					)}
 					{selected ? (
@@ -209,12 +195,10 @@ export default function BoardCard({
 						/>
 					)}
 					<Row>
-						{isEasy ? (
-							<TextButton
-								label={t("project.openCode")}
-								onPress={() => setTab("t3")}
-							/>
-						) : null}
+						<TextButton
+							label={t("project.openCode")}
+							onPress={() => setTab("code")}
+						/>
 						{!isEasy && onUnpair ? (
 							<TextButton
 								danger

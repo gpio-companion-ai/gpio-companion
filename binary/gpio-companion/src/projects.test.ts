@@ -32,18 +32,13 @@ describe("projectsRoot", () => {
 });
 
 describe("syncProjects", () => {
-	test("clones watermarked repos and adds them to t3", async () => {
+	test("clones watermarked repos into ~/projects", async () => {
 		const cloned: string[] = [];
-		const added: string[] = [];
 		const existing = new Set<string>();
 		const result = await syncProjects(
 			{
 				destRoot: "/home/companion/projects",
 				token: async () => "ghs_token",
-				t3Add: async (path, title) => {
-					added.push(`${title}:${path}`);
-					return "added";
-				},
 				exists: (path) => existing.has(path),
 				mkdirp: () => undefined,
 				gitClone: async (url, dest) => {
@@ -63,10 +58,8 @@ describe("syncProjects", () => {
 		expect(cloned).toEqual([
 			"https://github.com/ada/blink.git /home/companion/projects/blink",
 		]);
-		expect(added).toEqual(["blink:/home/companion/projects/blink"]);
 		expect(result).toEqual({
 			cloned: ["blink"],
-			added: ["blink"],
 			skipped: [],
 		});
 	});
@@ -77,7 +70,6 @@ describe("syncProjects", () => {
 		const result = await syncProjects({
 			destRoot: "/home/companion/projects",
 			token: async () => "ghs_token",
-			t3Add: async () => "exists",
 			exists: (path) => path === dest,
 			mkdirp: () => undefined,
 			gitClone: async (url, destPath) => {
@@ -90,7 +82,7 @@ describe("syncProjects", () => {
 		});
 		expect(cloned).toEqual([]);
 		expect(result.skipped).toEqual(["blink"]);
-		expect(result.added).toEqual([]);
+		expect(result.cloned).toEqual([]);
 	});
 
 	test("clones a gpio-companion repo past the first 80 installation repos", async () => {
@@ -102,7 +94,6 @@ describe("syncProjects", () => {
 		await syncProjects({
 			destRoot: "/home/companion/projects",
 			token: async () => "ghs_token",
-			t3Add: async () => "added",
 			exists: () => false,
 			mkdirp: () => undefined,
 			gitClone: async (url, dest) => {
@@ -134,7 +125,6 @@ describe("syncProjects", () => {
 				token: async () => {
 					throw new Error("token unused");
 				},
-				t3Add: async () => "added",
 				exists: () => false,
 				mkdirp: () => undefined,
 				gitClone: async (url, dest) => {
@@ -155,17 +145,12 @@ describe("syncProjects", () => {
 });
 
 describe("removeProject", () => {
-	test("unregisters t3 and removes a matching clone", async () => {
+	test("removes a matching clone", async () => {
 		const removed: string[] = [];
-		const t3: string[] = [];
 		const result = await removeProject(
 			{
 				destRoot: "/home/companion/projects",
 				exists: (path) => path === "/home/companion/projects/blink",
-				t3Remove: async (path) => {
-					t3.push(path);
-					return "removed";
-				},
 				rm: (path) => {
 					removed.push(path);
 				},
@@ -182,9 +167,8 @@ describe("removeProject", () => {
 			},
 			{ owner: "ada", name: "blink" },
 		);
-		expect(t3).toEqual(["/home/companion/projects/blink"]);
 		expect(removed).toEqual(["/home/companion/projects/blink"]);
-		expect(result).toEqual({ removed: true, t3: "removed" });
+		expect(result).toEqual({ removed: true });
 	});
 
 	test("does not rm when origin does not match", async () => {
@@ -194,7 +178,6 @@ describe("removeProject", () => {
 				{
 					destRoot: "/home/companion/projects",
 					exists: (path) => path === "/home/companion/projects/blink",
-					t3Remove: async () => "removed",
 					rm: (path) => {
 						removed.push(path);
 					},
@@ -210,19 +193,18 @@ describe("removeProject", () => {
 		expect(removed).toEqual([]);
 	});
 
-	test("unregisters t3 when the clone is already gone", async () => {
+	test("reports missing when the clone is already gone", async () => {
 		const result = await removeProject(
 			{
 				destRoot: "/home/companion/projects",
 				exists: () => false,
-				t3Remove: async () => "missing",
 				rm: () => {
 					throw new Error("should not rm");
 				},
 			},
 			{ owner: "ada", name: "blink" },
 		);
-		expect(result).toEqual({ removed: false, t3: "missing" });
+		expect(result).toEqual({ removed: false });
 	});
 });
 

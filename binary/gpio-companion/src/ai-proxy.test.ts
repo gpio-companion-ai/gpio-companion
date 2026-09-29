@@ -87,8 +87,6 @@ describe("loopback ai proxy", () => {
 				filePairingStore(join(dir, "pairing.json"), "pair-uuid", "pair-key"),
 				async () => undefined,
 				undefined,
-				undefined,
-				undefined,
 				{ keyId: keys.keyId, publicKeyPem: keys.publicKeyPem },
 			),
 		).rejects.toThrow("ai proxy is local-only");

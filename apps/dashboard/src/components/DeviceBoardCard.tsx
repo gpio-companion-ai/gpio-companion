@@ -14,20 +14,12 @@ import DeviceCompanionInfo from "./DeviceCompanionInfo.tsx";
 import DeviceLabelField from "./DeviceLabelField.tsx";
 import FlashProxyButton from "./FlashProxyButton.tsx";
 import GpioPanel from "./GpioPanel.tsx";
-import T3PairingPanel from "./T3PairingPanel.tsx";
 
 export type DeviceStatus = {
 	hardware?: string;
 	model?: string;
 	tunnel?: { configured?: boolean; apiHostname?: string };
 	secrets?: { githubReady?: boolean; gpioAiKey?: boolean };
-	t3?: {
-		running?: boolean;
-		pairingUrl?: string;
-		pairingToken?: string;
-		paired?: boolean;
-		serviceInstalled?: boolean;
-	};
 	network?: NetworkStatus | null;
 };
 
@@ -42,7 +34,6 @@ export default function DeviceBoardCard({
 	onLabelSaved,
 	onUnpair,
 	unpairing,
-	t3AutoStart,
 	selected,
 	onSelect,
 	loadInfo,
@@ -52,7 +43,6 @@ export default function DeviceBoardCard({
 	onLabelSaved?: (label: string) => void;
 	onUnpair?: (uuid: string) => void;
 	unpairing?: boolean;
-	t3AutoStart?: boolean;
 	selected?: boolean;
 	onSelect?: (uuid: string) => void;
 	loadInfo?: (uuid: string) => Promise<ActionResult<{ info: unknown }>>;
@@ -61,8 +51,8 @@ export default function DeviceBoardCard({
 	const { uuid: selectedUuid } = useBoardSelection();
 	const live = Boolean(selected) || device.uuid === selectedUuid;
 	const t = useT();
-	const [open, setOpen] = useState(Boolean(t3AutoStart));
-	const expanded = Boolean(t3AutoStart) || open;
+	const [open, setOpen] = useState(false);
+	const expanded = open;
 	const online = Boolean(status);
 	const networkLabel =
 		status?.network?.type === "ethernet"
@@ -72,9 +62,6 @@ export default function DeviceBoardCard({
 					? t("devices.wifiSsid", { ssid: status.network.ssid.trim() })
 					: t("nav.wifi")
 				: "";
-	const codeReady = Boolean(status?.t3?.paired);
-	const showCodePair = !isEasy || t3AutoStart || !codeReady;
-
 	function toggle() {
 		const next = !open;
 		setOpen(next);
@@ -179,34 +166,13 @@ export default function DeviceBoardCard({
 											color={
 												status.secrets?.githubReady ? "success" : "warning"
 											}
-											variant="outlined"
-											size="small"
-										/>
-										<Chip
-											label={
-												codeReady
-													? t("devices.codeReady")
-													: status.t3?.running
-														? t("devices.codeRunning")
-														: t("devices.codeIdle")
-											}
-											color={codeReady ? "success" : "secondary"}
-											variant="outlined"
-											size="small"
-										/>
-									</>
-								) : null}
-							</Stack>
-							{showCodePair && live ? (
-								<T3PairingPanel
-									devices={[device]}
-									uuid={selectedUuid || device.uuid}
-									initialStatus={status?.t3}
-									skipFetch={!t3AutoStart}
-									autoStart={t3AutoStart}
-								/>
+										variant="outlined"
+										size="small"
+									/>
+								</>
 							) : null}
-							{!isEasy && loadInfo && live ? (
+						</Stack>
+						{!isEasy && loadInfo && live ? (
 								<DeviceCompanionInfo
 									key={device.uuid}
 									uuid={selectedUuid || device.uuid}
@@ -226,11 +192,9 @@ export default function DeviceBoardCard({
 								/>
 							)}
 							<Stack direction="row" spacing={1} className="flex-wrap">
-								{isEasy ? (
-									<Button href="/devices/t3" variant="contained" size="small">
-										{t("project.openCode")}
-									</Button>
-								) : null}
+								<Button href="/devices/code" variant="contained" size="small">
+									{t("project.openCode")}
+								</Button>
 								{!isEasy && onUnpair ? (
 									<Button
 										type="button"

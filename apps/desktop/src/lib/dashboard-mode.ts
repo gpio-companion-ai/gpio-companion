@@ -5,7 +5,7 @@ export const DASHBOARD_MODE_STORAGE_KEY = "gpio-companion-dashboard-mode";
 export type DeviceTabId =
 	| "overview"
 	| "docs"
-	| "t3"
+	| "code"
 	| "pair"
 	| "wifi"
 	| "requests"
@@ -28,7 +28,7 @@ export const DEVICE_TABS_EASY: Array<{
 }> = [
 	{ id: "overview", labelKey: "nav.myBoard" },
 	{ id: "wifi", labelKey: "nav.wifi" },
-	{ id: "t3", labelKey: "nav.code" },
+	{ id: "code", labelKey: "nav.code" },
 	{ id: "docs", labelKey: "nav.learn" },
 ];
 
@@ -38,7 +38,7 @@ export const DEVICE_TABS_EXPERT: Array<{
 }> = [
 	{ id: "overview", labelKey: "nav.myBoard" },
 	{ id: "docs", labelKey: "nav.learn" },
-	{ id: "t3", labelKey: "nav.code" },
+	{ id: "code", labelKey: "nav.code" },
 	{ id: "pair", labelKey: "nav.pair" },
 	{ id: "wifi", labelKey: "nav.wifi" },
 	{ id: "requests", labelKey: "nav.requests" },

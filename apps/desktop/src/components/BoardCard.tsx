@@ -18,7 +18,6 @@ import { useT } from "../locale";
 import CompanionInfo from "./CompanionInfo";
 import FlashProxyButton from "./FlashProxyButton";
 import GpioPanel from "./GpioPanel";
-import T3Pairing from "./T3Pairing";
 
 function MemoryIcon() {
 	return (
@@ -57,7 +56,7 @@ export default function BoardCard({
 }) {
 	const t = useT();
 	const { isEasy } = useDashboardMode();
-	const { openT3Pair } = useBoardSelection();
+	const { openCode } = useBoardSelection();
 	const { device, status } = board;
 	const online = Boolean(status);
 	const networkLabel = formatNetworkLabel(status?.network, t);
@@ -200,27 +199,12 @@ export default function BoardCard({
 												status.secrets?.githubReady ? "success" : "warning"
 											}
 											variant="outlined"
-											size="small"
-										/>
-										<Chip
-											label={
-												status.t3?.paired
-													? t("devices.t3Paired")
-													: status.t3?.running
-														? t("devices.t3Running")
-														: t("devices.t3Idle")
-											}
-											color={status.t3?.paired ? "success" : "secondary"}
-											variant="outlined"
-											size="small"
-										/>
-									</>
-								) : null}
-							</Stack>
-							{isEasy && status?.t3?.paired ? null : (
-								<T3Pairing uuid={device.uuid} initial={status?.t3} />
-							)}
-							{isEasy ? null : (
+										size="small"
+									/>
+								</>
+							) : null}
+						</Stack>
+						{isEasy ? null : (
 								<CompanionInfo key={device.uuid} uuid={device.uuid} />
 							)}
 							{selected ? (
@@ -234,15 +218,16 @@ export default function BoardCard({
 								/>
 							)}
 							<Stack direction="row" spacing={1} sx={{ flexWrap: "wrap" }}>
-								{isEasy ? (
-									<Button
-										variant="contained"
-										size="small"
-										onClick={() => openT3Pair(device.uuid, "")}
-									>
-										{t("project.openCode")}
-									</Button>
-								) : null}
+								<Button
+									variant="contained"
+									size="small"
+									onClick={() => {
+										onSelect?.(device.uuid);
+										openCode();
+									}}
+								>
+									{t("project.openCode")}
+								</Button>
 								{!isEasy && onUnpair ? (
 									<Button
 										color="error"

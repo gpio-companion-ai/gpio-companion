@@ -1,5 +1,7 @@
 import { GET as getDevice } from "@api/device";
 import { GET as getPairing } from "@api/pair";
+import OrderReviewPanel from "@components/OrderReviewPanel";
+import PartsSearchPanel from "@components/PartsSearchPanel";
 import ProjectBrowser from "@components/ProjectBrowser";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Box from "@shpaw415/mui-lite/Box";
@@ -118,8 +120,6 @@ export default function ProjectPage() {
 	const step = !loggedIn ? 0 : !paired ? 1 : !githubReady ? 2 : 3;
 	const next = nextFor[step] ?? undefined;
 	const activeUuid = selectedUuid || devices[0]?.uuid || "";
-	const activeStatus = statuses[activeUuid];
-	const codeReady = Boolean(activeStatus?.t3?.paired && activeStatus);
 	const wifiHint = paired && needsWifi(statuses[activeUuid]);
 
 	return (
@@ -127,7 +127,7 @@ export default function ProjectPage() {
 			{paired ? (
 				<Stack direction="row" className="justify-end">
 					<Button
-						href={codeReady ? "/devices/t3" : "/devices"}
+						href={paired ? "/devices/code" : "/devices"}
 						variant="outlined"
 						size="small"
 						className={mobile ? "w-full" : undefined}
@@ -136,14 +136,6 @@ export default function ProjectPage() {
 					</Button>
 				</Stack>
 			) : null}
-			{paired && !pairingLoading && !codeReady ? (
-				<Alert severity="info">
-					{activeStatus
-						? t("project.codeNeedsPairing")
-						: t("project.boardUnavailable")}
-				</Alert>
-			) : null}
-
 			{step < 3 || pairingLoading ? (
 				<Paper className="workbench-control-rail p-3" elevation={0}>
 					<Stack spacing={1.5}>
@@ -191,6 +183,8 @@ export default function ProjectPage() {
 				</Alert>
 			) : null}
 
+			{loggedIn ? <PartsSearchPanel /> : null}
+			{loggedIn ? <OrderReviewPanel /> : null}
 			<div>
 				<ProjectBrowser
 					onConfigured={setGithubReady}

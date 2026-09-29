@@ -15,7 +15,7 @@ export type SidebarEntry = {
 	onSelect?: () => void;
 };
 
-export type ProfileSection = "account" | "github" | "credits";
+export type ProfileSection = "account" | "github" | "credits" | "address";
 
 type DeckNavValue = {
 	workItems: SidebarEntry[];
@@ -26,7 +26,9 @@ type DeckNavValue = {
 	setProfileSection: (section: ProfileSection) => void;
 	jumpProfile: (section: ProfileSection) => void;
 	consumeProfileJump: () => ProfileSection | null;
-	registerProfileJump: (jump: ((section: ProfileSection) => void) | null) => void;
+	registerProfileJump: (
+		jump: ((section: ProfileSection) => void) | null,
+	) => void;
 };
 
 const EMPTY: SidebarEntry[] = [];
@@ -36,7 +38,8 @@ const DeckNavCtx = createContext<DeckNavValue | null>(null);
 export function DeckNavProvider({ children }: { children: ReactNode }) {
 	const [workItems, setWorkItemsState] = useState<SidebarEntry[]>(EMPTY);
 	const [docsItems, setDocsItemsState] = useState<SidebarEntry[]>(EMPTY);
-	const [profileSection, setProfileSection] = useState<ProfileSection>("account");
+	const [profileSection, setProfileSection] =
+		useState<ProfileSection>("account");
 	const jumpRef = useRef<((section: ProfileSection) => void) | null>(null);
 	const pendingProfile = useRef<ProfileSection | null>(null);
 

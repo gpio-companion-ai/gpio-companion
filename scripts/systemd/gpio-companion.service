@@ -20,6 +20,8 @@ Environment=GPIO_COMPANION_CONFIG=/etc/gpio-companion/config.json
 Environment=GPIO_COMPANION_TUNNEL_ENV=/etc/gpio-companion/cloudflared.env
 Environment=GPIO_COMPANION_SECRETS=/etc/gpio-companion/secrets.env
 Environment=GPIO_COMPANION_PAIRING=/etc/gpio-companion/pairing.json
+Environment=GPIO_COMPANION_OPENCODE_SERVER_ENV=/etc/gpio-companion/opencode-server.env
+Environment=GPIO_COMPANION_OPENCODE_URL=http://127.0.0.1:4096
 Environment=GPIO_COMPANION_PORT=4150
 Environment=GPIO_COMPANION_HARDWARE=raspberrypi
 Environment=GPIO_COMPANION_DASHBOARD_URL=https://gpio-companion.com

@@ -152,7 +152,6 @@ export type DeviceStatus = {
 	model?: string;
 	tunnel?: { configured?: boolean; apiHostname?: string };
 	secrets?: { githubReady?: boolean; gpioAiKey?: boolean };
-	t3?: T3Status;
 	network?: {
 		type?: "ethernet" | "wifi" | "unknown";
 		ssid?: string;
@@ -249,16 +248,6 @@ export type HubTicket = {
 	exp: number;
 	wsUrl: string;
 };
-
-export type T3Status = {
-	running?: boolean;
-	pairingUrl?: string;
-	pairingToken?: string;
-	paired?: boolean;
-	serviceInstalled?: boolean;
-};
-
-export type T3Pairing = T3Status;
 
 export type AdminDeviceItem = {
 	device: Device;
@@ -408,26 +397,125 @@ export function signWifi(
 	});
 }
 
-export function t3Status(token: string, uuid: string) {
-	return request<T3Status>(
-		token,
-		`/api/mobile/t3?uuid=${encodeURIComponent(uuid)}`,
-	);
-}
-
-export function t3Action(token: string, action: "pair", uuid: string) {
-	return request<T3Status>(token, "/api/mobile/t3", {
+export function opencodeCall(
+	token: string,
+	body: {
+		uuid: string;
+		repo: string;
+		op: string;
+		sessionID?: string;
+		permissionID?: string;
+		requestID?: string;
+		text?: string;
+		response?: "once" | "always" | "reject";
+		answers?: string[][];
+		reject?: boolean;
+	},
+) {
+	return request<unknown>(token, "/api/mobile/opencode", {
 		method: "POST",
-		body: JSON.stringify({ action, uuid }),
+		body: JSON.stringify(body),
 	});
 }
 
-export function startT3Pair(token: string, uuid: string) {
-	return t3Action(token, "pair", uuid);
+export async function openOpencodeEvents(
+	token: string,
+	uuid: string,
+	repo: string,
+	lastEventId: string,
+	signal: AbortSignal,
+) {
+	const params = new URLSearchParams({ uuid, repo });
+	const response = await fetch(
+		`${dashboardUrl}/api/mobile/opencode/event?${params}`,
+		{
+			headers: {
+				accept: "text/event-stream",
+				authorization: `Bearer ${token}`,
+				...(lastEventId ? { "last-event-id": lastEventId } : {}),
+			},
+			signal,
+		},
+	);
+	if (!response.ok) {
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		throw new Error(body?.error || "opencode event stream unavailable");
+	}
+	return response;
 }
 
 export function getCredits(token: string) {
 	return request<Credits>(token, "/api/mobile/credits");
+}
+
+export function submitBugReport(
+	token: string,
+	body: {
+		text: string;
+		surface: "mobile";
+		boardUuid?: string;
+		boardModel?: string;
+	},
+) {
+	return request<{ sent: true }>(token, "/api/mobile/support", {
+		method: "POST",
+		body: JSON.stringify(body),
+	});
+}
+
+export function jlcpcbCredentialStatus(token: string) {
+	return request<{ configured: boolean }>(
+		token,
+		"/api/mobile/jlcpcb/credentials",
+	);
+}
+
+export function searchJlcpcbParts(token: string, query: string) {
+	return request<{ parts: unknown }>(token, "/api/mobile/jlcpcb/parts", {
+		method: "POST",
+		body: JSON.stringify({ query }),
+	});
+}
+
+export function loadShippingAddress(token: string) {
+	return request<{ address: unknown }>(token, "/api/mobile/address");
+}
+
+export function saveShippingAddress(
+	token: string,
+	body: {
+		name: string;
+		line1: string;
+		line2: string;
+		city: string;
+		region: string;
+		postalCode: string;
+		country: string;
+	},
+) {
+	return request<{ address: unknown }>(token, "/api/mobile/address", {
+		method: "PUT",
+		body: JSON.stringify(body),
+	});
+}
+
+export function quoteJlcpcbOrder(token: string, body: Record<string, unknown>) {
+	return request<{ quote: unknown }>(token, "/api/mobile/jlcpcb/orders/quote", {
+		method: "POST",
+		body: JSON.stringify(body),
+	});
+}
+
+export function confirmJlcpcbOrder(
+	token: string,
+	body: Record<string, unknown>,
+) {
+	return request<{ order: unknown }>(token, "/api/mobile/jlcpcb/orders", {
+		method: "POST",
+		body: JSON.stringify(body),
+	});
 }
 
 export function listProjects(token: string) {

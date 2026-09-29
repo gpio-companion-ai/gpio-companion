@@ -19,7 +19,7 @@
 | Mock | Real |
 |---|---|
 | Board list + selection | `DeviceBoardCard` list; selection key `gpio-companion-selected-board` (+ legacy T3 key) |
-| Overview actions | `T3PairingPanel`, `FlashProxyButton` (`POST /v1/flash/proxy`), `GpioPanel`, unpair (`DELETE` pair API) |
+| Overview actions | Open Code (`/devices/code`), `FlashProxyButton` (`POST /v1/flash/proxy`), `GpioPanel`, unpair (`DELETE` pair API) |
 | Proxy state | `GET /v1/arduino-proxy`; `ArduinoProxyPins` for the Companion/Arduino switcher |
 | Pair page | `PairForm` (centered empty-state + dialog variant both stay) |
 | WiFi page | `WifiBleForm` (GATT + sign-and-copy) |
@@ -28,12 +28,11 @@
 | Requests page | `NotificationCenter` (accept/reject transfer) |
 | Label edit | `DeviceLabelField`; companion facts `DeviceCompanionInfo` |
 
-## T3 (rail 💻 → `/devices/t3`)
+## Code (rail 💻 → `/devices/code`)
 
 | Mock | Real |
 |---|---|
-| Session list + keep-alive view | `T3Frame` (same-origin iframe, hidden-on-other-routes, never unmount) + `DeviceSelect` |
-| Open in new tab | Same origin, path `/` (not the `/api/t3-embed/{uuid}/` prefix) |
+| Session list + prompt | In-app Open Code session (`OpenCodeSession`) on web, desktop, and mobile. No T3 iframe. |
 
 ## You (rail 👤 → `/profile/*`)
 

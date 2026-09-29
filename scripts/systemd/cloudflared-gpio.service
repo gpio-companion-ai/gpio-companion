@@ -1,5 +1,5 @@
 [Unit]
-Description=gpio-companion cloudflared replica for t3code
+Description=gpio-companion cloudflared replica for the device API
 After=network-online.target gpio-companion.service
 Wants=network-online.target
 ConditionPathExists=/etc/gpio-companion/cloudflared.env

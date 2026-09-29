@@ -41,8 +41,9 @@ import {
 	PROFILE_TABS,
 	type SectionTab,
 } from "../../lib/dashboard-mode.ts";
-import { DASHBOARD_BOTTOM_NAV_ID } from "../../lib/t3-url.ts";
 import DockBody from "./DockBody.tsx";
+
+const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
 
 type DeckTranslate = (key: `deck.${string}`) => string;
 type FocusRegion = "primary" | "secondary";
@@ -167,7 +168,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	const rail = [
 		{ href: "/project", label: t("deck.rail.work"), icon: <FolderIcon /> },
 		{ href: "/devices", label: t("deck.rail.fleet"), icon: <MemoryIcon /> },
-		{ href: "/devices/t3", label: t("deck.rail.t3"), icon: <TerminalIcon /> },
+		{ href: "/devices/code", label: t("deck.rail.code"), icon: <TerminalIcon /> },
 		{
 			href: "/profile",
 			label: t("deck.rail.you"),
@@ -193,7 +194,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	];
 	const workLinks: ContextLink[] = [
 		{ href: "/project", labelKey: "deck.link.project" },
-		{ href: "/devices/t3", labelKey: "deck.link.code" },
+		{ href: "/devices/code", labelKey: "deck.link.code" },
 		{ href: "/devices/docs", labelKey: "deck.link.learn" },
 	];
 	const contextLinks: ContextLink[] = pathname.startsWith("/profile")
@@ -656,9 +657,9 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				<nav className="b6-rail" aria-label={t("deck.rail.label")}>
 					{rail.map((item) => {
 						const active =
-							item.href === "/devices/t3"
+							item.href === "/devices/code"
 								? pathname.startsWith(item.href)
-								: section === item.href && !pathname.startsWith("/devices/t3");
+								: section === item.href && !pathname.startsWith("/devices/code");
 						return (
 							<a
 								key={item.href}

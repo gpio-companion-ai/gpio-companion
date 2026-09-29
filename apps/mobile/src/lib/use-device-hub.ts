@@ -11,7 +11,6 @@ export function useDeviceHub(
 	const onGpio = handlers.onGpio;
 	const onFlash = handlers.onFlash;
 	const onRun = handlers.onRun;
-	const onT3 = handlers.onT3;
 	const onArduinoProxy = handlers.onArduinoProxy;
 
 	useEffect(() => {
@@ -31,7 +30,7 @@ export function useDeviceHub(
 			client = startHubClient({
 				uuid: trimmed,
 				mintTicket: () => mintHubTicket(authToken, trimmed),
-				handlers: { onGpio, onFlash, onRun, onT3, onArduinoProxy },
+				handlers: { onGpio, onFlash, onRun, onArduinoProxy },
 			});
 		}
 
@@ -53,5 +52,5 @@ export function useDeviceHub(
 			sub.remove();
 			client?.stop();
 		};
-	}, [uuid, token, onGpio, onFlash, onRun, onT3, onArduinoProxy]);
+	}, [uuid, token, onGpio, onFlash, onRun, onArduinoProxy]);
 }

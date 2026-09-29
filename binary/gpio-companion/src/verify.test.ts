@@ -247,8 +247,6 @@ describe("verify api", () => {
 				stores.pairing,
 				async () => undefined,
 				undefined,
-				undefined,
-				undefined,
 				{ keyId: keys.keyId, publicKeyPem: keys.publicKeyPem },
 				undefined,
 				undefined,

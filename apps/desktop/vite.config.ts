@@ -27,6 +27,14 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/pairing.ts",
 			),
+			"gpio-companion-opencode": path.resolve(
+				repoRoot,
+				"packages/core/src/opencode-session.ts",
+			),
+			"gpio-companion-jlcpcb": path.resolve(
+				repoRoot,
+				"packages/core/src/jlcpcb-parts.ts",
+			),
 		},
 	},
 	clearScreen: false,

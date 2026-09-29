@@ -5,6 +5,9 @@ export type MobileEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
 	GPIO_COMPANION_DEVICE_PRIVATE_KEY?: string;
 	GPIO_COMPANION_DEVICE_KEY_ID?: string;
+	JLCPCB_APP_ID?: string;
+	JLCPCB_ACCESS_KEY?: string;
+	JLCPCB_SECRET_KEY?: string;
 };
 
 export type MobileContext = {
@@ -34,6 +37,12 @@ export function errorStatus(caught: unknown): number {
 	}
 	if (message === "admin only") {
 		return 403;
+	}
+	if (message === "too many bug reports") {
+		return 429;
+	}
+	if (message === "support email is not configured") {
+		return 503;
 	}
 	if (message.includes("board did not respond in time")) {
 		return 502;

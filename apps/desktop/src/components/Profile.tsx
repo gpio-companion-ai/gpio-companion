@@ -2,15 +2,26 @@ import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
+import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { translateError } from "gpio-companion-i18n";
-import { useState } from "react";
-import { DASHBOARD_URL, getCredits, openExternal, type Session } from "../api";
+import { useEffect, useState } from "react";
+import {
+	DASHBOARD_URL,
+	getCredits,
+	listDeviceStatus,
+	openExternal,
+	type Session,
+	submitBugReport,
+} from "../api";
 import { CACHE_KEYS, useCachedQuery } from "../hooks/useApiCache";
+import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useT } from "../locale";
+import AddressForm from "./AddressForm";
 import DebugLog from "./DebugLog";
 import Keys from "./Keys";
 import LanguageCard from "./LanguageCard";
+import { consumeProfileJump } from "./PartsSearchPanel";
 import { LinesSkeleton } from "./skeletons";
 
 export default function Profile({
@@ -25,6 +36,16 @@ export default function Profile({
 	const t = useT();
 	const [error, setError] = useState("");
 	const loading = creditsQuery.loading;
+
+	useEffect(() => {
+		const jump = consumeProfileJump();
+		if (!jump) {
+			return;
+		}
+		document.getElementById(`profile-${jump}`)?.scrollIntoView({
+			block: "start",
+		});
+	}, []);
 
 	return (
 		<Stack spacing={1.5}>
@@ -107,6 +128,87 @@ export default function Profile({
 					</Button>
 				</Stack>
 			</Paper>
+			<AddressForm />
+			<BugReportForm />
 		</Stack>
+	);
+}
+
+function BugReportForm() {
+	const t = useT();
+	const { uuid } = useBoardSelection();
+	const boardsQuery = useCachedQuery(CACHE_KEYS.userBoards, listDeviceStatus);
+	const board = boardsQuery.data?.devices.find(
+		(item) => item.device.uuid === uuid,
+	);
+	const boardLabel = [board?.device.label, board?.status?.model]
+		.filter(Boolean)
+		.join(" · ");
+	const [text, setText] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [sent, setSent] = useState(false);
+	const [error, setError] = useState("");
+
+	async function submit() {
+		setBusy(true);
+		setSent(false);
+		setError("");
+		try {
+			const result = await submitBugReport({
+				text,
+				surface: "desktop",
+				boardUuid: uuid,
+				boardModel: board?.status?.model ?? "",
+			});
+			if (result?.sent !== true) {
+				setError(t("errors.supportEmailMissing"));
+				return;
+			}
+			setText("");
+			setSent(true);
+		} catch (caught) {
+			setSent(false);
+			setError(
+				caught instanceof Error
+					? caught.message
+					: t("errors.supportEmailMissing"),
+			);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<Paper sx={{ p: 1.5 }} elevation={1}>
+			<Stack spacing={1}>
+				<Typography variant="subtitle1">{t("profile.bugTitle")}</Typography>
+				<Typography color="secondary">{t("profile.bugHint")}</Typography>
+				{boardLabel ? (
+					<Typography color="secondary">
+						{t("profile.bugBoard", { board: boardLabel })}
+					</Typography>
+				) : null}
+				{sent ? <Alert severity="success">{t("profile.bugSent")}</Alert> : null}
+				{error ? (
+					<Alert severity="error">{translateError(t, error)}</Alert>
+				) : null}
+				<TextField
+					label={t("profile.bugLabel")}
+					placeholder={t("profile.bugPlaceholder")}
+					value={text}
+					multiline
+					disabled={busy}
+					onChange={(event) => setText(event.target.value)}
+				/>
+				<Button
+					variant="contained"
+					size="small"
+					disabled={busy || !text.trim()}
+					onClick={() => void submit()}
+				>
+					{busy ? t("profile.bugSending") : t("profile.bugSend")}
+				</Button>
+			</Stack>
+		</Paper>
 	);
 }

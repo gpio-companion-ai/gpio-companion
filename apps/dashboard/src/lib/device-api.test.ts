@@ -5,11 +5,11 @@ describe("readDeviceJson", () => {
 	it("uses JSON error bodies", async () => {
 		await expect(
 			readDeviceJson(
-				new Response(JSON.stringify({ error: "t3 pair failed" }), {
+				new Response(JSON.stringify({ error: "device request failed" }), {
 					status: 400,
 				}),
 			),
-		).rejects.toThrow("t3 pair failed");
+		).rejects.toThrow("device request failed");
 	});
 
 	it("maps Cloudflare gateway HTML to a board timeout", async () => {

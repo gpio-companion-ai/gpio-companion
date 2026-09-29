@@ -3,7 +3,6 @@ import {
 	asArduinoProxyStatus,
 	asFlashStatus,
 	asGpioSnapshot,
-	asHubT3Status,
 	gpioLiveValues,
 	parseHubMessage,
 	startHubClient,
@@ -60,8 +59,7 @@ describe("hub protocol", () => {
 			})[7],
 		).toBe(1);
 		expect(asFlashStatus({ running: true, last: null })?.running).toBe(true);
-		expect(asHubT3Status({ paired: true })?.paired).toBe(true);
-		expect(asHubT3Status({})).toBeNull();
+		expect(parseHubMessage('{"v":1,"type":"t3"}')?.type).toBe("t3");
 		expect(parseHubMessage('{"v":1,"type":"arduinoProxy"}')?.type).toBe(
 			"arduinoProxy",
 		);

@@ -43,11 +43,9 @@ Open **Devices → WiFi**, choose your paired board, enter the network name and 
 
 The WiFi details go directly to the nearby board. They are not added to your project. For browser and iPhone options, see [WiFi and Bluetooth](./wifi-bluetooth.md).
 
-## 5. Pair T3 Code
+## 5. Open Code
 
-On **Devices → My board**, find your board and choose **Pair T3 Code**. Open the displayed link or scan its QR code, then confirm the pairing.
-
-Afterward, **Open Code** launches your private T3 Code workspace. You normally do this once per board.
+On **Devices → My board** or **Project**, choose **Open Code**. That opens the in-app session for the selected board. No pairing code is required.
 
 ## 6. Connect GitHub
 
@@ -72,7 +70,7 @@ The agent should identify your board, prepare a visual breadboard, and explain w
 You are ready when:
 
 - your board shows **Online** in Devices
-- **Open Code** reaches T3 Code
+- **Open Code** opens the in-app session
 - your GitHub connection shows as active
 - `hello-led` appears in Project
 
@@ -83,6 +81,6 @@ You are ready when:
 | No nearby Bluetooth device | Move closer, enable Bluetooth permissions, and make sure no other app is connected to the board |
 | Board remains offline | Keep Ethernet connected or send WiFi again from **Devices → WiFi** |
 | Pairing details are rejected | Confirm all three details belong to the same physical board |
-| T3 pairing expired | Choose **Pair T3 Code** again to create a fresh code |
+| Open Code does not answer | Keep the board online, then choose **Open Code** again |
 | Project does not reach the board | Keep the board online for a few minutes, then reload Project |
 | A new feature is missing | Switch to **Expert**, open **Devices → Debug**, and choose **Update companion** |

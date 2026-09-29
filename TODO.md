@@ -19,17 +19,17 @@ If a dependency is not already in the tree, stop and report it. Do not build the
 
 | ID | Priority | Task | Depends | Status |
 | --- | --- | --- | --- | --- |
-| S01 | P0 | OpenCode server service | — | open |
-| S02 | P0 | In-app OpenCode UI | S01 | open |
-| S03 | P0 | Remove T3 Code | S01, S02 | open |
-| S04 | P1 | 3D model skill | — | open |
+| S01 | P0 | OpenCode server service | — | done |
+| S02 | P0 | In-app OpenCode UI | S01 | done |
+| S03 | P0 | Remove T3 Code | S01, S02 | done |
+| S04 | P1 | 3D model skill | — | done |
 | S05 | P1 | 3D viewer | — | open |
 | S06 | P1 | 3D chat on the same page | S02, S05 | open |
-| S07 | P1 | Bug report email | — | open |
-| S08 | P2 | JLCPCB client | — | open |
-| S09 | P2 | Parts search UI | S08 | open |
-| S10 | P2 | Parts search skill | S08 | open |
-| S11 | P2 | Order UI and address | S08 | open |
+| S07 | P1 | Bug report email | — | done |
+| S08 | P2 | JLCPCB client | — | done |
+| S09 | P2 | Parts search UI | S08 | done |
+| S10 | P2 | Parts search skill | S08 | done |
+| S11 | P2 | Order UI and address | S08 | done |
 | S12 | — | Educational car kit listing | — | open |
 | S13 | — | Car kit digital fulfillment | S12 | open |
 | S14 | P2 | Community listings | — | open |
@@ -40,7 +40,7 @@ P0 order is S01, then S02, then S03. Do not remove T3 before the replacement exi
 
 ## S01 — OpenCode server service
 
-Status: open
+Status: done
 
 ### Prompt
 
@@ -62,7 +62,7 @@ Done when GET /global/health works through the signed proxy and the browser cann
 
 ## S02 — In-app OpenCode UI
 
-Status: open
+Status: done
 
 Depends: S01. If the loopback proxy is not in the tree, stop. Do not build the server in this session.
 
@@ -86,7 +86,7 @@ Done when a signed-in owner can send a prompt to the selected board's OpenCode w
 
 ## S03 — Remove T3 Code
 
-Status: open
+Status: done
 
 Depends: S01 and S02. If either is missing, stop. Do not build them in this session.
 
@@ -116,7 +116,7 @@ Done when first-setup and the updater do not install or start t3, and no UI stil
 
 ## S04 — 3D model skill
 
-Status: open
+Status: done
 
 ### Prompt
 
@@ -176,7 +176,7 @@ Done when a user can ask to move a part and see the updated glb without leaving 
 
 ## S07 — Bug report email
 
-Status: open
+Status: done
 
 ### Prompt
 
@@ -194,7 +194,9 @@ Done when a test send is covered by a mocked binding and the form does not claim
 
 ## S08 — JLCPCB client
 
-Status: open
+Status: done
+
+Correction 2026-09-29: the JLCPCB application is one dashboard Pages secret set (`JLCPCB_APP_ID`, `JLCPCB_ACCESS_KEY`, `JLCPCB_SECRET_KEY`), not per-user KV and not a Profile form. Shipping address stays on Profile.
 
 ### Prompt
 
@@ -212,7 +214,7 @@ Done when a Worker helper can search parts with the package and fails closed wit
 
 ## S09 — Parts search UI
 
-Status: open
+Status: done
 
 Depends: S08. If the Worker helper is missing, stop.
 
@@ -234,7 +236,7 @@ Done when a signed-in user with credentials can search and a user without creden
 
 ## S10 — Parts search skill
 
-Status: open
+Status: done
 
 Depends: S08. If the Worker helper is missing, stop.
 
@@ -256,7 +258,7 @@ Done when the skill refuses to run without a dashboard-side credential. Mark S10
 
 ## S11 — Order UI and address
 
-Status: open
+Status: done
 
 Depends: S08. Search UI (S09) is not required. If the client helper is missing, stop.
 

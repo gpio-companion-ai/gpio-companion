@@ -21,14 +21,14 @@ export type SectionTab = {
 export const DEVICE_TABS_EASY: SectionTab[] = [
 	{ href: "/devices", labelKey: "nav.myBoard" },
 	{ href: "/devices/wifi", labelKey: "nav.wifi" },
-	{ href: "/devices/t3", labelKey: "nav.code" },
+	{ href: "/devices/code", labelKey: "nav.code" },
 	{ href: "/devices/docs", labelKey: "nav.learn" },
 ];
 
 export const DEVICE_TABS_EXPERT: SectionTab[] = [
 	{ href: "/devices", labelKey: "nav.myBoard" },
 	{ href: "/devices/docs", labelKey: "nav.learn" },
-	{ href: "/devices/t3", labelKey: "nav.code" },
+	{ href: "/devices/code", labelKey: "nav.code" },
 	{ href: "/devices/pair", labelKey: "nav.pair" },
 	{ href: "/devices/wifi", labelKey: "nav.wifi" },
 	{ href: "/devices/notifications", labelKey: "nav.requests" },

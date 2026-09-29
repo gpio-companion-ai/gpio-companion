@@ -12,6 +12,7 @@
       "name": "gpio-companion-dashboard",
       "version": "0.0.0",
       "dependencies": {
+        "@community-jlcpcb/client": "0.1.0",
         "@material-design-icons/svg": "^0.14.15",
         "@shpaw415/mui-lite": "^0.1.6",
         "@tailwindcss/cli": "^4.3.3",
@@ -207,6 +208,8 @@
     "@cloudflare/workerd-windows-64": ["@cloudflare/workerd-windows-64@1.20260925.1", "", { "os": "win32", "cpu": "x64" }, "sha512-mG0JYuF6HVCgXSsNeB5os8Vtdprk5jHPysviKNNMHJSLA3Q1djFjSmK4+pnQR/zOAgzNo0HJ+Tpcz+tZj1Q7fQ=="],
 
     "@cloudflare/workers-types": ["@cloudflare/workers-types@4.20260702.1", "", {}, "sha512-mOhf5TUEB1m2vPrxtqoIGfz0fUC9xyxRDx5gWHy5s+OCo6dcV+g7wI1R7gYCMFohhqF/2y2xeKVwMwCJjfn/WA=="],
+
+    "@community-jlcpcb/client": ["@community-jlcpcb/client@0.1.0", "", {}, "sha512-n4g8Vp4l7+wYfxBIpKd8veLyna9z1ffonQAjyfsZhatnUzRBeujIFsrZity8rbmxBY8tkH0GHbQ6OybPHsDhjw=="],
 
     "@cspotcode/source-map-support": ["@cspotcode/source-map-support@0.8.1", "", { "dependencies": { "@jridgewell/trace-mapping": "0.3.9" } }, "sha512-IchNf6dN4tHoMFIn/7OE8LWZ19Y6q/67Bmf6vnGREv8RSbBVb9LPJxEcnwrcwX6ixSvaiGoomAUvu4YSxXrVgw=="],
 

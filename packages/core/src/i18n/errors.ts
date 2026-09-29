@@ -63,6 +63,23 @@ const ERROR_KEYS = {
 	"Enter a WiFi network name (SSID)": "wifi.enterSsid",
 	"WiFi password must be at least 8 characters": "wifi.passwordMin",
 	"Select a device to pair with": "pair.selectDevice",
+	"support email is not configured": "errors.supportEmailMissing",
+	"too many bug reports": "errors.tooManyBugReports",
+	"describe the bug": "errors.describeTheBug",
+	"bug report is too long": "errors.bugReportTooLong",
+	"surface is required": "errors.surfaceRequired",
+	"jlcpcb credentials required": "errors.jlcpcbCredentialsRequired",
+	"component code is required": "errors.jlcpcbCodeRequired",
+	"component code is invalid": "errors.jlcpcbCodeInvalid",
+	"jlcpcb request failed": "errors.jlcpcbRequestFailed",
+	"address is required": "errors.addressRequired",
+	"confirm is required": "errors.confirmRequired",
+	"order kind is invalid": "errors.orderKindInvalid",
+	"Full name is required": "errors.fullNameRequired",
+	"Address is required": "errors.addressLineRequired",
+	"City is required": "errors.cityRequired",
+	"Postal code is required": "errors.postalCodeRequired",
+	"Country is required": "errors.countryRequired",
 } as const satisfies Record<string, MessageKey<Messages>>;
 
 export function translateError(

@@ -2,13 +2,11 @@ import {
 	asArduinoProxyStatus,
 	asFlashStatus,
 	asGpioSnapshot,
-	asHubT3Status,
 	asRunStatus,
 	type ArduinoProxyStatus,
 	type FlashStatus,
 	type GpioSnapshot,
 	HUB_PATH,
-	type HubT3Status,
 	parseHubMessage,
 	type RunStatus,
 } from "gpio-companion";
@@ -18,7 +16,6 @@ export type DeviceHubHandlers = {
 	onGpio?: (snapshot: GpioSnapshot) => void;
 	onFlash?: (status: FlashStatus) => void;
 	onRun?: (status: RunStatus) => void;
-	onT3?: (status: HubT3Status) => void;
 	onArduinoProxy?: (status: ArduinoProxyStatus) => void;
 };
 
@@ -31,7 +28,6 @@ export function useDeviceHub(uuid: string, handlers: DeviceHubHandlers): void {
 	const onGpio = handlers.onGpio;
 	const onFlash = handlers.onFlash;
 	const onRun = handlers.onRun;
-	const onT3 = handlers.onT3;
 	const onArduinoProxy = handlers.onArduinoProxy;
 
 	useEffect(() => {
@@ -79,10 +75,6 @@ export function useDeviceHub(uuid: string, handlers: DeviceHubHandlers): void {
 					return;
 				}
 				if (message.type === "t3") {
-					const status = asHubT3Status(message.payload);
-					if (status) {
-						onT3?.(status);
-					}
 					return;
 				}
 				if (message.type === "arduinoProxy") {
@@ -109,5 +101,5 @@ export function useDeviceHub(uuid: string, handlers: DeviceHubHandlers): void {
 			window.clearTimeout(timer);
 			socket?.close();
 		};
-	}, [uuid, onGpio, onFlash, onRun, onT3, onArduinoProxy]);
+	}, [uuid, onGpio, onFlash, onRun, onArduinoProxy]);
 }

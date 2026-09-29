@@ -1,10 +1,12 @@
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { findNodeHandle, Linking, ScrollView, View } from "react-native";
+import { findNodeHandle, Linking, type ScrollView, View } from "react-native";
+import AddressForm from "../components/AddressForm.tsx";
 import LanguageCard from "../components/LanguageCard.tsx";
 import {
 	Body,
 	ErrorText,
+	Field,
 	Muted,
 	Paper,
 	PrimaryButton,
@@ -12,9 +14,10 @@ import {
 	Skeleton,
 	TextButton,
 } from "../components/ui.tsx";
-import { getCredits } from "../lib/api.ts";
+import { getCredits, listDeviceStatus, submitBugReport } from "../lib/api.ts";
 import { CACHE_KEYS, useCachedQuery } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
+import { useBoardSelection } from "../lib/board-selection.tsx";
 import { dashboardUrl } from "../lib/config.ts";
 import { type ProfileSection, useDeckNav } from "../lib/deck-nav.tsx";
 import { translateError, useT } from "../lib/locale.tsx";
@@ -38,6 +41,7 @@ export default function Profile() {
 		account: null,
 		github: null,
 		credits: null,
+		address: null,
 	});
 
 	function scrollToSection(section: ProfileSection) {
@@ -85,20 +89,20 @@ export default function Profile() {
 					sectionRefs.current.account = node;
 				}}
 			>
-			<Paper>
-				<Body>{t("profile.account")}</Body>
-				<Body>{auth.session?.name || t("auth.signedIn")}</Body>
-				<Muted>{auth.session?.email}</Muted>
-				<Muted>
-					{t("profile.role", {
-						role: auth.session?.role || t("profile.roleUser"),
-					})}
-				</Muted>
-				<TextButton
-					label={t("auth.signOut")}
-					onPress={() => void auth.logout()}
-				/>
-			</Paper>
+				<Paper>
+					<Body>{t("profile.account")}</Body>
+					<Body>{auth.session?.name || t("auth.signedIn")}</Body>
+					<Muted>{auth.session?.email}</Muted>
+					<Muted>
+						{t("profile.role", {
+							role: auth.session?.role || t("profile.roleUser"),
+						})}
+					</Muted>
+					<TextButton
+						label={t("auth.signOut")}
+						onPress={() => void auth.logout()}
+					/>
+				</Paper>
 			</View>
 			<View
 				collapsable={false}
@@ -114,37 +118,126 @@ export default function Profile() {
 					sectionRefs.current.credits = node;
 				}}
 			>
-			<Paper>
-				<Body>{t("credits.title")}</Body>
-				{creditsQuery.loading ? (
-					<Skeleton height={24} />
-				) : (
-					<Muted>
-						{credits
-							? t("credits.balance", {
-									usd: credits.usd.toFixed(2),
-									micros: credits.micros,
-								})
-							: t("credits.noCredits")}
-					</Muted>
-				)}
-				<PrimaryButton
-					label={t("credits.add")}
-					onPress={() => {
-						setError("");
-						void Linking.openURL(`${dashboardUrl}/profile/credits`).catch(
-							(caught) => {
-								setError(
-									caught instanceof Error
-										? caught.message
-										: t("errors.couldNotOpenCredits"),
-								);
-							},
-						);
-					}}
-				/>
-			</Paper>
+				<Paper>
+					<Body>{t("credits.title")}</Body>
+					{creditsQuery.loading ? (
+						<Skeleton height={24} />
+					) : (
+						<Muted>
+							{credits
+								? t("credits.balance", {
+										usd: credits.usd.toFixed(2),
+										micros: credits.micros,
+									})
+								: t("credits.noCredits")}
+						</Muted>
+					)}
+					<PrimaryButton
+						label={t("credits.add")}
+						onPress={() => {
+							setError("");
+							void Linking.openURL(`${dashboardUrl}/profile/credits`).catch(
+								(caught) => {
+									setError(
+										caught instanceof Error
+											? caught.message
+											: t("errors.couldNotOpenCredits"),
+									);
+								},
+							);
+						}}
+					/>
+				</Paper>
 			</View>
+			<View
+				collapsable={false}
+				ref={(node) => {
+					sectionRefs.current.address = node;
+				}}
+			>
+				<AddressForm token={token} />
+			</View>
+			<BugReportForm token={token} />
 		</Screen>
+	);
+}
+
+function BugReportForm({ token }: { token: string | null }) {
+	const t = useT();
+	const { uuid } = useBoardSelection();
+	const boardsQuery = useCachedQuery(CACHE_KEYS.userBoards, () => {
+		if (!token) {
+			return Promise.reject(new Error("sign in first"));
+		}
+		return listDeviceStatus(token);
+	});
+	const board = boardsQuery.data?.devices.find(
+		(item) => item.device.uuid === uuid,
+	);
+	const boardLabel = [board?.device.label, board?.status?.model]
+		.filter(Boolean)
+		.join(" · ");
+	const [text, setText] = useState("");
+	const [busy, setBusy] = useState(false);
+	const [sent, setSent] = useState(false);
+	const [error, setError] = useState("");
+
+	async function submit() {
+		if (!token) {
+			setSent(false);
+			setError(t("common.signInFirst"));
+			return;
+		}
+		setBusy(true);
+		setSent(false);
+		setError("");
+		try {
+			const result = await submitBugReport(token, {
+				text,
+				surface: "mobile",
+				boardUuid: uuid,
+				boardModel: board?.status?.model ?? "",
+			});
+			if (result?.sent !== true) {
+				setError(t("errors.supportEmailMissing"));
+				return;
+			}
+			setText("");
+			setSent(true);
+		} catch (caught) {
+			setSent(false);
+			setError(
+				caught instanceof Error
+					? caught.message
+					: t("errors.supportEmailMissing"),
+			);
+		} finally {
+			setBusy(false);
+		}
+	}
+
+	return (
+		<Paper>
+			<Body>{t("profile.bugTitle")}</Body>
+			<Muted>{t("profile.bugHint")}</Muted>
+			{boardLabel ? (
+				<Muted>{t("profile.bugBoard", { board: boardLabel })}</Muted>
+			) : null}
+			{sent ? <Body>{t("profile.bugSent")}</Body> : null}
+			<ErrorText>{translateError(t, error)}</ErrorText>
+			<Field
+				label={t("profile.bugLabel")}
+				placeholder={t("profile.bugPlaceholder")}
+				value={text}
+				onChangeText={setText}
+				multiline
+				autoCapitalize="sentences"
+			/>
+			<PrimaryButton
+				label={busy ? t("profile.bugSending") : t("profile.bugSend")}
+				disabled={busy || !text.trim()}
+				onPress={() => void submit()}
+			/>
+		</Paper>
 	);
 }

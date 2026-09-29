@@ -80,7 +80,11 @@ export async function signedDeviceFetch(
 	method: string,
 	path: string,
 	body?: unknown,
-	init?: { timeoutMs?: number; fetchImpl?: FetchLike },
+	init?: {
+		timeoutMs?: number;
+		fetchImpl?: FetchLike;
+		headers?: Record<string, string>;
+	},
 ): Promise<Response> {
 	const origin = deviceUrl.replace(/\/+$/, "");
 	const bodyText = body === undefined ? "" : JSON.stringify(body);
@@ -89,7 +93,8 @@ export async function signedDeviceFetch(
 	return fetcher(`${origin}${path}`, {
 		method,
 		headers: {
-			"content-type": "application/json",
+			...(bodyText ? { "content-type": "application/json" } : {}),
+			...(init?.headers ?? {}),
 			...headers,
 		},
 		body: bodyText || undefined,
@@ -121,26 +126,4 @@ export async function readDeviceJson<T>(response: Response): Promise<T> {
 		throw new Error(detail);
 	}
 	return (await response.json()) as T;
-}
-
-export type T3PairingResult = {
-	pairingUrl: string;
-	pairingToken: string;
-};
-
-export async function signedT3Pair(
-	env: DeviceSigningEnv,
-	deviceUrl: string,
-): Promise<T3PairingResult> {
-	const pair = await signedDeviceFetch(env, deviceUrl, "POST", "/v1/t3/pair");
-	if (pair.status !== 404) {
-		return readDeviceJson<T3PairingResult>(pair);
-	}
-	const start = await signedDeviceFetch(env, deviceUrl, "POST", "/v1/t3/start");
-	if (start.status === 404) {
-		throw new Error(
-			"T3 pairing is not available on this board yet. Wait for the companion update, then try again.",
-		);
-	}
-	return readDeviceJson<T3PairingResult>(start);
 }

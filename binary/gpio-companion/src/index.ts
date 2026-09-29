@@ -19,6 +19,7 @@ import {
 } from "./github-credentials.ts";
 import { createLibgpiodGpio } from "./gpio.ts";
 import { startHubClient } from "./hub-client.ts";
+import { revokeOpencodeAccess } from "./opencode-proxy.ts";
 import { DEFAULT_PAIRING_PATH, filePairingStore } from "./pairing.ts";
 import {
 	projectsRoot,
@@ -38,7 +39,6 @@ import {
 	DEFAULT_TUNNEL_ENV_PATH,
 	fileConfigStore,
 } from "./store.ts";
-import { liveT3Controller } from "./t3.ts";
 import { applyCloudflaredReplica } from "./tunnel.ts";
 import { applySystemdUpdate } from "./update.ts";
 import { applyNetworkManagerWifi } from "./wifi.ts";
@@ -95,7 +95,6 @@ const pairing = filePairingStore(pairingPath, pairingUuid, pairingKey);
 
 const deviceAuth = loadDeviceAuth();
 
-const t3 = liveT3Controller();
 const gpio = createLibgpiodGpio();
 const proxy = createArduinoProxy();
 const flash = createArduinoFlash({
@@ -131,7 +130,6 @@ async function syncGithubProjects(target: ProjectSyncPut = {}): Promise<void> {
 			{
 				destRoot: projectsRoot(),
 				token: async () => (await githubCredentials()).token,
-				t3Add: (path, title) => t3.addProject(path, title),
 			},
 			target,
 		);
@@ -158,16 +156,20 @@ const server = startDeviceApi({
 		removeProject(
 			{
 				destRoot: projectsRoot(),
-				t3Remove: (path) => t3.removeProject(path),
 			},
 			put,
 		),
-	t3,
 	gpio,
 	flash,
 	run,
 	proxy,
-	revokeT3: () => t3.revoke(),
+	revokeOpencode: () =>
+		revokeOpencodeAccess({
+			envPath:
+				process.env.GPIO_COMPANION_OPENCODE_SERVER_ENV ??
+				"/etc/gpio-companion/opencode-server.env",
+			uuid: pairingUuid,
+		}),
 	deviceAuth,
 	githubCredentials,
 	clockStampPath:
@@ -216,7 +218,6 @@ const hub = hubEnabled
 			flash,
 			run,
 			proxy,
-			t3,
 		})
 	: { stop() {} };
 void proxy.probe();

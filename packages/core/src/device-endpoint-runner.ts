@@ -16,6 +16,7 @@ import {
 import { GPIO_PATH } from "./gpio.ts";
 import { LOGS_PATH, UPDATE_PATH } from "./maintenance.ts";
 import { isOfflineGrantScope, WIFI_PATH } from "./offline-grant.ts";
+import { OPENCODE_PROXY_PATH } from "./opencode-server.ts";
 import {
 	PROJECTS_PUSH_PATH,
 	PROJECTS_REMOVE_PATH,
@@ -229,15 +230,6 @@ export function deviceEndpointProbes(): DeviceEndpointProbe[] {
 			via: "any",
 			body: INVALID_JSON,
 			expect: { kind: "error", includes: ["invalid json"] },
-		}),
-		probe({
-			id: "get-t3-status",
-			name: "GET /v1/t3/status",
-			method: "GET",
-			path: "/v1/t3/status",
-			auth: "master",
-			via: "any",
-			expect: { kind: "json-keys", keys: ["running", "paired"] },
 		}),
 		probe({
 			id: "get-logs",
@@ -492,6 +484,24 @@ export function deviceEndpointProbes(): DeviceEndpointProbe[] {
 			via: "http",
 			expect: { kind: "error", includes: ["local-only"], status: 403 },
 		}),
+		probe({
+			id: "get-jlcpcb",
+			name: "GET /v1/jlcpcb",
+			method: "GET",
+			path: "/v1/jlcpcb",
+			auth: "none",
+			via: "http",
+			expect: { kind: "error", includes: ["local-only"], status: 403 },
+		}),
+		probe({
+			id: "get-opencode-health",
+			name: "GET /v1/opencode/global/health",
+			method: "GET",
+			path: `${OPENCODE_PROXY_PATH}/global/health`,
+			auth: "master",
+			via: "http",
+			expect: { kind: "json-keys", keys: ["healthy"] },
+		}),
 	];
 
 	const offline: DeviceEndpointProbe[] = [];
@@ -549,19 +559,6 @@ export function deviceEndpointProbes(): DeviceEndpointProbe[] {
 			name: "offline deny POST /v1/update",
 			method: "POST",
 			path: UPDATE_PATH,
-			auth: "offline-deny",
-			via: "any",
-			expect: {
-				kind: "error",
-				includes: ["offline grant scope mismatch"],
-				status: 403,
-			},
-		}),
-		probe({
-			id: "offline-deny-t3-pair",
-			name: "offline deny POST /v1/t3/pair",
-			method: "POST",
-			path: "/v1/t3/pair",
 			auth: "offline-deny",
 			via: "any",
 			expect: {

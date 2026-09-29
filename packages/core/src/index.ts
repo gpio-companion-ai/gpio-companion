@@ -503,6 +503,18 @@ export {
 	verifyHubTicket,
 } from "./hub.ts";
 export {
+	type JlcpcbOrderDraft,
+	type JlcpcbOrderKind,
+	type JlcpcbOrderRequest,
+	orderConfirmBody,
+	orderQuoteBody,
+} from "./jlcpcb-order.ts";
+export {
+	type JlcpcbPartView,
+	partsFromSearch,
+	partsSearchBody,
+} from "./jlcpcb-parts.ts";
+export {
 	capLogText,
 	DEBUG_MAINTENANCE_PATH,
 	DEBUG_MAINTENANCE_TTL_SEC,
@@ -546,6 +558,38 @@ export {
 	verifyOfflineGrant,
 	WIFI_PATH,
 } from "./offline-grant.ts";
+export {
+	isOpencodeLoopbackHost,
+	isOpencodeProxyPath,
+	OPENCODE_LOOPBACK_URL,
+	OPENCODE_PROXY_PATH,
+	OPENCODE_SERVER_PORT,
+	OPENCODE_SERVER_USERNAME,
+	opencodeProxyTarget,
+	opencodeUpstreamUrl,
+} from "./opencode-server.ts";
+export {
+	applyOpencodeEvent,
+	emptyOpencodeView,
+	OPENCODE_REPO_HEADER,
+	type OpencodeClientCall,
+	type OpencodePermission,
+	type OpencodePermissionResponse,
+	type OpencodeQuestion,
+	type OpencodeSessionSummary,
+	type OpencodeTurn,
+	type OpencodeView,
+	opencodeClientRequest,
+	opencodeProjectDirectory,
+	opencodeProxyAllows,
+	opencodeRepoName,
+	opencodeRepoNameFromSelection,
+	opencodeSessions,
+	opencodeTurns,
+	parseOpencodeSse,
+	readOpencodeEventStream,
+	scopeOpencodeSearch,
+} from "./opencode-session.ts";
 export {
 	emptyPairingState,
 	loginFromEmail,
@@ -618,6 +662,12 @@ export {
 	secretsStatus,
 } from "./secrets.ts";
 export {
+	formatShippingAddress,
+	type ShippingAddress,
+	shippingAddressFrom,
+	validateShippingAddress,
+} from "./shipping-address.ts";
+export {
 	type BoardSketch,
 	type BoardSketchKind,
 	type BoardSketchList,
@@ -628,20 +678,11 @@ export {
 	cloudflareTunnelName,
 	DASHBOARD_ORIGIN,
 	DEVICE_API_PORT,
-	dashboardT3PairPath,
-	dashboardT3PairUrl,
-	extractT3PairingToken,
-	extractT3PairingUrl,
 	pairingSlug,
 	pairingUuidFromDeviceUrl,
-	parseDashboardT3PairLocation,
 	publicDeviceUrl,
-	rewriteT3PairingUrl,
-	T3_DASHBOARD_PATH,
-	T3_ORIGIN_PORT,
 	TUNNEL_ZONE,
 	type TunnelHostnames,
-	t3PairPageUrl,
 	tunnelHostnames,
 } from "./tunnel-host.ts";
 export {

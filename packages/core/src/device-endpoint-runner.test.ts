@@ -26,7 +26,6 @@ describe("device-endpoint-runner", () => {
 			"PUT /v1/config/secrets",
 			"PUT /v1/config/wifi",
 			"PUT /v1/config/github",
-			"GET /v1/t3/status",
 			"GET /v1/logs",
 			"GET /v1/info",
 			"GET /v1/gpio",
@@ -54,6 +53,8 @@ describe("device-endpoint-runner", () => {
 			"POST /v1/projects/remove",
 			"POST /v1/projects/push",
 			"GET /v1/ai",
+			"GET /v1/jlcpcb",
+			"GET /v1/opencode/global/health",
 			"offline GET /v1/info",
 			"offline GET /v1/gpio",
 			"offline PUT /v1/gpio",
@@ -78,10 +79,11 @@ describe("device-endpoint-runner", () => {
 			"offline deny POST /v1/projects/sync",
 			"offline deny POST /v1/projects/remove",
 			"offline deny POST /v1/projects/push",
-			"offline deny POST /v1/t3/pair",
 		]) {
 			expect(names).toContain(required);
 		}
+		expect(names).not.toContain("GET /v1/t3/status");
+		expect(names).not.toContain("offline deny POST /v1/t3/pair");
 		expect(probes.some((item) => item.auth === "offline")).toBe(true);
 		expect(probes.some((item) => item.auth === "offline-deny")).toBe(true);
 	});

@@ -12,6 +12,7 @@ import {
 	updateOrderStates,
 } from "./order-repository";
 import { createPayPalOrder, paypalConfigured } from "../paypal.ts";
+import { validateShippingAddress } from "../../../../../packages/core/src/shipping-address.ts";
 import { unixNow } from "./identifiers";
 
 const RESERVATION_SECONDS = 30 * 60;
@@ -39,14 +40,8 @@ export function validateCheckoutAddress(input: CheckoutAddress): CheckoutAddress
 		throw new Error("Email is invalid");
 	}
 	return {
-		name: requireText(input.name, "Full name"),
+		...validateShippingAddress(input),
 		email,
-		line1: requireText(input.line1, "Address"),
-		line2: input.line2?.trim() || null,
-		city: requireText(input.city, "City"),
-		region: input.region?.trim() || null,
-		postalCode: requireText(input.postalCode, "Postal code"),
-		country: requireText(input.country, "Country"),
 	};
 }
 

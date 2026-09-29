@@ -39,7 +39,6 @@ export default function DevicesPage() {
 	const [loading, setLoading] = useState(true);
 	const [dialogOpen, setDialogOpen] = useState(false);
 	const [pendingCount, setPendingCount] = useState(0);
-	const [t3AutoStartUuid, setT3AutoStartUuid] = useState("");
 	const [unpairing, setUnpairing] = useState("");
 	const [confirmUuid, setConfirmUuid] = useState("");
 
@@ -138,8 +137,7 @@ export default function DevicesPage() {
 
 			{showForm ? (
 				<PairForm
-					onComplete={({ uuid }) => {
-						setT3AutoStartUuid(uuid);
+					onComplete={() => {
 						void refresh();
 					}}
 				/>
@@ -153,7 +151,6 @@ export default function DevicesPage() {
 					selected={board.device.uuid === selectedUuid}
 					onSelect={selectBoard}
 					loadInfo={isEasy ? undefined : loadDeviceInfo}
-					t3AutoStart={t3AutoStartUuid === board.device.uuid}
 					unpairing={unpairing === board.device.uuid}
 					onLabelSaved={(label) => {
 						setBoards((current) =>
@@ -184,8 +181,7 @@ export default function DevicesPage() {
 					{dialogOpen ? (
 						<PairForm
 							variant="dialog"
-							onComplete={({ uuid }) => {
-								setT3AutoStartUuid(uuid);
+							onComplete={() => {
 								void refresh();
 							}}
 						/>
@@ -248,9 +244,6 @@ export default function DevicesPage() {
 								setConfirmUuid("");
 								if (!result) {
 									return;
-								}
-								if (t3AutoStartUuid === uuid) {
-									setT3AutoStartUuid("");
 								}
 								void refresh();
 							});

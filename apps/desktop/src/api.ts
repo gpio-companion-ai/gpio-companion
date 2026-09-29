@@ -422,13 +422,6 @@ export type DeviceStatus = {
 	model?: string;
 	tunnel?: { configured?: boolean; apiHostname?: string };
 	secrets?: { githubReady?: boolean; gpioAiKey?: boolean };
-	t3?: {
-		running?: boolean;
-		pairingUrl?: string;
-		pairingToken?: string;
-		paired?: boolean;
-		serviceInstalled?: boolean;
-	};
 	network?: {
 		type?: "ethernet" | "wifi" | "unknown";
 		ssid?: string;
@@ -526,14 +519,6 @@ export type HubTicket = {
 	wsUrl: string;
 };
 
-export type T3Status = {
-	running?: boolean;
-	pairingUrl?: string;
-	pairingToken?: string;
-	paired?: boolean;
-	serviceInstalled?: boolean;
-};
-
 export type AdminDeviceItem = {
 	device: Device;
 	status: DeviceStatus | null;
@@ -572,6 +557,60 @@ export function patchDeviceLabel(uuid: string, label: string) {
 
 export function getCredits() {
 	return apiRequest<Credits>("GET", "/api/mobile/credits");
+}
+
+export function submitBugReport(body: {
+	text: string;
+	surface: "desktop";
+	boardUuid?: string;
+	boardModel?: string;
+}) {
+	return apiRequest<{ sent: true }>("POST", "/api/mobile/support", body);
+}
+
+export function jlcpcbCredentialStatus() {
+	return apiRequest<{ configured: boolean }>(
+		"GET",
+		"/api/mobile/jlcpcb/credentials",
+	);
+}
+
+export function searchJlcpcbParts(query: string) {
+	return apiRequest<{ parts: unknown }>("POST", "/api/mobile/jlcpcb/parts", {
+		query,
+	});
+}
+
+export function loadShippingAddress() {
+	return apiRequest<{ address: unknown }>("GET", "/api/mobile/address");
+}
+
+export function saveShippingAddress(body: {
+	name: string;
+	line1: string;
+	line2: string;
+	city: string;
+	region: string;
+	postalCode: string;
+	country: string;
+}) {
+	return apiRequest<{ address: unknown }>("PUT", "/api/mobile/address", body);
+}
+
+export function quoteJlcpcbOrder(body: Record<string, unknown>) {
+	return apiRequest<{ quote: unknown }>(
+		"POST",
+		"/api/mobile/jlcpcb/orders/quote",
+		body,
+	);
+}
+
+export function confirmJlcpcbOrder(body: Record<string, unknown>) {
+	return apiRequest<{ order: unknown }>(
+		"POST",
+		"/api/mobile/jlcpcb/orders",
+		body,
+	);
 }
 
 export function listProjects() {
@@ -657,18 +696,50 @@ export function onGithubAppCallback(
 	);
 }
 
-export function getT3Status(uuid: string) {
-	return apiRequest<T3Status>(
-		"GET",
-		`/api/mobile/t3?uuid=${encodeURIComponent(uuid)}`,
-	);
+export function opencodeCall(body: {
+	uuid: string;
+	repo: string;
+	op: string;
+	sessionID?: string;
+	permissionID?: string;
+	requestID?: string;
+	text?: string;
+	response?: "once" | "always" | "reject";
+	answers?: string[][];
+	reject?: boolean;
+}) {
+	return apiRequest<unknown>("POST", "/api/mobile/opencode", body);
 }
 
-export function startT3Pair(uuid: string) {
-	return apiRequest<T3Status>("POST", "/api/mobile/t3", {
-		action: "pair",
-		uuid,
-	});
+export async function openOpencodeEvents(
+	uuid: string,
+	repo: string,
+	lastEventId: string,
+	signal: AbortSignal,
+) {
+	const token = await authToken();
+	if (!token) {
+		throw new Error("sign in first");
+	}
+	const params = new URLSearchParams({ uuid, repo });
+	const response = await fetch(
+		`${DASHBOARD_URL}/api/mobile/opencode/event?${params}`,
+		{
+			headers: {
+				accept: "text/event-stream",
+				authorization: `Bearer ${token}`,
+				...(lastEventId ? { "last-event-id": lastEventId } : {}),
+			},
+			signal,
+		},
+	);
+	if (!response.ok) {
+		const body = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		throw new Error(body?.error || "opencode event stream unavailable");
+	}
+	return response;
 }
 
 export function listNotifications() {
@@ -1107,35 +1178,6 @@ export function adminTransfer(uuid: string, toUserId?: string) {
 		"/api/mobile/admin/devices",
 		{ uuid, toUserId },
 	);
-}
-
-export function t3EmbedUrl(uuid: string) {
-	const trimmed = uuid.trim();
-	if (!trimmed) {
-		return "";
-	}
-	return `${DASHBOARD_URL}/api/t3-embed/${encodeURIComponent(trimmed)}/`;
-}
-
-export function t3AppUrl(uuid: string) {
-	const trimmed = uuid.trim();
-	if (!trimmed) {
-		return "";
-	}
-	return `https://t3-${trimmed.replace(/-/g, "")}.gpio-companion.com`;
-}
-
-export function t3IframeSrc(uuid: string, token = "") {
-	const origin = t3AppUrl(uuid);
-	const trimmed = token.trim();
-	if (!origin) {
-		return "";
-	}
-	if (!trimmed) {
-		return origin;
-	}
-	const encoded = encodeURIComponent(trimmed);
-	return `${origin}/pair?token=${encoded}#token=${encoded}`;
 }
 
 export function deviceDisplayName(device: {

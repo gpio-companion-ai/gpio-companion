@@ -4,7 +4,7 @@ Welcome to your electronics workbench. gpio-companion connects three things:
 
 - **Project** holds your circuit designs and code on GitHub.
 - **Devices** manages your Raspberry Pi or Orange Pi, WiFi, Code, and updates.
-- **Code** opens T3 Code, where you can describe what you want to build to the agent.
+- **Code** opens the in-app agent, where you can describe what you want to build.
 
 You do not need to know Linux, Git, or C to begin. Start with an LED, ask questions as you go, and let the agent prepare the wiring and code.
 

@@ -44,4 +44,4 @@ sudo ./scripts/snapshot/gpio-companion-first-boot.sh
 sudo ./scripts/first-setup.sh
 ```
 
-First-setup creates a per-Pi Cloudflare tunnel and installs the T3 Code service. The on-device API (port 4150) and T3 Code (port 3773) are published as `api-` / `t3-` hostnames. Dashboard `/pair` claims the board, runs `t3 pair`, and shows the pair code/QR and board pairing URL.
+First-setup creates a per-Pi Cloudflare tunnel. The on-device API (port 4150) is published as an `api-` hostname. OpenCode stays on loopback and is opened from the dashboard Open Code page. Dashboard `/pair` claims the board.

@@ -11,6 +11,8 @@ config.resolver.extraNodeModules = {
 	"gpio-companion-embed": path.join(coreSrc, "breadboard-embed.ts"),
 	"gpio-companion-wifi": path.join(coreSrc, "wifi.ts"),
 	"gpio-companion-pairing": path.join(coreSrc, "pairing.ts"),
+	"gpio-companion-opencode": path.join(coreSrc, "opencode-session.ts"),
+	"gpio-companion-jlcpcb": path.join(coreSrc, "jlcpcb-parts.ts"),
 };
 
 module.exports = config;

@@ -29,7 +29,6 @@ import DeviceCompanionInfo from "../../components/DeviceCompanionInfo.tsx";
 import DeviceLabelField from "../../components/DeviceLabelField.tsx";
 import ExpertGate from "../../components/ExpertGate.tsx";
 import { TableRowsSkeleton } from "../../components/skeletons.tsx";
-import T3PairingPanel from "../../components/T3PairingPanel.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
 import { useAuthSession } from "../../hooks/useAuth.ts";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
@@ -47,13 +46,6 @@ type DeviceStatus = {
 	model?: string;
 	tunnel?: { configured?: boolean };
 	secrets?: { githubReady?: boolean };
-	t3?: {
-		running?: boolean;
-		pairingUrl?: string;
-		pairingToken?: string;
-		paired?: boolean;
-		serviceInstalled?: boolean;
-	};
 	network?: NetworkStatus | null;
 };
 
@@ -262,16 +254,6 @@ export default function AdminDevicesPage() {
 																			variant="outlined"
 																		/>
 																	) : null}
-																	<Chip
-																		label={
-																			board.status.t3?.paired
-																				? t("admin.t3Paired")
-																				: board.status.t3?.running
-																					? t("admin.t3Running")
-																					: t("admin.t3Idle")
-																		}
-																		variant="outlined"
-																	/>
 																</Stack>
 															) : (
 																<Typography color="secondary" variant="body2">
@@ -340,13 +322,14 @@ export default function AdminDevicesPage() {
 											);
 										}}
 									/>
-									<T3PairingPanel
-										key={current.device.uuid}
-										devices={[current.device]}
-										uuid={current.device.uuid}
-										initialStatus={current.status?.t3}
-										skipFetch
-									/>
+									<Button
+										href="/devices/code"
+										variant="contained"
+										size="small"
+										onClick={() => setSelected(current.device.uuid)}
+									>
+										{t("project.openCode")}
+									</Button>
 									<DeviceCompanionInfo
 										key={current.device.uuid}
 										uuid={current.device.uuid}

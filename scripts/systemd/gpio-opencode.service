@@ -1,0 +1,16 @@
+[Unit]
+Description=gpio-companion OpenCode server
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h
+ExecStart=__OPENCODE_BIN__ serve --hostname 127.0.0.1 --port 4096
+EnvironmentFile=-__OPENCODE_SERVER_ENV__
+Restart=on-failure
+RestartSec=3
+KillMode=mixed
+TimeoutStopSec=20
+
+[Install]
+WantedBy=default.target

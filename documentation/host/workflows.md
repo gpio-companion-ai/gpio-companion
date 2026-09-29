@@ -86,6 +86,7 @@ Do not paste pairing keys into tickets. If the key is lost, regenerate `pairing.
 | OpenAuthster `AUTH_SECRET` | Pages secret | Host |
 | Pairing UUID/key | `/etc/gpio-companion/pairing.env` | First-setup on the Pi |
 | GPIO AI access | loopback `GET/POST /v1/ai/*` → `POST /api/ai/credentials` | Pairing uuid+key; ~1h device token; unpair revokes |
+| JLCPCB API keys | Pages secrets `JLCPCB_APP_ID`, `JLCPCB_ACCESS_KEY`, `JLCPCB_SECRET_KEY` | Host. One application for the dashboard. Pi loopback `GET`/`POST /v1/jlcpcb` uses the device token. Never on the Pi or in Profile. |
 | GitHub App private key | Cloudflare Pages secret `GITHUB_APP_PRIVATE_KEY` | Host (generate on the App settings page) |
 | GitHub App ID / slug | Pages secret/var `GITHUB_APP_ID`, `GITHUB_APP_SLUG` | Host |
 | GitHub installation | KV `github-app:<userId>` | User via Keys **Connect GitHub** |

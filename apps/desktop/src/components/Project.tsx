@@ -52,7 +52,6 @@ import {
 	readProjectFile,
 	startRun,
 	stopRun,
-	t3AppUrl,
 } from "../api";
 import {
 	CACHE_KEYS,
@@ -63,12 +62,13 @@ import {
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useDashboardMode } from "../hooks/useDashboardMode";
 import { useDeviceHub } from "../hooks/useDeviceHub";
-import { useT3Window } from "../hooks/useT3Window";
 import { useT } from "../locale";
 import BreadboardViewer from "./BreadboardViewer";
 import DebugLog from "./DebugLog";
 import FlashPanel from "./FlashPanel";
 import GpioPanel from "./GpioPanel";
+import OrderReviewPanel from "./OrderReviewPanel";
+import PartsSearchPanel from "./PartsSearchPanel";
 import RunPanel from "./RunPanel";
 import { ListSkeleton, PreviewSkeleton } from "./skeletons";
 import VerifyPanel from "./VerifyPanel";
@@ -283,7 +283,11 @@ function FileGroup({
 	);
 }
 
-export default function Project() {
+export default function Project({
+	onOpenProfile,
+}: {
+	onOpenProfile?: () => void;
+}) {
 	const t = useT();
 	const { cache } = useApiCache();
 	const githubQuery = useCachedQuery(CACHE_KEYS.githubApp, getGithubApp);
@@ -292,9 +296,8 @@ export default function Project() {
 	const {
 		uuid: selectedUuid,
 		setUuid: selectBoard,
-		openT3Pair,
+		openCode,
 	} = useBoardSelection();
-	const t3 = useT3Window();
 	const app = githubQuery.data ?? null;
 	const repos = projectsQuery.data?.repos ?? [];
 	const configured = projectsQuery.data?.configured ?? false;
@@ -732,12 +735,11 @@ export default function Project() {
 		});
 	}
 
-	function openCode() {
+	function openAgent() {
 		if (!activeUuid) {
 			return;
 		}
-		openT3Pair(activeUuid, "");
-		void t3.openUrl(t3AppUrl(activeUuid));
+		openCode();
 	}
 
 	useEffect(() => {
@@ -795,16 +797,13 @@ export default function Project() {
 		<Stack spacing={1.5}>
 			{paired && activeUuid ? (
 				<Stack direction="row" sx={{ justifyContent: "flex-end" }}>
-					<Button
-						variant="outlined"
-						size="small"
-						onClick={openCode}
-						disabled={t3.busy}
-					>
+					<Button variant="outlined" size="small" onClick={openAgent}>
 						{t("project.openCode")}
 					</Button>
 				</Stack>
 			) : null}
+			<PartsSearchPanel />
+			<OrderReviewPanel onOpenProfile={onOpenProfile} />
 			{error || githubQuery.error || projectsQuery.error ? (
 				<Alert severity="error">
 					{translateError(t, error || githubQuery.error || projectsQuery.error)}
@@ -1108,11 +1107,7 @@ export default function Project() {
 									{t("project.readyChat", { repo: bundle.repo })}
 								</Typography>
 								{paired && activeUuid ? (
-									<Button
-										variant="contained"
-										onClick={openCode}
-										disabled={t3.busy}
-									>
+									<Button variant="contained" onClick={openAgent}>
 										{t("project.openCode")}
 									</Button>
 								) : (

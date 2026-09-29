@@ -13,7 +13,6 @@ import {
 	useState,
 } from "react";
 import { createClient, type PublicSession } from "./auth.ts";
-import T3Frame from "./components/T3Frame.tsx";
 import { AuthCtx, AuthSessionCtx } from "./hooks/useAuth.ts";
 import { BoardSelectionProvider } from "./hooks/useBoardSelection.tsx";
 import { ColorModeProvider } from "./hooks/useColorMode.tsx";
@@ -81,7 +80,6 @@ export default function ClientWrapper({ children }: { children: JSX.Element }) {
 										>
 											{children}
 										</RouterHost>
-										<T3Frame />
 									</BoardSelectionProvider>
 								</AuthProvider>
 							</DashboardModeProvider>

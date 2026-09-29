@@ -1,9 +1,9 @@
 import Box from "@shpaw415/mui-lite/Box";
+import { isEmbedPath } from "gpio-companion";
 import DeckShell from "../components/deck/DeckShell.tsx";
 import { ActionErrorProvider } from "../hooks/useActionError.tsx";
 import { usePathname } from "../hooks/usePathname.tsx";
 import { WorkbenchProvider } from "../hooks/useWorkbench.tsx";
-import { isEmbedPath } from "../lib/t3-url.ts";
 
 export default function Layout({ children }: { children: React.JSX.Element }) {
 	const pathname = usePathname();

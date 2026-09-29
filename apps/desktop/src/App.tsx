@@ -56,9 +56,9 @@ export default function App() {
 
 	return (
 		<BoardSelectionProvider
-			onOpenT3={() => {
+			onOpenCode={() => {
 				setSection("devices");
-				setDeviceTab("t3");
+				setDeviceTab("code");
 			}}
 		>
 			<ApiCacheProvider signedIn={signedIn}>
@@ -75,7 +75,7 @@ export default function App() {
 						onToggleTheme={toggleMode}
 					>
 						{section === "project" ? (
-							<Project />
+							<Project onOpenProfile={() => setSection("profile")} />
 						) : section === "profile" ? (
 							<Profile
 								session={session}
