@@ -1,8 +1,12 @@
 import {
 	type BoardFileEntry,
 	type BoardFileNode,
+	BREADBOARD_DIAGRAM_JSON,
 	boardFileApplyEvent,
+	boardFileDirty,
 	boardFileTree,
+	countBoardFiles,
+	filterBoardNodes,
 	EDITOR_EMBED_MESSAGE_TYPE,
 	EDITOR_EMBED_READY_TYPE,
 	type EditorEmbedPayload,
@@ -13,7 +17,14 @@ import {
 	parseEditorEmbedChange,
 } from "gpio-companion-files";
 import { useEffect, useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import {
+	Alert,
+	Pressable,
+	ScrollView,
+	Text,
+	TextInput,
+	View,
+} from "react-native";
 import { WebView } from "react-native-webview";
 import {
 	listBoardFiles,
@@ -34,6 +45,7 @@ type Props = {
 	uuid: string;
 	owner: string;
 	name: string;
+	onFileStateChange?: (state: { dirty: boolean; stale: boolean }) => void;
 };
 
 type OpenFile = {
@@ -43,9 +55,13 @@ type OpenFile = {
 	base64: string;
 };
 
-const BREADBOARD_DIAGRAM_JSON = "breadboard/diagram.json";
-
-export default function ProjectFiles({ token, uuid, owner, name }: Props) {
+export default function ProjectFiles({
+	token,
+	uuid,
+	owner,
+	name,
+	onFileStateChange,
+}: Props) {
 	const t = useT();
 	const colors = useColors();
 	const { boards } = useUserBoards();
@@ -62,7 +78,10 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 	const [rev, setRev] = useState(0);
 	const [stale, setStale] = useState(false);
 	const [note, setNote] = useState("");
+	const [saved, setSaved] = useState("");
 	const [busy, setBusy] = useState("");
+	const [fileFilter, setFileFilter] = useState("");
+	const [fileLoading, setFileLoading] = useState(false);
 	const echo = useRef("");
 	const fileRef = useRef(file);
 	const draftRef = useRef(draft);
@@ -70,10 +89,18 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 	const openedPath = useRef("");
 	fileRef.current = file;
 	draftRef.current = draft;
-	const dirty = Boolean(file && file.kind === "text" && draft !== file.text);
+	const dirty = boardFileDirty(file?.kind ?? "", draft, file?.text ?? "");
 	const showBoard =
 		file?.path === BREADBOARD_DIAGRAM_JSON && diagramView === "board";
 	const tree = boardFileTree(entries);
+	const visibleTree = fileFilter.trim()
+		? filterBoardNodes(tree, fileFilter)
+		: tree;
+	const fileCount = countBoardFiles(entries);
+
+	useEffect(() => {
+		onFileStateChange?.({ dirty, stale });
+	}, [dirty, stale, onFileStateChange]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when the board or project changes
 	useEffect(() => {
@@ -81,8 +108,11 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 		setDraft("");
 		setStale(false);
 		setNote("");
+		setSaved("");
 		setEntries([]);
 		setBranch("");
+		setOpenDirs(new Set());
+		setFileFilter("");
 		setDiagramView("board");
 		openedPath.current = "";
 	}, [uuid, name]);
@@ -205,7 +235,11 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 		};
 	}, [token, uuid, name, t]);
 
-	async function openPath(path: string) {
+	async function doOpen(path: string) {
+		if (!token || !uuid || !name) {
+			return;
+		}
+		setFileLoading(true);
 		try {
 			const data = await readBoardFile(token, uuid, name, path);
 			const next: OpenFile = {
@@ -223,6 +257,7 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 			setRev((value) => value + 1);
 			setStale(false);
 			setNote("");
+			setSaved("");
 			const parts = path.split("/");
 			parts.pop();
 			setOpenDirs((current) => {
@@ -236,12 +271,53 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 			});
 		} catch (caught) {
 			setNote(caught instanceof Error ? caught.message : "request failed");
+			setSaved("");
 		}
+		setFileLoading(false);
+	}
+
+	function confirmDiscard(onConfirm: () => void) {
+		Alert.alert(t("code.discardConfirm"), "", [
+			{ text: t("common.close"), style: "cancel" },
+			{
+				text: t("code.reloadFile"),
+				style: "destructive",
+				onPress: onConfirm,
+			},
+		]);
+	}
+
+	async function openPath(path: string) {
+		if (!token || !uuid || !name) {
+			return;
+		}
+		const current = fileRef.current;
+		if (
+			current &&
+			current.path !== path &&
+			boardFileDirty(current.kind, draftRef.current, current.text)
+		) {
+			confirmDiscard(() => void doOpen(path));
+			return;
+		}
+		await doOpen(path);
 	}
 	openPathRef.current = openPath;
 
+	function reloadStale() {
+		const current = fileRef.current;
+		if (!current) {
+			return;
+		}
+		if (boardFileDirty(current.kind, draftRef.current, current.text)) {
+			confirmDiscard(() => void doOpen(current.path));
+			return;
+		}
+		void doOpen(current.path);
+	}
+
 	async function saveBoard(text = draft) {
-		if (file?.kind !== "text") {
+		if (file?.kind !== "text" || !token || !uuid || !name || busy) {
 			return;
 		}
 		setBusy("board");
@@ -252,14 +328,16 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 			setDraft(text);
 			setStale(false);
 			setNote("");
+			setSaved(t("code.savedBoard"));
 		} catch (caught) {
 			setNote(caught instanceof Error ? caught.message : "request failed");
+			setSaved("");
 		}
 		setBusy("");
 	}
 
 	async function saveGithub() {
-		if (!uuid || !owner || !name) {
+		if (!token || !uuid || !owner || !name || busy) {
 			return;
 		}
 		setBusy("github");
@@ -269,9 +347,11 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 			if (pushed) {
 				setBranch(pushed);
 			}
-			setNote(t("code.savedGithub").replace("{branch}", pushed || name));
+			setNote("");
+			setSaved(t("code.savedGithub").replace("{branch}", pushed || name));
 		} catch (caught) {
 			setNote(caught instanceof Error ? caught.message : "request failed");
+			setSaved("");
 		}
 		setBusy("");
 	}
@@ -300,9 +380,12 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 				<Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>
 					{name || t("code.files")}
 					{branch ? `  ${branch}` : ""}
+					{fileCount > 0
+						? `  ${t("code.filesCount", { n: fileCount })}`
+						: ""}
 				</Text>
 				<Pressable
-					disabled={busy === "github"}
+					disabled={!token || !uuid || !owner || !name || busy === "github"}
 					onPress={() => void saveGithub()}
 				>
 					<Text style={{ color: colors.primary, fontWeight: "600" }}>
@@ -310,6 +393,62 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 					</Text>
 				</Pressable>
 			</View>
+			<View
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					gap: 8,
+					paddingHorizontal: 12,
+					paddingVertical: 6,
+				}}
+			>
+				<TextInput
+					value={fileFilter}
+					placeholder={t("code.filterFiles")}
+					placeholderTextColor={colors.placeholder}
+					onChangeText={setFileFilter}
+					style={{
+						flex: 1,
+						height: 32,
+						borderRadius: 6,
+						paddingHorizontal: 10,
+						color: colors.text,
+						backgroundColor: colors.chipBg,
+					}}
+				/>
+				{fileFilter ? (
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={t("code.clear")}
+						onPress={() => setFileFilter("")}
+					>
+						<Text style={{ color: colors.primary, fontWeight: "600" }}>
+							{t("code.clear")}
+						</Text>
+					</Pressable>
+				) : (
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={t("code.collapseAll")}
+						disabled={openDirs.size === 0}
+						onPress={() => setOpenDirs(new Set())}
+					>
+						<Text style={{ color: colors.primary, fontWeight: "600" }}>
+							{t("code.collapseAll")}
+						</Text>
+					</Pressable>
+				)}
+			</View>
+			{note ? (
+				<Text style={{ color: colors.danger, paddingHorizontal: 12 }}>
+					{note}
+				</Text>
+			) : null}
+			{saved ? (
+				<Text style={{ color: colors.primary, paddingHorizontal: 12 }}>
+					{saved}
+				</Text>
+			) : null}
 			{file ? (
 				<View style={{ flex: 1.2, minHeight: 180 }}>
 					<View
@@ -329,7 +468,7 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 							{dirty ? " ●" : ""}
 						</Text>
 						{stale ? (
-							<Pressable onPress={() => void openPath(file.path)}>
+							<Pressable onPress={reloadStale}>
 								<Text style={{ color: colors.primary }}>
 									{t("code.updatedOnBoard")}
 								</Text>
@@ -374,7 +513,11 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 							</Pressable>
 						) : null}
 					</View>
-					{showBoard ? (
+					{fileLoading ? (
+						<Text style={{ color: colors.muted, padding: 12 }}>
+							{t("code.loadingFile")}
+						</Text>
+					) : showBoard ? (
 						<View style={{ flex: 1, minHeight: 0 }}>
 							<BreadboardWebView
 								diagramText={draft}
@@ -400,20 +543,21 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 				</View>
 			) : (
 				<ScrollView style={{ flex: 1 }}>
-					{note ? (
-						<Text style={{ color: colors.muted, padding: 12 }}>{note}</Text>
-					) : null}
-					{tree.length === 0 ? (
+					{visibleTree.length === 0 ? (
 						<Text style={{ color: colors.muted, padding: 12 }}>
-							{t("code.emptyTree")}
+							{fileFilter.trim()
+								? t("code.searchEmpty")
+								: t("code.emptyTree")}
 						</Text>
 					) : (
-						tree.map((node) => (
+						visibleTree.map((node) => (
 							<TreeRows
 								key={node.path}
 								node={node}
 								depth={0}
-								openDirs={openDirs}
+								openDirs={
+									fileFilter.trim() ? openAllDirs(visibleTree) : openDirs
+								}
 								color={colors.text}
 								onToggle={(path) =>
 									setOpenDirs((current) => {
@@ -434,6 +578,20 @@ export default function ProjectFiles({ token, uuid, owner, name }: Props) {
 			)}
 		</View>
 	);
+}
+
+function openAllDirs(nodes: readonly BoardFileNode[]): Set<string> {
+	const out = new Set<string>();
+	const walk = (items: readonly BoardFileNode[]) => {
+		for (const item of items) {
+			if (item.type === "dir") {
+				out.add(item.path);
+				walk(item.children);
+			}
+		}
+	};
+	walk(nodes);
+	return out;
 }
 
 function TreeRows({
@@ -500,6 +658,8 @@ function EditorFrame({
 	onSave: () => void;
 }) {
 	const webRef = useRef<WebView>(null);
+	const t = useT();
+	const colors = useColors();
 	const uri = editorEmbedUrl(dashboardUrl, { locale, theme });
 	const script = editorEmbedInjectSource(payload);
 	const scriptRef = useRef(script);
@@ -524,6 +684,14 @@ function EditorFrame({
 			setSupportMultipleWindows={false}
 			injectedJavaScript={script}
 			injectedJavaScriptBeforeContentLoaded={script}
+			startInLoadingState
+			renderLoading={() => (
+				<View
+					style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
+				>
+					<Text style={{ color: colors.muted }}>{t("code.loading")}</Text>
+				</View>
+			)}
 			onLoadEnd={push}
 			onMessage={(event) => {
 				try {

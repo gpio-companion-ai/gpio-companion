@@ -106,7 +106,7 @@ export class DeviceHub extends DurableObject<Env> {
 	}
 
 	private async replay(socket: WebSocket): Promise<void> {
-		for (const channel of ["gpio", "flash", "t3"] as HubChannel[]) {
+		for (const channel of ["flash", "run", "arduinoProxy"] as HubChannel[]) {
 			const payload = await this.ctx.storage.get(channel);
 			if (payload === undefined || payload === null) {
 				continue;

@@ -9,6 +9,7 @@
 		"dev": "wrangler dev",
 		"deploy": "wrangler deploy",
 		"ci:install": "bun install --cwd ../../..",
+		"postinstall": "ln -sfn \"$PWD/node_modules/wrangler/bin/wrangler.js\" /usr/local/bin/wrangler || true",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

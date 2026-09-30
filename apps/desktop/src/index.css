@@ -1999,3 +1999,73 @@ button.oc-chip,
 		cursor: row-resize;
 	}
 }
+
+.oc-boardbar {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 8px;
+	padding: 8px 12px;
+	border-bottom: 1px solid rgba(var(--text-main), 0.08);
+	background: rgb(var(--bg-surface));
+}
+
+.oc-tree-filter {
+	display: flex;
+	flex: none;
+	align-items: center;
+	gap: 6px;
+	padding: 6px 8px;
+	border-bottom: 1px solid rgba(var(--text-main), 0.08);
+}
+
+.oc-tree-filter input {
+	min-width: 0;
+	flex: 1;
+	height: 28px;
+	border: 0;
+	border-radius: 6px;
+	padding: 0 8px;
+	background: rgba(var(--text-main), 0.05);
+	outline: 0;
+}
+
+.oc-tree-filter input:focus {
+	background: rgba(var(--text-main), 0.08);
+}
+
+.oc-tree-filter input::placeholder {
+	color: rgba(var(--text-main), 0.38);
+}
+
+.oc-success {
+	border-radius: 6px;
+	padding: 6px 8px;
+	background: rgba(61, 214, 140, 0.14);
+}
+
+.oc-error-note {
+	border-radius: 6px;
+	padding: 6px 8px;
+	background: rgba(var(--text-error, 180, 40, 40), 0.1);
+}
+
+.oc-blocked {
+	width: calc(100% - 32px);
+	max-width: 780px;
+	margin: 0 auto 8px;
+}
+
+.oc-tree-row {
+	height: 28px;
+}
+
+.oc-split {
+	position: relative;
+}
+
+.oc-split::after {
+	content: "";
+	position: absolute;
+	inset: -4px;
+}

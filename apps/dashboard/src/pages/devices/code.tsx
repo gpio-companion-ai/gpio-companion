@@ -13,13 +13,14 @@ export default function CodePage() {
 	const session = useAuthSession();
 	const { run } = useActionError();
 	const t = useT();
-	const { uuid } = useBoardSelection();
+	const { uuid, setUuid } = useBoardSelection();
 	const loggedIn = Boolean(session.data?.id || session.data?.email);
 	const [devices, setDevices] = useState<StoredPairing[]>([]);
 	const [repos, setRepos] = useState<Array<{ owner: string; name: string }>>(
 		[],
 	);
 	const [loading, setLoading] = useState(true);
+	const [reposError, setReposError] = useState("");
 
 	useEffect(() => {
 		if (!session.data?.id) {
@@ -29,9 +30,15 @@ export default function CodePage() {
 			return;
 		}
 		setLoading(true);
+		setReposError("");
 		void Promise.all([run(getPairing()), loadCodeRepos().catch(() => null)])
 			.then(([pairing, projects]) => {
 				setDevices(pairing?.devices ?? []);
+				if (!projects) {
+					setRepos([]);
+					setReposError(t("code.reposError"));
+					return;
+				}
 				setRepos(
 					(projects ?? []).map((repo) => ({
 						owner: repo.owner,
@@ -40,12 +47,30 @@ export default function CodePage() {
 				);
 			})
 			.finally(() => setLoading(false));
-	}, [session.data?.id, run]);
+	}, [session.data?.id, run, t]);
 
 	const selected = uuid || devices[0]?.uuid || "";
 
 	return (
 		<div className="oc-shell">
+			{loggedIn && devices.length > 1 ? (
+				<div className="oc-boardbar">
+					<label className="oc-chip">
+						{t("code.board")}
+						<select
+							value={selected}
+							aria-label={t("code.board")}
+							onChange={(event) => setUuid(event.target.value)}
+						>
+							{devices.map((item) => (
+								<option key={item.uuid} value={item.uuid}>
+									{item.label || item.uuid}
+								</option>
+							))}
+						</select>
+					</label>
+				</div>
+			) : null}
 			{!loggedIn ? (
 				<div className="oc-card">
 					<div className="oc-empty">
@@ -68,6 +93,19 @@ export default function CodePage() {
 						<a className="oc-neutral" href="/devices">
 							{t("code.pairBoard")}
 						</a>
+					</div>
+				</div>
+			) : reposError && repos.length === 0 ? (
+				<div className="oc-card">
+					<div className="oc-empty">
+						<p className="oc-muted">{t("code.reposError")}</p>
+						<button
+							type="button"
+							className="oc-neutral"
+							onClick={() => window.location.reload()}
+						>
+							{t("code.retry")}
+						</button>
 					</div>
 				</div>
 			) : (

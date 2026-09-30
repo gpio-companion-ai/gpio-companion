@@ -1,8 +1,6 @@
 import {
 	encodeHubMessage,
-	type HardwareId,
 	HUB_FLASH_MS,
-	HUB_GPIO_MS,
 	HUB_PATH,
 	HUB_PING_MS,
 	HUB_PROXY_MS,
@@ -12,7 +10,6 @@ import {
 } from "gpio-companion";
 import type { ArduinoProxyController } from "./arduino-proxy.ts";
 import type { FlashController } from "./flash.ts";
-import type { GpioController } from "./gpio.ts";
 import type { RunController } from "./run.ts";
 
 export type FetchLike = (
@@ -23,15 +20,12 @@ export type FetchLike = (
 export type HubClientOptions = {
 	uuid: string;
 	key: string;
-	hardware: HardwareId;
-	gpio: GpioController;
 	flash: FlashController;
 	run: RunController;
 	proxy?: ArduinoProxyController;
 	dashboardUrl?: string;
 	fetchImpl?: FetchLike;
 	webSocket?: typeof WebSocket;
-	gpioMs?: number;
 	flashMs?: number;
 	runMs?: number;
 	proxyMs?: number;
@@ -94,21 +88,13 @@ export function startHubClient(options: HubClientOptions): { stop(): void } {
 	let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 	const watchTimers: Array<ReturnType<typeof setInterval>> = [];
 	let delay = 500;
-	let lastGpio = "";
 	let lastFlash = "";
 	let lastRun = "";
 	let lastProxy = "";
-	let gpioBusy = false;
 	const Socket = options.webSocket ?? WebSocket;
 
 	function send(
-		type:
-			| "gpio"
-			| "flash"
-			| "run"
-			| "arduinoProxy"
-			| "ping"
-			| "hello",
+		type: "flash" | "run" | "arduinoProxy" | "ping" | "hello",
 		payload?: unknown,
 	) {
 		if (!socket || socket.readyState !== WebSocket.OPEN) {
@@ -119,26 +105,6 @@ export function startHubClient(options: HubClientOptions): { stop(): void } {
 				payload === undefined ? { v: 1, type } : { v: 1, type, payload },
 			),
 		);
-	}
-
-	async function publishGpio() {
-		if (gpioBusy) {
-			return;
-		}
-		gpioBusy = true;
-		try {
-			const gpio = JSON.stringify(
-				await options.gpio.snapshot(options.hardware),
-			);
-			if (gpio !== lastGpio) {
-				lastGpio = gpio;
-				send("gpio", JSON.parse(gpio));
-			}
-		} catch {
-			undefined;
-		} finally {
-			gpioBusy = false;
-		}
 	}
 
 	function publishFlash() {
@@ -219,19 +185,14 @@ export function startHubClient(options: HubClientOptions): { stop(): void } {
 			socket = new Socket(ticket.wsUrl);
 			socket.addEventListener("open", () => {
 				delay = 500;
-				lastGpio = "";
 				lastFlash = "";
 				lastRun = "";
 				lastProxy = "";
 				send("hello");
-				void publishGpio();
 				publishFlash();
 				publishRun();
 				publishProxy();
 				watchTimers.push(
-					setInterval(() => {
-						void publishGpio();
-					}, options.gpioMs ?? HUB_GPIO_MS),
 					setInterval(publishFlash, options.flashMs ?? HUB_FLASH_MS),
 					setInterval(publishRun, options.runMs ?? HUB_RUN_MS),
 					setInterval(publishProxy, options.proxyMs ?? HUB_PROXY_MS),

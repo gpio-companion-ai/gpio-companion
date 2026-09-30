@@ -2,9 +2,16 @@ import { POST as postOpencode } from "@api/opencode";
 import { GET as getProjects } from "@api/projects";
 import {
 	applyOpencodeEvent,
+	clearCodeAnswers,
 	CODE_DEFAULT_MODEL,
 	codeNavBack,
+	codeRepoLabel,
+	codeRepoOwner,
+	codeScrollKey,
+	codeSessionTitle,
 	emptyOpencodeView,
+	filterCodeSessions,
+	matchCodeRepo,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
 	type OpencodeClientCall,
@@ -24,6 +31,7 @@ import {
 	opencodeTurns,
 	parseOpencodeMarkdown,
 	pendingOpencodeTurn,
+	pruneCodeAnswers,
 	pushCodeNav,
 	type ReasoningEffort,
 	readCodeNav,
@@ -389,12 +397,14 @@ export default function OpenCodeSession({
 	const [searching, setSearching] = useState(false);
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
+	const [sessionsLoading, setSessionsLoading] = useState(false);
 	const [answers, setAnswers] = useState<Record<string, string>>({});
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
 	const [modelMenu, setModelMenu] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
+	const modelMenuRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		try {
@@ -417,11 +427,7 @@ export default function OpenCodeSession({
 		} catch {
 			stored = "";
 		}
-		const fromStore = stored.includes("/")
-			? (stored.split("/").pop() ?? "")
-			: stored;
-		const match = repos.find((item) => item.name === fromStore) ?? repos[0];
-		setRepo(match?.name ?? "");
+		setRepo(matchCodeRepo(repos, stored));
 	}, [repos]);
 
 	function selectRepo(name: string) {
@@ -435,11 +441,13 @@ export default function OpenCodeSession({
 	function remember(name: string) {
 		selectRepo(name);
 		setQuery("");
+		setAnswers(clearCodeAnswers());
 		leaveChat();
 	}
 
 	function openSession(sessionID: string) {
 		setQuery("");
+		setAnswers(clearCodeAnswers());
 		setView((current) => ({
 			...current,
 			sessionID,
@@ -447,6 +455,9 @@ export default function OpenCodeSession({
 		}));
 		setMode("session");
 		pushCodeNav({ mode: "session", sessionID });
+		if (field.current) {
+			window.setTimeout(() => field.current?.focus(), 50);
+		}
 	}
 
 	async function removeSession(sessionID: string) {
@@ -471,8 +482,10 @@ export default function OpenCodeSession({
 
 	function openDraft() {
 		setPrompt("");
+		setAnswers(clearCodeAnswers());
 		setMode("draft");
 		pushCodeNav({ mode: "draft", sessionID: "" });
+		window.setTimeout(() => field.current?.focus(), 50);
 	}
 
 	function leaveChat() {
@@ -502,6 +515,40 @@ export default function OpenCodeSession({
 			return;
 		}
 	}
+
+	useEffect(() => {
+		if (!modelMenu) {
+			return;
+		}
+		function onPointer(event: PointerEvent) {
+			if (
+				modelMenuRef.current &&
+				!modelMenuRef.current.contains(event.target as Node)
+			) {
+				setModelMenu(false);
+			}
+		}
+		function onKey(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				setModelMenu(false);
+			}
+		}
+		document.addEventListener("pointerdown", onPointer);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("pointerdown", onPointer);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [modelMenu]);
+
+	useEffect(() => {
+		setAnswers((current) =>
+			pruneCodeAnswers(
+				current,
+				view.questions.flatMap((item) => item.prompts),
+			),
+		);
+	}, [view.questions]);
 
 	const boardRef = useRef(uuid);
 	useEffect(() => {
@@ -533,14 +580,17 @@ export default function OpenCodeSession({
 	useEffect(() => {
 		if (!uuid || !repo) {
 			setView(emptyOpencodeView());
+			setSessionsLoading(false);
 			return;
 		}
 		let cancelled = false;
 		setView(emptyOpencodeView());
+		setSessionsLoading(true);
 		void postOpencode({ uuid, repo, op: "sessions" }).then((result) => {
 			if (cancelled) {
 				return;
 			}
+			setSessionsLoading(false);
 			if (!result.ok) {
 				setError(result.error);
 				return;
@@ -631,11 +681,7 @@ export default function OpenCodeSession({
 		};
 	}, [uuid, repo]);
 
-	const scrollKey =
-		view.turns.length +
-		(view.turns.at(-1)?.text.length ?? 0) +
-		view.permissions.length +
-		view.questions.length;
+	const scrollKey = codeScrollKey(view.turns, view.permissions, view.questions);
 	useLayoutEffect(() => {
 		if (mode !== "session" || !view.sessionID || scrollKey < 0) {
 			return;
@@ -740,9 +786,10 @@ export default function OpenCodeSession({
 	}
 
 	const needle = query.trim().toLowerCase();
-	const matches = needle
-		? view.sessions.filter((item) => item.title.toLowerCase().includes(needle))
-		: [];
+	const matches = needle ? filterCodeSessions(view.sessions, query) : [];
+	const visibleSessions = needle
+		? filterCodeSessions(view.sessions, query)
+		: view.sessions;
 	const bucketTitle = {
 		today: t("code.today"),
 		yesterday: t("code.yesterday"),
@@ -752,14 +799,12 @@ export default function OpenCodeSession({
 		.map((id) => ({
 			id,
 			title: bucketTitle[id],
-			sessions: view.sessions.filter(
+			sessions: visibleSessions.filter(
 				(item) => opencodeSessionBucket(item.updated) === id,
 			),
 		}))
 		.filter((group) => group.sessions.length > 0);
-	const title =
-		view.sessions.find((item) => item.id === view.sessionID)?.title ||
-		t("code.sessions");
+	const title = codeSessionTitle(view.sessions, view.sessionID, t("code.sessions"));
 	const permission = view.permissions.find(
 		(item) => item.sessionID === view.sessionID,
 	);
@@ -774,12 +819,16 @@ export default function OpenCodeSession({
 		const reasoning = chosen?.reasoning === true;
 		return (
 			<>
-				<div className={`oc-model${modelMenu ? " is-open" : ""}`}>
+				<div
+					className={`oc-model${modelMenu ? " is-open" : ""}`}
+					ref={modelMenuRef}
+				>
 					<button
 						type="button"
 						className="oc-chip"
 						aria-label={t("code.model")}
 						aria-expanded={modelMenu}
+						aria-haspopup="listbox"
 						onClick={() => setModelMenu((open) => !open)}
 					>
 						<span>{t("code.model")}</span>
@@ -829,7 +878,8 @@ export default function OpenCodeSession({
 		);
 	}
 
-	function composer(disabled: boolean) {
+	function composer(disabled: boolean, blocked = false) {
+		const sendDisabled = !view.busy && (!prompt.trim() || disabled || blocked);
 		return (
 			<div className="oc-composer">
 				<textarea
@@ -845,13 +895,17 @@ export default function OpenCodeSession({
 						event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
 					}}
 					onKeyDown={(event) => {
+						if (event.key === "Escape" && blocked) {
+							event.currentTarget.blur();
+							return;
+						}
 						if (
 							event.key === "Enter" &&
 							!event.shiftKey &&
 							!event.nativeEvent.isComposing
 						) {
 							event.preventDefault();
-							if (!view.busy) {
+							if (!view.busy && !blocked) {
 								void send();
 							}
 						}
@@ -861,7 +915,8 @@ export default function OpenCodeSession({
 					type="button"
 					className={`oc-send${view.busy ? " is-stop" : ""}`}
 					aria-label={view.busy ? t("code.stop") : t("code.send")}
-					disabled={!view.busy && (!prompt.trim() || disabled)}
+					disabled={sendDisabled}
+					title={blocked ? t("code.blockedComposer") : undefined}
 					onClick={() => void (view.busy ? abort() : send())}
 				>
 					{view.busy ? <StopIcon /> : <SendIcon />}
@@ -870,7 +925,47 @@ export default function OpenCodeSession({
 		);
 	}
 
-	const owner = repos.find((item) => item.name === repo)?.owner ?? "";
+	function answerQuestion(reject: boolean) {
+		if (!question) {
+			return;
+		}
+		const current = question;
+		if (reject) {
+			void run({
+				uuid,
+				repo,
+				op: "question",
+				requestID: current.id,
+				reject: true,
+			}).then(() => {
+				setAnswers(clearCodeAnswers());
+				setView((viewCurrent) => ({
+					...viewCurrent,
+					questions: viewCurrent.questions.filter(
+						(item) => item.id !== current.id,
+					),
+				}));
+			});
+			return;
+		}
+		void run({
+			uuid,
+			repo,
+			op: "question",
+			requestID: current.id,
+			answers: current.prompts.map((item) => [answers[item.question] ?? ""]),
+		}).then(() => {
+			setAnswers(clearCodeAnswers());
+			setView((viewCurrent) => ({
+				...viewCurrent,
+				questions: viewCurrent.questions.filter(
+					(item) => item.id !== current.id,
+				),
+			}));
+		});
+	}
+
+	const owner = codeRepoOwner(repos, repo);
 	return (
 		<div className="oc-card">
 			<ProjectFiles uuid={uuid} owner={owner} name={repo}>
@@ -903,9 +998,14 @@ export default function OpenCodeSession({
 									key={`${item.owner}/${item.name}`}
 									type="button"
 									className={`oc-row${item.name === repo ? " is-active" : ""}`}
+									title={codeRepoLabel(item)}
+									aria-current={item.name === repo ? "true" : undefined}
 									onClick={() => remember(item.name)}
 								>
-									<span>{item.name}</span>
+									<span className="oc-session-title">{item.name}</span>
+									{item.owner ? (
+										<span className="oc-session-time">{item.owner}</span>
+									) : null}
 								</button>
 							))
 						)}
@@ -921,7 +1021,24 @@ export default function OpenCodeSession({
 									onFocus={() => setSearching(true)}
 									onBlur={() => setSearching(false)}
 									onChange={(event) => setQuery(event.target.value)}
+									onKeyDown={(event) => {
+										if (event.key === "Escape") {
+											setQuery("");
+											event.currentTarget.blur();
+										}
+									}}
 								/>
+								{query ? (
+									<button
+										type="button"
+										className="oc-session-delete"
+										aria-label={t("code.clear")}
+										onMouseDown={(event) => event.preventDefault()}
+										onClick={() => setQuery("")}
+									>
+										{t("code.clear")}
+									</button>
+								) : null}
 							</label>
 							<button
 								type="button"
@@ -964,11 +1081,35 @@ export default function OpenCodeSession({
 							) : null}
 						</div>
 						<div className="oc-status">
-							<i />
+							<i aria-hidden="true" />
 							{reconnecting ? t("code.reconnecting") : t("code.live")}
+							{needle ? (
+								<span className="oc-session-time">
+									{t("code.resultCount", { n: visibleSessions.length })}
+								</span>
+							) : null}
+							{reconnecting || error ? (
+								<button
+									type="button"
+									className="oc-session-delete"
+									aria-label={t("code.retry")}
+									onClick={() => {
+										setError("");
+										setReconnecting(false);
+									}}
+								>
+									{t("code.retry")}
+								</button>
+							) : null}
 						</div>
 						<div className="oc-session-list">
-							{view.sessions.length === 0 ? (
+							{sessionsLoading ? (
+								<div className="oc-empty" aria-busy="true">
+									<p className="oc-muted">{t("code.sessionLoading")}</p>
+									<div className="oc-skel" />
+									<div className="oc-skel" />
+								</div>
+							) : view.sessions.length === 0 ? (
 								<div className="oc-empty">
 									<strong>{t("code.emptyTitle")}</strong>
 									<p className="oc-muted">{t("code.emptyBody")}</p>
@@ -1046,6 +1187,7 @@ export default function OpenCodeSession({
 							</p>
 						) : null}
 						{composer(!repo)}
+						<p className="oc-muted">{t("code.draftHint")}</p>
 						<div className="oc-chips">
 							<label className="oc-chip">
 								{t("code.project")}
@@ -1059,7 +1201,7 @@ export default function OpenCodeSession({
 											key={`${item.owner}/${item.name}`}
 											value={item.name}
 										>
-											{item.name}
+											{codeRepoLabel(item)}
 										</option>
 									))}
 								</select>
@@ -1076,9 +1218,9 @@ export default function OpenCodeSession({
 							<BackIcon />
 							{t("code.back")}
 						</button>
-						<strong>{title}</strong>
+						<strong title={title}>{title}</strong>
 						<span className={`oc-status${reconnecting ? " is-wait" : ""}`}>
-							<i />
+							<i aria-hidden="true" />
 							{reconnecting ? t("code.reconnecting") : t("code.live")}
 						</span>
 					</div>
@@ -1173,46 +1315,21 @@ export default function OpenCodeSession({
 									disabled={question.prompts.some(
 										(item) => !answers[item.question],
 									)}
-									onClick={() =>
-										void run({
-											uuid,
-											repo,
-											op: "question",
-											requestID: question.id,
-											answers: question.prompts.map((item) => [
-												answers[item.question] ?? "",
-											]),
-										}).then(() =>
-											setView((current) => ({
-												...current,
-												questions: current.questions.filter(
-													(item) => item.id !== question.id,
-												),
-											})),
-										)
-									}
+									onClick={() => answerQuestion(false)}
 								>
 									{t("code.reply")}
 								</button>
-								<button
-									type="button"
-									onClick={() =>
-										void run({
-											uuid,
-											repo,
-											op: "question",
-											requestID: question.id,
-											reject: true,
-										})
-									}
-								>
+								<button type="button" onClick={() => answerQuestion(true)}>
 									{t("code.reject")}
 								</button>
 							</div>
 						</div>
 					) : null}
 					<div className="oc-chips">{modelSelects()}</div>
-					{composer(Boolean(permission || question))}
+					{permission || question ? (
+						<p className="oc-muted oc-blocked">{t("code.blockedComposer")}</p>
+					) : null}
+					{composer(false, Boolean(permission || question))}
 				</div>
 			) : null}
 			</ProjectFiles>

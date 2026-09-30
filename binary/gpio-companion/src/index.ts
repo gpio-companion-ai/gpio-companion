@@ -213,8 +213,6 @@ const hub = hubEnabled
 	? startHubClient({
 			uuid: pairingUuid,
 			key: pairingKey,
-			hardware,
-			gpio,
 			flash,
 			run,
 			proxy,

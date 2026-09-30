@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { generateDeviceKeyPair } from "./device-auth.ts";
 import {
 	asFlashStatus,
-	asGpioSnapshot,
-	asHubT3Status,
 	asRunStatus,
 	encodeHubMessage,
 	HUB_PATH,
@@ -16,22 +14,24 @@ import {
 
 describe("hub protocol", () => {
 	test("round-trips messages and rejects junk", () => {
-		const gpio = encodeHubMessage({
+		const flash = encodeHubMessage({
 			v: 1,
-			type: "gpio",
-			payload: { hardware: "orangepi", pins: [] },
+			type: "flash",
+			payload: { running: false, last: null },
 		});
-		expect(parseHubMessage(gpio)).toEqual({
+		expect(parseHubMessage(flash)).toEqual({
 			v: 1,
-			type: "gpio",
-			payload: { hardware: "orangepi", pins: [] },
+			type: "flash",
+			payload: { running: false, last: null },
 		});
 		expect(parseHubMessage({ v: 1, type: "ping" })).toEqual({
 			v: 1,
 			type: "ping",
 		});
 		expect(parseHubMessage("{")).toBeNull();
-		expect(parseHubMessage({ v: 2, type: "gpio" })).toBeNull();
+		expect(parseHubMessage({ v: 2, type: "flash" })).toBeNull();
+		expect(parseHubMessage({ v: 1, type: "gpio" })).toBeNull();
+		expect(parseHubMessage({ v: 1, type: "t3" })).toBeNull();
 		expect(parseHubMessage({ v: 1, type: "secret" })).toBeNull();
 		expect(
 			parseHubMessage({
@@ -43,20 +43,12 @@ describe("hub protocol", () => {
 	});
 
 	test("narrows channel payloads", () => {
-		expect(
-			asGpioSnapshot({ hardware: "raspberrypi", pins: [] })?.hardware,
-		).toBe("raspberrypi");
-		expect(asGpioSnapshot({ hardware: "x86", pins: [] })).toBeNull();
 		expect(asFlashStatus({ running: true, last: null })?.running).toBe(true);
 		expect(asFlashStatus({ running: "yes" })).toBeNull();
 		expect(asRunStatus({ running: true, log: "", last: null })?.running).toBe(
 			true,
 		);
 		expect(asRunStatus({ running: true, last: null })).toBeNull();
-		expect(
-			asHubT3Status({ paired: true, pairingUrl: "https://t3" })?.paired,
-		).toBe(true);
-		expect(asHubT3Status({ pairingUrl: "https://t3" })).toBeNull();
 	});
 
 	test("builds a same-origin hub websocket url", () => {

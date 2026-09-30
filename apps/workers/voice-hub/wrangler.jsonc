@@ -2,7 +2,7 @@
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	// Workers Builds (Git): Worker gpio-companion-voice, root apps/workers/voice-hub
 	// build: bun run ci:install
-	// deploy: npx wrangler deploy
+	// deploy: bunx wrangler deploy
 	// Secrets: XAI_API_KEY, GPIO_COMPANION_DEVICE_PRIVATE_KEY
 	"name": "gpio-companion-voice",
 	"main": "src/index.ts",

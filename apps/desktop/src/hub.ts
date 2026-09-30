@@ -9,7 +9,6 @@ const START_MS = 500;
 const MAX_MS = 10_000;
 
 export type HubHandlers = {
-	onGpio?: (snapshot: GpioSnapshot) => void;
 	onFlash?: (status: FlashStatus) => void;
 	onRun?: (status: RunStatus) => void;
 	onArduinoProxy?: (status: ArduinoProxyStatus) => void;
@@ -38,10 +37,8 @@ export function parseHubMessage(input: unknown): HubMessage | null {
 		return null;
 	}
 	if (
-		record.type !== "gpio" &&
 		record.type !== "flash" &&
 		record.type !== "run" &&
-		record.type !== "t3" &&
 		record.type !== "arduinoProxy" &&
 		record.type !== "hello" &&
 		record.type !== "ping"
@@ -53,20 +50,6 @@ export function parseHubMessage(input: unknown): HubMessage | null {
 		message.payload = record.payload;
 	}
 	return message;
-}
-
-export function asGpioSnapshot(payload: unknown): GpioSnapshot | null {
-	if (!payload || typeof payload !== "object") {
-		return null;
-	}
-	const record = payload as GpioSnapshot;
-	if (record.hardware !== "raspberrypi" && record.hardware !== "orangepi") {
-		return null;
-	}
-	if (!Array.isArray(record.pins)) {
-		return null;
-	}
-	return record;
 }
 
 export function gpioSnapshotStatusKey(snapshot: GpioSnapshot): string {
@@ -317,13 +300,6 @@ export function startHubClient(options: {
 			if (!message) {
 				return;
 			}
-			if (message.type === "gpio") {
-				const snapshot = asGpioSnapshot(message.payload);
-				if (snapshot) {
-					options.handlers.onGpio?.(snapshot);
-				}
-				return;
-			}
 			if (message.type === "flash") {
 				const status = asFlashStatus(message.payload);
 				if (status) {
@@ -336,9 +312,6 @@ export function startHubClient(options: {
 				if (status) {
 					options.handlers.onRun?.(status);
 				}
-				return;
-			}
-			if (message.type === "t3") {
 				return;
 			}
 			if (message.type === "arduinoProxy") {

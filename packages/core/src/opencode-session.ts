@@ -1195,6 +1195,113 @@ export function parseOpencodeSse(buffer: string): {
 	return { events, rest };
 }
 
+export type CodeRepo = { owner: string; name: string };
+
+export function parseStoredCodeRepo(
+	stored: string | null | undefined,
+): CodeRepo {
+	const trimmed = (stored ?? "").trim();
+	if (!trimmed) {
+		return { owner: "", name: "" };
+	}
+	if (trimmed.includes("/")) {
+		const index = trimmed.lastIndexOf("/");
+		return {
+			owner: trimmed.slice(0, index).trim(),
+			name: trimmed.slice(index + 1).trim(),
+		};
+	}
+	return { owner: "", name: trimmed };
+}
+
+export function matchCodeRepo(
+	repos: readonly CodeRepo[],
+	stored: string | null | undefined,
+): string {
+	if (repos.length === 0) {
+		return "";
+	}
+	const parsed = parseStoredCodeRepo(stored);
+	if (parsed.owner && parsed.name) {
+		const exact = repos.find(
+			(item) => item.name === parsed.name && item.owner === parsed.owner,
+		);
+		if (exact) {
+			return exact.name;
+		}
+	}
+	if (parsed.name) {
+		const byName = repos.find((item) => item.name === parsed.name);
+		if (byName) {
+			return byName.name;
+		}
+	}
+	return repos[0]?.name ?? "";
+}
+
+export function codeRepoOwner(
+	repos: readonly CodeRepo[],
+	name: string,
+): string {
+	return repos.find((item) => item.name === name)?.owner ?? "";
+}
+
+export function codeRepoLabel(repo: CodeRepo): string {
+	return repo.owner ? `${repo.owner}/${repo.name}` : repo.name;
+}
+
+export function filterCodeSessions(
+	sessions: readonly OpencodeSessionSummary[],
+	query: string,
+): OpencodeSessionSummary[] {
+	const needle = query.trim().toLowerCase();
+	if (!needle) {
+		return [...sessions];
+	}
+	return sessions.filter((item) =>
+		item.title.toLowerCase().includes(needle),
+	);
+}
+
+export function codeScrollKey(
+	turns: readonly { text: string }[],
+	permissions: readonly unknown[],
+	questions: readonly unknown[],
+): number {
+	return (
+		turns.length +
+		(turns.at(-1)?.text.length ?? 0) +
+		permissions.length +
+		questions.length
+	);
+}
+
+export function pruneCodeAnswers(
+	answers: Record<string, string>,
+	prompts: readonly { question: string }[],
+): Record<string, string> {
+	const keep = new Set(prompts.map((item) => item.question));
+	const next: Record<string, string> = {};
+	for (const [key, value] of Object.entries(answers)) {
+		if (keep.has(key)) {
+			next[key] = value;
+		}
+	}
+	return next;
+}
+
+export function clearCodeAnswers(): Record<string, string> {
+	return {};
+}
+
+export function codeSessionTitle(
+	sessions: readonly OpencodeSessionSummary[],
+	sessionID: string,
+	fallback: string,
+): string {
+	return sessions.find((item) => item.id === sessionID)?.title || fallback;
+}
+
 export async function readOpencodeEventStream(
 	response: Response,
 	onEvent: (data: unknown, id: string) => void,

@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import {
 	asArduinoProxyStatus,
 	asFlashStatus,
-	asGpioSnapshot,
 	parseHubMessage,
 	startHubClient,
 } from "./hub";
@@ -41,15 +40,12 @@ class FakeSocket {
 }
 
 describe("hub protocol", () => {
-	test("parses gpio flash and proxy payloads", () => {
-		expect(parseHubMessage('{"v":1,"type":"gpio"}')?.type).toBe("gpio");
+	test("parses flash run and proxy payloads", () => {
+		expect(parseHubMessage('{"v":1,"type":"flash"}')?.type).toBe("flash");
 		expect(parseHubMessage("{")).toBeNull();
-		expect(asGpioSnapshot({ hardware: "orangepi", pins: [] })?.hardware).toBe(
-			"orangepi",
-		);
-		expect(asGpioSnapshot({ hardware: "x86", pins: [] })).toBeNull();
+		expect(parseHubMessage('{"v":1,"type":"gpio"}')).toBeNull();
+		expect(parseHubMessage('{"v":1,"type":"t3"}')).toBeNull();
 		expect(asFlashStatus({ running: true, last: null })?.running).toBe(true);
-		expect(parseHubMessage('{"v":1,"type":"t3"}')?.type).toBe("t3");
 		expect(parseHubMessage('{"v":1,"type":"arduinoProxy"}')?.type).toBe(
 			"arduinoProxy",
 		);
@@ -59,10 +55,10 @@ describe("hub protocol", () => {
 });
 
 describe("hub client", () => {
-	test("mints a ticket, dispatches gpio, and remints on close", async () => {
+	test("mints a ticket, dispatches flash, and remints on close", async () => {
 		FakeSocket.instances = [];
 		const mints: string[] = [];
-		const gpio: string[] = [];
+		const flash: boolean[] = [];
 		const client = startHubClient({
 			uuid: "pair-uuid",
 			mintTicket: async () => {
@@ -70,8 +66,8 @@ describe("hub client", () => {
 				return { wsUrl: `wss://example/hub?n=${mints.length}` };
 			},
 			handlers: {
-				onGpio: (snapshot) => {
-					gpio.push(snapshot.hardware);
+				onFlash: (status) => {
+					flash.push(status.running);
 				},
 			},
 			webSocket: FakeSocket as unknown as typeof WebSocket,
@@ -90,11 +86,11 @@ describe("hub client", () => {
 			"message",
 			JSON.stringify({
 				v: 1,
-				type: "gpio",
-				payload: { hardware: "orangepi", pins: [] },
+				type: "flash",
+				payload: { running: true, last: null },
 			}),
 		);
-		expect(gpio).toEqual(["orangepi"]);
+		expect(flash).toEqual([true]);
 		FakeSocket.instances[0]?.close();
 		await new Promise((resolve) => setTimeout(resolve, 5));
 		expect(mints).toEqual(["mint", "mint"]);

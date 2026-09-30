@@ -2,7 +2,7 @@
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	// Workers Builds (Git): Worker gpio-companion-hub, root apps/workers/device-hub
 	// build: bun run ci:install
-	// deploy: npx wrangler deploy
+	// deploy: bunx wrangler deploy
 	"name": "gpio-companion-hub",
 	"main": "src/index.ts",
 	"compatibility_date": "2026-09-07",

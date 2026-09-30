@@ -8,8 +8,13 @@ import {
 	type BoardFileNode,
 	BREADBOARD_DIAGRAM_JSON,
 	boardFileApplyEvent,
+	boardFileDirty,
 	boardFileLanguage,
 	boardFileTree,
+	clampSplitPercent,
+	countBoardFiles,
+	filterBoardNodes,
+	OC_EDITOR_SPLIT_KEY,
 	parseBoardFileEvent,
 } from "gpio-companion";
 import {
@@ -53,28 +58,44 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
 	const [stale, setStale] = useState(false);
 	const [note, setNote] = useState("");
+	const [saved, setSaved] = useState("");
 	const [busy, setBusy] = useState("");
+	const [fileFilter, setFileFilter] = useState("");
+	const [fileLoading, setFileLoading] = useState(false);
 	const echo = useRef("");
 	const fileRef = useRef(file);
 	const draftRef = useRef(draft);
+	const stageRef = useRef<HTMLDivElement>(null);
 	fileRef.current = file;
 	draftRef.current = draft;
 	const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
 	const openedPath = useRef("");
-	const dirty = Boolean(file && file.kind === "text" && draft !== file.text);
+	const dirty = boardFileDirty(file?.kind ?? "", draft, file?.text ?? "");
 	const showBoard =
 		file?.path === BREADBOARD_DIAGRAM_JSON && diagramView === "board";
 	const tree = boardFileTree(entries);
+	const visibleTree = fileFilter.trim()
+		? filterBoardNodes(tree, fileFilter)
+		: tree;
+	const fileCount = countBoardFiles(entries);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset when the board or project changes
 	useEffect(() => {
+		const current = fileRef.current;
+		if (current && draftRef.current !== current.text) {
+			if (!window.confirm(t("code.discardConfirm"))) {
+				return;
+			}
+		}
 		setFile(null);
 		setDraft("");
 		setStale(false);
 		setNote("");
+		setSaved("");
 		setEntries([]);
 		setBranch("");
 		setOpenDirs(new Set());
+		setFileFilter("");
 		setDiagramView("board");
 		openedPath.current = "";
 	}, [uuid, name]);
@@ -213,9 +234,22 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 		if (!uuid || !name) {
 			return;
 		}
+		const current = fileRef.current;
+		if (
+			current &&
+			current.path !== path &&
+			current.kind === "text" &&
+			draftRef.current !== current.text &&
+			!window.confirm(t("code.discardConfirm"))
+		) {
+			return;
+		}
+		setFileLoading(true);
 		const result = await readFile({ uuid, name, path });
+		setFileLoading(false);
 		if (!result.ok) {
 			setNote(result.error);
+			setSaved("");
 			return;
 		}
 		const next: OpenFile = {
@@ -232,6 +266,7 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 		}
 		setStale(false);
 		setNote("");
+		setSaved("");
 		const parts = path.split("/");
 		parts.pop();
 		setOpenDirs((current) => {
@@ -260,12 +295,14 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 		setBusy("");
 		if (!result.ok) {
 			setNote(result.error);
+			setSaved("");
 			return;
 		}
 		echo.current = file.path;
 		setFile({ ...file, text: draft });
 		setStale(false);
 		setNote("");
+		setSaved(t("code.savedBoard"));
 	}
 
 	async function saveGithub() {
@@ -277,14 +314,28 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 		setBusy("");
 		if (!result.ok) {
 			setNote(result.error);
+			setSaved("");
 			return;
 		}
 		const pushed = result.data.board.branch || branch;
 		if (pushed) {
 			setBranch(pushed);
 		}
-		setNote(t("code.savedGithub").replace("{branch}", pushed || name));
+		setNote("");
+		setSaved(t("code.savedGithub").replace("{branch}", pushed || name));
 	}
+
+	useEffect(() => {
+		try {
+			const stored = window.localStorage.getItem(OC_EDITOR_SPLIT_KEY);
+			const pct = clampSplitPercent(Number(stored));
+			if (stored && stageRef.current) {
+				stageRef.current.style.setProperty("--oc-editor", `${pct}%`);
+			}
+		} catch {
+			return;
+		}
+	}, []);
 
 	function onSplitDown(event: ReactPointerEvent<HTMLDivElement>) {
 		const stage = event.currentTarget.parentElement;
@@ -299,12 +350,21 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 			const ratio = wide
 				? (ev.clientX - rect.left) / rect.width
 				: (ev.clientY - rect.top) / rect.height;
-			const next = Math.min(0.75, Math.max(0.28, ratio));
-			pane.style.setProperty("--oc-editor", `${Math.round(next * 100)}%`);
+			const next = clampSplitPercent(ratio * 100);
+			pane.style.setProperty("--oc-editor", `${next}%`);
 		}
 		function up() {
 			window.removeEventListener("pointermove", move);
 			window.removeEventListener("pointerup", up);
+			try {
+				const raw = pane.style.getPropertyValue("--oc-editor").replace("%", "");
+				window.localStorage.setItem(
+					OC_EDITOR_SPLIT_KEY,
+					String(clampSplitPercent(Number(raw))),
+				);
+			} catch {
+				return;
+			}
 		}
 		window.addEventListener("pointermove", move);
 		window.addEventListener("pointerup", up);
@@ -314,32 +374,79 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 		<div className="oc-work">
 			<aside className="oc-tree" aria-label={t("code.files")}>
 				<div className="oc-tree-head">
-					<span className="oc-tree-title">{name || t("code.files")}</span>
+					<span className="oc-tree-title" title={name}>
+						{name || t("code.files")}
+					</span>
 					{branch ? (
 						<span className="oc-tree-branch" title={branch}>
 							{branch}
+						</span>
+					) : null}
+					{fileCount > 0 ? (
+						<span
+							className="oc-tree-branch"
+							title={t("code.filesCount", { n: fileCount })}
+						>
+							{t("code.filesCount", { n: fileCount })}
 						</span>
 					) : null}
 					<button
 						type="button"
 						className="oc-mini"
 						disabled={!uuid || !owner || !name || busy === "github"}
+						title={t("code.saveGithub")}
 						onClick={() => void saveGithub()}
 					>
 						{busy === "github" ? t("code.savingGithub") : t("code.saveGithub")}
 					</button>
 				</div>
-				<div className="oc-tree-scroll">
-					{note && !file ? <p className="oc-editor-note">{note}</p> : null}
-					{tree.length === 0 ? (
-						<p className="oc-editor-note">{t("code.emptyTree")}</p>
+				<div className="oc-tree-filter">
+					<input
+						value={fileFilter}
+						placeholder={t("code.filterFiles")}
+						aria-label={t("code.filterFiles")}
+						onChange={(event) => setFileFilter(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Escape") {
+								setFileFilter("");
+							}
+						}}
+					/>
+					{fileFilter ? (
+						<button
+							type="button"
+							className="oc-mini"
+							aria-label={t("code.clear")}
+							onClick={() => setFileFilter("")}
+						>
+							{t("code.clear")}
+						</button>
 					) : (
-						tree.map((node) => (
+						<button
+							type="button"
+							className="oc-mini"
+							aria-label={t("code.collapseAll")}
+							disabled={openDirs.size === 0}
+							onClick={() => setOpenDirs(new Set())}
+						>
+							{t("code.collapseAll")}
+						</button>
+					)}
+				</div>
+				{note ? <p className="oc-editor-note oc-error-note">{note}</p> : null}
+				{saved ? <p className="oc-editor-note oc-success">{saved}</p> : null}
+				<div className="oc-tree-scroll" role="tree" aria-label={t("code.files")}>
+					{visibleTree.length === 0 ? (
+						<p className="oc-editor-note">
+							{fileFilter.trim() ? t("code.searchEmpty") : t("code.emptyTree")}
+						</p>
+					) : (
+						visibleTree.map((node) => (
 							<TreeRows
 								key={node.path}
 								node={node}
 								depth={0}
-								openDirs={openDirs}
+								openDirs={fileFilter.trim() ? openAllDirs(visibleTree) : openDirs}
 								active={file?.path ?? ""}
 								onToggle={(path) =>
 									setOpenDirs((current) => {
@@ -358,18 +465,33 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 					)}
 				</div>
 			</aside>
-			<div className={`oc-stage${file ? " is-split" : ""}`}>
+			<div
+				className={`oc-stage${file ? " is-split" : ""}`}
+				ref={stageRef}
+			>
 				{file ? (
 					<section className="oc-editor" aria-label={file.path}>
 						<div className="oc-editor-bar">
-							<span className={`oc-editor-name${dirty ? " is-dirty" : ""}`}>
+							<span
+								className={`oc-editor-name${dirty ? " is-dirty" : ""}`}
+								title={dirty ? `${file.path} ●` : file.path}
+							>
 								{file.path}
 							</span>
 							{stale ? (
 								<button
 									type="button"
 									className="oc-mini"
-									onClick={() => void openPath(file.path)}
+									title={t("code.discardConfirm")}
+									onClick={() => {
+										if (
+											dirty &&
+											!window.confirm(t("code.discardConfirm"))
+										) {
+											return;
+										}
+										void openPath(file.path);
+									}}
 								>
 									{t("code.updatedOnBoard")}
 								</button>
@@ -408,7 +530,9 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 							) : null}
 						</div>
 						<div className="oc-editor-body">
-							{showBoard ? (
+							{fileLoading ? (
+								<p className="oc-editor-note">{t("code.loadingFile")}</p>
+							) : showBoard ? (
 								<BreadboardViewer
 									diagramText={draft}
 									boardModel={boardModel}
@@ -437,6 +561,20 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 	);
 }
 
+function openAllDirs(nodes: readonly BoardFileNode[]): Set<string> {
+	const out = new Set<string>();
+	const walk = (items: readonly BoardFileNode[]) => {
+		for (const item of items) {
+			if (item.type === "dir") {
+				out.add(item.path);
+				walk(item.children);
+			}
+		}
+	};
+	walk(nodes);
+	return out;
+}
+
 function TreeRows({
 	node,
 	depth,
@@ -457,6 +595,11 @@ function TreeRows({
 		<>
 			<button
 				type="button"
+				role="treeitem"
+				aria-level={depth + 1}
+				aria-expanded={node.type === "dir" ? open : undefined}
+				aria-current={node.path === active ? "true" : undefined}
+				title={node.path}
 				className={`oc-tree-row${node.path === active ? " is-active" : ""}`}
 				style={{ paddingLeft: 8 + depth * 12 }}
 				onClick={() =>
@@ -516,7 +659,7 @@ function CodeEditor({
 		};
 	}, []);
 	if (!Editor) {
-		return null;
+		return <p className="oc-editor-note">Loading…</p>;
 	}
 	return (
 		<Editor

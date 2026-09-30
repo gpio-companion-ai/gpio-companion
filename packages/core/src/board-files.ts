@@ -144,6 +144,63 @@ export type EditorEmbedPayload = {
 	rev: number;
 };
 
+export { BREADBOARD_DIAGRAM_JSON } from "./breadboard.ts";
+
+export const OC_EDITOR_SPLIT_KEY = "gpio-companion-oc-editor-pct";
+export const OC_SPLIT_MIN = 28;
+export const OC_SPLIT_MAX = 75;
+
+export function clampSplitPercent(value: number): number {
+	if (!Number.isFinite(value)) {
+		return 55;
+	}
+	return Math.min(OC_SPLIT_MAX, Math.max(OC_SPLIT_MIN, Math.round(value)));
+}
+
+export function splitPercentFromRatio(ratio: number): number {
+	return clampSplitPercent(ratio * 100);
+}
+
+export function boardFileDirty(
+	kind: string,
+	draft: string,
+	text: string,
+): boolean {
+	return kind === "text" && draft !== text;
+}
+
+export function countBoardFiles(entries: readonly BoardFileEntry[]): number {
+	return entries.filter((entry) => entry.type === "file").length;
+}
+
+export function filterBoardNodes(
+	nodes: readonly BoardFileNode[],
+	query: string,
+): BoardFileNode[] {
+	const needle = query.trim().toLowerCase();
+	if (!needle) {
+		return [...nodes];
+	}
+	const out: BoardFileNode[] = [];
+	for (const node of nodes) {
+		if (node.type === "dir") {
+			const children = filterBoardNodes(node.children, needle);
+			const self = node.name.toLowerCase().includes(needle);
+			if (self || children.length > 0) {
+				out.push({ ...node, children: self && children.length === 0 ? node.children : children });
+			}
+			continue;
+		}
+		if (
+			node.name.toLowerCase().includes(needle) ||
+			node.path.toLowerCase().includes(needle)
+		) {
+			out.push(node);
+		}
+	}
+	return out;
+}
+
 export function boardFileWatchPath(name: string): string {
 	return `${FILES_WATCH_PREFIX}${encodeURIComponent(parseGithubRepoName(name))}`;
 }

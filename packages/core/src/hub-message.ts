@@ -1,32 +1,21 @@
 import type { ArduinoProxyStatus } from "./arduino-proxy.ts";
 import type { FlashStatus } from "./flash.ts";
-import type { GpioSnapshot } from "./gpio.ts";
 import type { RunStatus } from "./run.ts";
 
 export const HUB_PATH = "/api/hub";
 export const HUB_TOKEN_PREFIX = "gpiohub.v1.";
 export const HUB_TOKEN_TTL_MS = 60 * 60 * 1000;
 export const HUB_PING_MS = 60_000;
-export const HUB_GPIO_MS = 1_000;
 export const HUB_FLASH_MS = 1_500;
 export const HUB_RUN_MS = 1_000;
-export const HUB_T3_MS = 3_000;
 export const HUB_PROXY_MS = 1_500;
 export const HUB_LIVE_TTL_SEC = 120;
 
 export type HubRole = "pi" | "dashboard";
 
-export type HubChannel = "gpio" | "flash" | "run" | "t3" | "arduinoProxy";
+export type HubChannel = "flash" | "run" | "arduinoProxy";
 
 export type HubMessageType = HubChannel | "hello" | "ping";
-
-export type HubT3Status = {
-	running: boolean;
-	pairingUrl: string;
-	pairingToken: string;
-	paired: boolean;
-	serviceInstalled: boolean;
-};
 
 export type HubMessage = {
 	v: 1;
@@ -34,18 +23,10 @@ export type HubMessage = {
 	payload?: unknown;
 };
 
-const CHANNELS = new Set<HubChannel>([
-	"gpio",
-	"flash",
-	"run",
-	"t3",
-	"arduinoProxy",
-]);
+const CHANNELS = new Set<HubChannel>(["flash", "run", "arduinoProxy"]);
 const MESSAGE_TYPES = new Set<HubMessageType>([
-	"gpio",
 	"flash",
 	"run",
-	"t3",
 	"arduinoProxy",
 	"hello",
 	"ping",
@@ -114,20 +95,6 @@ export function parseHubMessage(input: unknown): HubMessage | null {
 	return message;
 }
 
-export function asGpioSnapshot(payload: unknown): GpioSnapshot | null {
-	if (!payload || typeof payload !== "object") {
-		return null;
-	}
-	const record = payload as GpioSnapshot;
-	if (record.hardware !== "raspberrypi" && record.hardware !== "orangepi") {
-		return null;
-	}
-	if (!Array.isArray(record.pins)) {
-		return null;
-	}
-	return record;
-}
-
 export function asFlashStatus(payload: unknown): FlashStatus | null {
 	if (!payload || typeof payload !== "object") {
 		return null;
@@ -178,22 +145,4 @@ export function asArduinoProxyStatus(
 		return null;
 	}
 	return record;
-}
-
-export function asHubT3Status(payload: unknown): HubT3Status | null {
-	if (!payload || typeof payload !== "object") {
-		return null;
-	}
-	const record = payload as HubT3Status;
-	if (typeof record.paired !== "boolean") {
-		return null;
-	}
-	return {
-		running: Boolean(record.running),
-		pairingUrl: typeof record.pairingUrl === "string" ? record.pairingUrl : "",
-		pairingToken:
-			typeof record.pairingToken === "string" ? record.pairingToken : "",
-		paired: record.paired,
-		serviceInstalled: Boolean(record.serviceInstalled),
-	};
 }

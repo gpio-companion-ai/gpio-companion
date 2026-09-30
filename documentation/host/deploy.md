@@ -50,7 +50,7 @@ Local dashboard: put the PEM in `apps/dashboard/.dev.vars` or `.env` as `GPIO_CO
 
 ## 2. Device hub Worker (Durable Objects)
 
-Live GPIO, flash, T3 status, and board presence go through a per-device Durable Object WebSocket. Cloudflare Pages cannot define Durable Object classes, so this Worker must exist **before** a dashboard deploy that binds it.
+Flash, run, Arduino proxy status, and board presence go through a per-device Durable Object WebSocket. Live GPIO and the serial console use the companion tunnel, not this Worker. Cloudflare Pages cannot define Durable Object classes, so this Worker must exist **before** a dashboard deploy that binds it.
 
 App: `apps/workers/device-hub`. Wrangler name: `gpio-companion-hub` (must match the dashboard Worker). Binding: `DEVICE_HUB` / class `DeviceHub`. Same KV namespace as the dashboard (`DYNAMIC_PAGE_KV`).
 
@@ -64,13 +64,15 @@ Connect the existing `gpio-companion-hub` Worker to this GitHub repo (not GitHub
 | Production branch | `main` |
 | Root directory | `apps/workers/device-hub` |
 | Build command | `bun run ci:install` |
-| Deploy command | `npx wrangler deploy` |
+| Deploy command | `bunx wrangler deploy` |
 
 Workers Builds auto-runs `bun install --frozen-lockfile` with the Bun it detects **before** the build command. Default image Bun is 1.2.15, which cannot read this repo’s `bun.lock` (`lockfileVersion` 2 from Bun 1.4.0). Pin via `.bun-version` / `packageManager` `bun@1.4.0` (repo root and `apps/workers/device-hub`). Wrangler `vars.BUN_VERSION` does **not** change Workers Builds Bun (Pages uses dashboard `BUN_VERSION` + `SKIP_DEPENDENCY_INSTALL`).
 
+Do not use `npx wrangler deploy`. On this Bun image that command exits `sh: 1: wrangler: not found` even after `bun install`. Use `bunx wrangler deploy`. The hub `postinstall` also links `wrangler` into `/usr/local/bin` so an old `npx` deploy command can still find it.
+
 The Worker name in the dashboard must stay `gpio-companion-hub` (same as `wrangler.jsonc` `name`). First-time local upload: `bun run deploy:hub`. After Git is connected, every push to `main` deploys the hub.
 
-The dashboard `wrangler.jsonc` binds that Worker with `script_name: "gpio-companion-hub"`. Pis mint a short-lived ticket via `POST /api/hub` `{uuid,key}` then connect `wss://gpio-companion.com/api/hub`. Dashboard browsers upgrade the same path with the session cookie. Writes stay signed HTTP/BLE.
+The dashboard `wrangler.jsonc` binds that Worker with `script_name: "gpio-companion-hub"`. Pis mint a short-lived ticket via `POST /api/hub` `{uuid,key}` then connect `wss://gpio-companion.com/api/hub` and publish flash, run, and Arduino proxy status. That socket also writes KV `live:{uuid}`. Dashboard browsers upgrade the same path with the session cookie. Writes stay signed HTTP. Live GPIO is `wss://api-<slug>.gpio-companion.com/v1/gpio`.
 
 ## 2b. Voice hub Worker (unused by dashboard UI)
 

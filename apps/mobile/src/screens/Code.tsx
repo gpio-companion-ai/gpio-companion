@@ -1,9 +1,16 @@
 import { router } from "expo-router";
 import {
 	applyOpencodeEvent,
+	clearCodeAnswers,
 	CODE_DEFAULT_MODEL,
 	codeNavBack,
+	codeRepoLabel,
+	codeRepoOwner,
+	codeScrollKey,
+	codeSessionTitle,
 	emptyOpencodeView,
+	filterCodeSessions,
+	matchCodeRepo,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
 	type OpencodeClientCall,
@@ -23,6 +30,7 @@ import {
 	opencodeTurns,
 	parseOpencodeMarkdown,
 	pendingOpencodeTurn,
+	pruneCodeAnswers,
 	pushCodeNav,
 	type ReasoningEffort,
 	readCodeNav,
@@ -30,7 +38,14 @@ import {
 	replaceCodeNav,
 	settleOpencodeTurns,
 } from "gpio-companion-opencode";
-import { Fragment, type ReactNode, useEffect, useRef, useState } from "react";
+import {
+	Fragment,
+	type ReactNode,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import {
 	Alert,
 	BackHandler,
@@ -322,14 +337,20 @@ export default function Code() {
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
+	const [sessionsLoading, setSessionsLoading] = useState(false);
 	const [answers, setAnswers] = useState<Record<string, string>>({});
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
 	const [picker, setPicker] = useState<"" | "model" | "effort">("");
 	const [pane, setPane] = useState<"chat" | "files">("chat");
+	const [filesDirty, setFilesDirty] = useState(false);
+	const [filesStale, setFilesStale] = useState(false);
 	const transcript = useRef<ScrollView>(null);
-	const scrollKey = view.turns.length + (view.turns.at(-1)?.text.length ?? 0);
+	const modelChoices = useMemo(() => opencodeModelChoices(), []);
+	const chosenModel = modelChoices.find((item) => item.id === model);
+	const reasoning = chosenModel?.reasoning === true;
+	const scrollKey = codeScrollKey(view.turns, view.permissions, view.questions);
 
 	useEffect(() => {
 		if (mode !== "session" || !view.sessionID || scrollKey < 0) {
@@ -345,6 +366,7 @@ export default function Code() {
 		if (!token) {
 			return;
 		}
+		setSessionsLoading(true);
 		void listProjects(token)
 			.then(async (result) => {
 				const next = result.repos.map((item) => ({
@@ -353,10 +375,7 @@ export default function Code() {
 				}));
 				setRepos(next);
 				const stored = (await storageGet(PROJECT_KEY)) ?? "";
-				const name = stored.includes("/") ? stored.split("/").pop() : stored;
-				setRepo(
-					next.find((item) => item.name === name)?.name ?? next[0]?.name ?? "",
-				);
+				setRepo(matchCodeRepo(next, stored));
 			})
 			.catch((caught) => {
 				setError(caught instanceof Error ? caught.message : "request failed");
@@ -372,7 +391,18 @@ export default function Code() {
 		});
 	}, []);
 
+	useEffect(() => {
+		setAnswers((current) =>
+			pruneCodeAnswers(
+				current,
+				view.questions.flatMap((item) => item.prompts),
+			),
+		);
+	}, [view.questions]);
+
 	function openSession(sessionID: string) {
+		setQuery("");
+		setAnswers(clearCodeAnswers());
 		setView((current) => ({
 			...current,
 			sessionID,
@@ -412,6 +442,7 @@ export default function Code() {
 
 	function openDraft() {
 		setPrompt("");
+		setAnswers(clearCodeAnswers());
 		setMode("draft");
 		pushCodeNav({ mode: "draft", sessionID: "" });
 	}
@@ -426,6 +457,8 @@ export default function Code() {
 
 	function selectRepo(name: string) {
 		setRepo(name);
+		setQuery("");
+		setAnswers(clearCodeAnswers());
 		const match = repos.find((item) => item.name === name);
 		if (match) {
 			void storageSet(PROJECT_KEY, `${match.owner}/${match.name}`);
@@ -483,19 +516,24 @@ export default function Code() {
 	useEffect(() => {
 		if (!token || !selected || !repo) {
 			setView(emptyOpencodeView());
+			setSessionsLoading(false);
 			return;
 		}
 		let cancelled = false;
 		setView(emptyOpencodeView());
+		setSessionsLoading(true);
 		void opencodeCall(token, { uuid: selected, repo, op: "sessions" })
 			.then((data) => {
-				if (!cancelled) {
-					const sessions = opencodeSessions(data);
-					setView((current) => ({ ...current, sessions }));
+				if (cancelled) {
+					return;
 				}
+				setSessionsLoading(false);
+				const sessions = opencodeSessions(data);
+				setView((current) => ({ ...current, sessions }));
 			})
 			.catch((caught) => {
 				if (!cancelled) {
+					setSessionsLoading(false);
 					setError(caught instanceof Error ? caught.message : "request failed");
 				}
 			});
@@ -666,6 +704,46 @@ export default function Code() {
 		}));
 	}
 
+	function answerQuestion(reject: boolean) {
+		const current = view.questions.find(
+			(item) => item.sessionID === view.sessionID,
+		);
+		if (!current) {
+			return;
+		}
+		if (reject) {
+			void run({
+				repo,
+				op: "question",
+				requestID: current.id,
+				reject: true,
+			}).then(() => {
+				setAnswers(clearCodeAnswers());
+				setView((viewCurrent) => ({
+					...viewCurrent,
+					questions: viewCurrent.questions.filter(
+						(item) => item.id !== current.id,
+					),
+				}));
+			});
+			return;
+		}
+		void run({
+			repo,
+			op: "question",
+			requestID: current.id,
+			answers: current.prompts.map((item) => [answers[item.question] ?? ""]),
+		}).then(() => {
+			setAnswers(clearCodeAnswers());
+			setView((viewCurrent) => ({
+				...viewCurrent,
+				questions: viewCurrent.questions.filter(
+					(item) => item.id !== current.id,
+				),
+			}));
+		});
+	}
+
 	const ink = { color: colors.text };
 	const muted = { color: colors.muted };
 	const row = {
@@ -675,9 +753,7 @@ export default function Code() {
 		borderRadius: 6,
 	};
 	const needle = query.trim().toLowerCase();
-	const visible = needle
-		? view.sessions.filter((item) => item.title.toLowerCase().includes(needle))
-		: view.sessions;
+	const visible = filterCodeSessions(view.sessions, query);
 	const bucketTitle = {
 		today: t("code.today"),
 		yesterday: t("code.yesterday"),
@@ -692,17 +768,19 @@ export default function Code() {
 			),
 		}))
 		.filter((group) => group.sessions.length > 0);
-	const title =
-		view.sessions.find((item) => item.id === view.sessionID)?.title ||
-		t("code.sessions");
+	const title = codeSessionTitle(view.sessions, view.sessionID, t("code.sessions"));
+	const owner = codeRepoOwner(repos, repo);
 	const permission = view.permissions.find(
 		(item) => item.sessionID === view.sessionID,
 	);
 	const question = view.questions.find(
 		(item) => item.sessionID === view.sessionID,
 	);
+	const blocked = Boolean(permission || question);
 
-	function composer(disabled: boolean) {
+	function composer(disabled: boolean, composerBlocked = false) {
+		const sendDisabled =
+			!view.busy && (!prompt.trim() || disabled || composerBlocked);
 		return (
 			<View
 				style={{
@@ -731,7 +809,7 @@ export default function Code() {
 				<Pressable
 					accessibilityRole="button"
 					accessibilityLabel={view.busy ? t("code.stop") : t("code.send")}
-					disabled={!view.busy && (!prompt.trim() || disabled)}
+					disabled={sendDisabled}
 					onPress={() => void (view.busy ? abort() : send())}
 					style={{
 						width: 28,
@@ -742,7 +820,7 @@ export default function Code() {
 						backgroundColor: view.busy ? "transparent" : colors.text,
 						borderWidth: view.busy ? 1.5 : 0,
 						borderColor: colors.text,
-						opacity: !view.busy && (!prompt.trim() || disabled) ? 0.35 : 1,
+						opacity: sendDisabled ? 0.35 : 1,
 					}}
 				>
 					<Text
@@ -814,7 +892,9 @@ export default function Code() {
 									fontWeight: "600",
 								}}
 							>
-								{item === "files" ? t("code.files") : t("code.chat")}
+								{item === "files"
+									? `${t("code.files")}${filesDirty || filesStale ? " ●" : ""}`
+									: t("code.chat")}
 							</Text>
 						</Pressable>
 					))}
@@ -823,8 +903,12 @@ export default function Code() {
 					<ProjectFiles
 						token={token}
 						uuid={selected}
-						owner={repos.find((item) => item.name === repo)?.owner ?? ""}
+						owner={owner}
 						name={repo}
+						onFileStateChange={({ dirty, stale }) => {
+							setFilesDirty(dirty);
+							setFilesStale(stale);
+						}}
 					/>
 				) : mode === "home" ? (
 					<ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
@@ -867,9 +951,16 @@ export default function Code() {
 												: null,
 										]}
 									>
-										<Text style={ink} numberOfLines={1}>
-											{item.name}
-										</Text>
+										<View style={{ flex: 1 }}>
+											<Text style={ink} numberOfLines={1}>
+												{item.name}
+											</Text>
+											{item.owner ? (
+												<Text style={[muted, { fontSize: 11 }]} numberOfLines={1}>
+													{item.owner}
+												</Text>
+											) : null}
+										</View>
 									</Pressable>
 								))
 							)}
@@ -896,6 +987,17 @@ export default function Code() {
 									backgroundColor: colors.chipBg,
 								}}
 							/>
+							{query ? (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={t("code.clear")}
+									onPress={() => setQuery("")}
+								>
+									<Text style={{ color: colors.muted, fontWeight: "600" }}>
+										{t("code.clear")}
+									</Text>
+								</Pressable>
+							) : null}
 							<Pressable disabled={!repo} onPress={openDraft}>
 								<Text style={{ color: colors.muted, fontWeight: "600" }}>
 									{t("code.newSession")}
@@ -904,14 +1006,36 @@ export default function Code() {
 						</View>
 						<Text style={[muted, { paddingHorizontal: 12, fontSize: 12 }]}>
 							{reconnecting ? t("code.reconnecting") : t("code.live")}
+							{needle ? `  ${t("code.resultCount", { n: visible.length })}` : ""}
 						</Text>
 						{error ? (
 							<Text style={{ color: colors.danger, padding: 12 }}>{error}</Text>
 						) : null}
-						{visible.length === 0 ? (
+						{sessionsLoading ? (
+							<View
+								style={{ gap: 8, padding: 16 }}
+								accessibilityState={{ busy: true }}
+							>
+								<Text style={muted}>{t("code.sessionLoading")}</Text>
+								<View
+									style={{
+										height: 40,
+										borderRadius: 6,
+										backgroundColor: colors.chipBg,
+									}}
+								/>
+								<View
+									style={{
+										height: 40,
+										borderRadius: 6,
+										backgroundColor: colors.chipBg,
+									}}
+								/>
+							</View>
+						) : view.sessions.length === 0 && !needle ? (
 							<View style={{ alignItems: "center", gap: 8, padding: 32 }}>
 								<Text style={{ color: colors.text, fontWeight: "600" }}>
-									{needle ? t("code.searchEmpty") : t("code.emptyTitle")}
+									{t("code.emptyTitle")}
 								</Text>
 								<Text style={[muted, { textAlign: "center" }]}>
 									{t("code.emptyBody")}
@@ -921,6 +1045,12 @@ export default function Code() {
 										{t("code.newSession")}
 									</Text>
 								</Pressable>
+							</View>
+						) : visible.length === 0 ? (
+							<View style={{ alignItems: "center", gap: 8, padding: 32 }}>
+								<Text style={{ color: colors.text, fontWeight: "600" }}>
+									{t("code.searchEmpty")}
+								</Text>
 							</View>
 						) : (
 							grouped.map((group) => (
@@ -1108,36 +1238,11 @@ export default function Code() {
 									disabled={question.prompts.some(
 										(item) => !answers[item.question],
 									)}
-									onPress={() =>
-										void run({
-											repo,
-											op: "question",
-											requestID: question.id,
-											answers: question.prompts.map((item) => [
-												answers[item.question] ?? "",
-											]),
-										}).then(() =>
-											setView((current) => ({
-												...current,
-												questions: current.questions.filter(
-													(item) => item.id !== question.id,
-												),
-											})),
-										)
-									}
+									onPress={() => answerQuestion(false)}
 								>
 									<Text style={ink}>{t("code.reply")}</Text>
 								</Pressable>
-								<Pressable
-									onPress={() =>
-										void run({
-											repo,
-											op: "question",
-											requestID: question.id,
-											reject: true,
-										})
-									}
-								>
+								<Pressable onPress={() => answerQuestion(true)}>
 									<Text style={{ color: colors.danger }}>
 										{t("code.reject")}
 									</Text>
@@ -1145,7 +1250,17 @@ export default function Code() {
 							</View>
 						) : null}
 						{mode === "draft" ? (
-							<Text style={[muted, { paddingHorizontal: 16 }]}>{repo}</Text>
+							<View style={{ gap: 4, paddingHorizontal: 16 }}>
+								<Text style={ink}>
+									{codeRepoLabel(
+										repos.find((item) => item.name === repo) ?? {
+											owner,
+											name: repo,
+										},
+									)}
+								</Text>
+								<Text style={muted}>{t("code.draftHint")}</Text>
+							</View>
 						) : null}
 						<View
 							style={{
@@ -1176,20 +1291,14 @@ export default function Code() {
 								<Text
 									style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
 								>
-									{opencodeModelChoices().find((item) => item.id === model)
-										?.name ?? model}
+									{chosenModel?.name ?? model}
 								</Text>
 								<Text style={{ color: colors.muted, fontSize: 11 }}>
-									{
-										opencodeModelChoices().find((item) => item.id === model)
-											?.provider
-									}
+									{chosenModel?.provider}
 								</Text>
 								<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
 							</Pressable>
-							{opencodeModelChoices().some(
-								(item) => item.id === model && item.reasoning,
-							) ? (
+							{reasoning ? (
 								<Pressable
 									accessibilityRole="button"
 									accessibilityLabel={t("code.effort")}
@@ -1272,7 +1381,7 @@ export default function Code() {
 														</Text>
 													</Pressable>
 												))
-											: opencodeModelChoices().map((item) => (
+											: modelChoices.map((item) => (
 													<Pressable
 														key={item.id}
 														onPress={() => {
@@ -1305,7 +1414,12 @@ export default function Code() {
 								</Pressable>
 							</Pressable>
 						</Modal>
-						{composer(Boolean(permission || question) || !repo)}
+						{blocked ? (
+							<Text style={[muted, { paddingHorizontal: 16 }]}>
+								{t("code.blockedComposer")}
+							</Text>
+						) : null}
+						{composer(!repo, blocked)}
 					</View>
 				) : null}
 			</View>

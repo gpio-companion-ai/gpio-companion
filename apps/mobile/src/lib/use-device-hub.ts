@@ -8,7 +8,6 @@ export function useDeviceHub(
 	token: string | null | undefined,
 	handlers: HubHandlers,
 ): void {
-	const onGpio = handlers.onGpio;
 	const onFlash = handlers.onFlash;
 	const onRun = handlers.onRun;
 	const onArduinoProxy = handlers.onArduinoProxy;
@@ -30,7 +29,7 @@ export function useDeviceHub(
 			client = startHubClient({
 				uuid: trimmed,
 				mintTicket: () => mintHubTicket(authToken, trimmed),
-				handlers: { onGpio, onFlash, onRun, onArduinoProxy },
+				handlers: { onFlash, onRun, onArduinoProxy },
 			});
 		}
 
@@ -52,5 +51,5 @@ export function useDeviceHub(
 			sub.remove();
 			client?.stop();
 		};
-	}, [uuid, token, onGpio, onFlash, onRun, onArduinoProxy]);
+	}, [uuid, token, onFlash, onRun, onArduinoProxy]);
 }

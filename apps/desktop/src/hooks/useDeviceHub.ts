@@ -3,7 +3,6 @@ import { mintHubTicket } from "../api";
 import { type HubHandlers, startHubClient } from "../hub";
 
 export function useDeviceHub(uuid: string, handlers: HubHandlers): void {
-	const onGpio = handlers.onGpio;
 	const onFlash = handlers.onFlash;
 	const onRun = handlers.onRun;
 	const onArduinoProxy = handlers.onArduinoProxy;
@@ -16,10 +15,10 @@ export function useDeviceHub(uuid: string, handlers: HubHandlers): void {
 		const client = startHubClient({
 			uuid: trimmed,
 			mintTicket: () => mintHubTicket(trimmed),
-			handlers: { onGpio, onFlash, onRun, onArduinoProxy },
+			handlers: { onFlash, onRun, onArduinoProxy },
 		});
 		return () => {
 			client.stop();
 		};
-	}, [uuid, onGpio, onFlash, onRun, onArduinoProxy]);
+	}, [uuid, onFlash, onRun, onArduinoProxy]);
 }
