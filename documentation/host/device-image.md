@@ -28,7 +28,8 @@ The clone does **not** bake a production public key. First-setup fetches it from
 6. Creates `gpio-<uuid>` on Cloudflare with `api-<slug>` → :4150. No public code hostname.
 7. Writes `/etc/gpio-companion/config.json` and `cloudflared.env`, enables the replica
 8. Fetches the dashboard Ed25519 public key into `/etc/gpio-companion/device-auth.json` (fails closed if the dashboard is unreachable)
-9. Writes `/etc/gpio-companion/first-setup-complete`
+9. Installs the OpenViking memory server (`scripts/setup-openviking.sh --yes`). No prompt. Failure stops first-setup before the completion marker. Refuses when `/` has under 1536MB free.
+10. Writes `/etc/gpio-companion/first-setup-complete`
 
 It does **not** collect OpenCode or GitHub secrets. It installs the GPIO-user OpenCode server on `127.0.0.1:4096` and does not install T3 Code.
 
@@ -110,6 +111,7 @@ Script path, first existing file: env `GPIO_COMPANION_BLE_SCRIPT` (unit default 
 - Fetches `GET /api/device-public-key` and writes `/etc/gpio-companion/device-auth.json` if it changed
 - Rebuilds/restarts `gpio-companion` if `binary/`, `packages/core/`, the unit file, or lockfile changed, or if the registered public key changed
 - Installs or restarts the GPIO-user OpenCode unit and runs `opencode upgrade`. It does not install or start T3 Code.
+- Installs OpenViking when the venv or `openviking: true` flag is missing. A failed install is logged and retried next run; it does not abort the rest of the update.
 - Force rebuild even when HEAD did not move: `sudo ./scripts/force-update.sh` or `sudo gpio-companion-force-update` (`--force` / `GPIO_COMPANION_UPDATE_FORCE=1`)
 - Dashboard owner or admin can start the same timer job remotely: signed `POST /v1/update` → `systemctl start --no-block gpio-companion-update.service` (HTTP returns immediately; the board may restart)
 - Dashboard project create signs `POST /v1/projects/sync` `{ owner, name }` to each hub-live paired board (clone `~/projects/<name>`). Offline boards are skipped. Serve also lists watermarked installation repos at start and every 15 min.

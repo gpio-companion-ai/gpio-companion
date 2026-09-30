@@ -11,6 +11,7 @@ import {
 	renameContextDrafts,
 	stageBoardContext,
 	stageCodeAttach,
+	explorerCreateDir,
 	stageExplorerFile,
 } from "./code-attach.ts";
 
@@ -50,6 +51,16 @@ describe("code attach", () => {
 				},
 			]),
 		).toThrow("context file must be text");
+	});
+
+	test("creates in the selected directory", () => {
+		expect(explorerCreateDir(null)).toBe("");
+		expect(explorerCreateDir({ path: "firmware", type: "dir" })).toBe(
+			"firmware",
+		);
+		expect(explorerCreateDir({ path: "firmware/main.c", type: "file" })).toBe(
+			"firmware",
+		);
 	});
 
 	test("drops a file into the chosen folder", () => {

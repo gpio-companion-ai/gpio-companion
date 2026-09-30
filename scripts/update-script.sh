@@ -201,6 +201,13 @@ write_opencode_ai_provider
 
 sync_local_pairing_with_dashboard
 
+if ! openviking_enabled; then
+	echo "gpio-companion update: installing OpenViking memory server"
+	if ! "/bin/bash" "$SCRIPT_DIR/setup-openviking.sh" --yes; then
+		echo "gpio-companion update: openviking install failed; will retry next update" >&2
+	fi
+fi
+
 if openviking_enabled; then
 	write_openviking_ai_loopback
 	write_opencode_openviking_plugin

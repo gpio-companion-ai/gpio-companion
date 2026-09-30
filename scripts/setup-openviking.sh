@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Canonical installer for the optional on-device OpenViking memory server.
-# first-setup.sh delegates here when the user opts in, and it can be run
-# manually later on any board (idempotent).
+# Canonical installer for the on-device OpenViking memory server.
+# first-setup.sh always runs this. update-script.sh runs it when the
+# server is missing. Idempotent.
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh

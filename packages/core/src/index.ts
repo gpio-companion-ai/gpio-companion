@@ -292,6 +292,8 @@ export {
 	CODE_UPLOAD_BINARY_MAX,
 	CODE_UPLOAD_DIR,
 	type CodeAttachDraft,
+	type ExplorerPick,
+	explorerCreateDir,
 	type CodeAttachKind,
 	type CodeAttachSource,
 	type CodeMention,

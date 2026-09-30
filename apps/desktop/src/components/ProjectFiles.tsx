@@ -3,6 +3,8 @@ import {
 	codeAttachFileName,
 	codeAttachKind,
 	codeComposerErrorKey,
+	type ExplorerPick,
+	explorerCreateDir,
 	stageExplorerFile,
 } from "gpio-companion-attach";
 import {
@@ -98,6 +100,7 @@ export default function ProjectFiles({
 	const [fileMenu, setFileMenu] = useState<FileMenu | null>(null);
 	const fileMenuRef = useRef<HTMLDivElement | null>(null);
 	const [dropDir, setDropDir] = useState<string | null>(null);
+	const [picked, setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState("");
 	const [nameDraft, setNameDraft] = useState("");
@@ -376,18 +379,35 @@ export default function ProjectFiles({
 		setNote("");
 	}
 
+	function reveal(dir: string) {
+		if (!dir) {
+			return;
+		}
+		setOpenDirs((current) => {
+			const copy = new Set(current);
+			let acc = "";
+			for (const part of dir.split("/")) {
+				acc = acc ? `${acc}/${part}` : part;
+				copy.add(acc);
+			}
+			return copy;
+		});
+	}
+
 	function startCreate() {
-		const dir = file?.path ? parentDir(file.path) : "";
+		const dir =
+			explorerCreateDir(picked) || (file?.path ? parentDir(file.path) : "");
 		setRenaming("");
 		setCreating(dir);
 		setNameDraft("untitled.txt");
-		if (dir) {
-			setOpenDirs((current) => new Set(current).add(dir));
-		}
+		reveal(dir);
 	}
 
 	function startRename(path?: string) {
-		const target = path || file?.path || "";
+		const target =
+			typeof path === "string" && path
+				? path
+				: picked?.path || file?.path || "";
 		if (!target) {
 			return;
 		}
@@ -395,6 +415,7 @@ export default function ProjectFiles({
 		setFileMenu(null);
 		setRenaming(target);
 		setNameDraft(target.split("/").pop() ?? target);
+		reveal(parentDir(target));
 	}
 
 	function openFileMenu(path: string, x: number, y: number) {
@@ -629,8 +650,9 @@ export default function ProjectFiles({
 							className="oc-tree-action"
 							aria-label={t("code.renameFile")}
 							title={t("code.renameFile")}
-							disabled={!file?.path || busy === "file"}
-							onClick={startRename}
+							disabled={!(picked?.path || file?.path) || busy === "file"}
+							onMouseDown={(event) => event.preventDefault()}
+							onClick={() => startRename()}
 						>
 							<RenameIcon />
 						</button>
@@ -734,7 +756,7 @@ export default function ProjectFiles({
 								openDirs={
 									fileFilter.trim() ? openAllDirs(visibleTree) : openDirs
 								}
-								active={file?.path ?? ""}
+								active={picked?.path || file?.path || ""}
 								onToggle={(path) =>
 									setOpenDirs((current) => {
 										const copy = new Set(current);
@@ -746,7 +768,11 @@ export default function ProjectFiles({
 										return copy;
 									})
 								}
-								onOpen={(path) => void openPath(path)}
+								onOpen={(path) => {
+									setPicked({ path, type: "file" });
+									void openPath(path);
+								}}
+								onPickDir={(path) => setPicked({ path, type: "dir" })}
 								dropDir={dropDir}
 								onDragFolder={setDropDir}
 								onDropFiles={(dir, list) => void importFiles(dir, list)}
@@ -870,6 +896,7 @@ export default function ProjectFiles({
 							<button
 								type="button"
 								role="menuitem"
+								onMouseDown={(event) => event.preventDefault()}
 								onClick={() => startRename(fileMenu.path)}
 							>
 								{t("code.renameFile")}
@@ -896,6 +923,13 @@ function NameRow({
 	onCancel: () => void;
 }) {
 	const skip = useRef(false);
+	const ready = useRef(false);
+	useEffect(() => {
+		const timer = window.setTimeout(() => {
+			ready.current = true;
+		}, 0);
+		return () => window.clearTimeout(timer);
+	}, []);
 	return (
 		<div className="oc-tree-row" style={{ paddingLeft: 8 }}>
 			<span className="oc-tree-chevron" />
@@ -919,7 +953,7 @@ function NameRow({
 					}
 				}}
 				onBlur={() => {
-					if (skip.current) {
+					if (!ready.current || skip.current) {
 						skip.current = false;
 						return;
 					}
@@ -980,6 +1014,7 @@ function TreeRows({
 	active,
 	onToggle,
 	onOpen,
+	onPickDir,
 	dropDir,
 	onDragFolder,
 	onDropFiles,
@@ -997,6 +1032,7 @@ function TreeRows({
 	active: string;
 	onToggle: (path: string) => void;
 	onOpen: (path: string) => void;
+	onPickDir: (path: string) => void;
 	dropDir: string | null;
 	onDragFolder: (dir: string) => void;
 	onDropFiles: (dir: string, list: File[]) => void;
@@ -1039,6 +1075,7 @@ function TreeRows({
 							return;
 						}
 						if (node.type === "dir") {
+							onPickDir(node.path);
 							onToggle(node.path);
 							return;
 						}
@@ -1117,6 +1154,7 @@ function TreeRows({
 							active={active}
 							onToggle={onToggle}
 							onOpen={onOpen}
+							onPickDir={onPickDir}
 							dropDir={dropDir}
 							onDragFolder={onDragFolder}
 							onDropFiles={onDropFiles}

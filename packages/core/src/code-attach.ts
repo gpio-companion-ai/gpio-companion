@@ -19,6 +19,22 @@ export const CODE_ATTACH_ACCEPT =
 
 const UPLOAD_BINARY = new Set(["png", "jpg", "jpeg", "webp", "gif", "pdf"]);
 
+export type ExplorerPick = {
+	path: string;
+	type: "file" | "dir";
+};
+
+export function explorerCreateDir(picked: ExplorerPick | null): string {
+	if (!picked?.path) {
+		return "";
+	}
+	if (picked.type === "dir") {
+		return picked.path;
+	}
+	const index = picked.path.lastIndexOf("/");
+	return index < 0 ? "" : picked.path.slice(0, index);
+}
+
 export type CodeAttachKind = "text" | "binary";
 export type CodeAttachUse = "project" | "context";
 export type CodeAttachSource = "upload" | "board";

@@ -125,28 +125,8 @@ register_device_public_key
 echo "writing OpenCode loopback AI provider..."
 write_opencode_ai_provider
 
-openviking_install=0
-if [[ -n "${GPIO_COMPANION_OPENVIKING:-}" ]]; then
-	case "${GPIO_COMPANION_OPENVIKING,,}" in
-	1 | y | yes | true) openviking_install=1 ;;
-	*) openviking_install=0 ;;
-	esac
-elif [[ -t 0 ]]; then
-	free_mb="$(df -Pm / | awk 'NR==2 {print $4}')"
-	prompt openviking_choice "Install the on-device OpenViking memory server? (~400MB disk, ${free_mb}MB free) [y/N]" "n"
-	case "${openviking_choice,,}" in
-	y | yes | 1 | true) openviking_install=1 ;;
-	*) openviking_install=0 ;;
-	esac
-fi
-if [[ "$openviking_install" -eq 1 ]]; then
-	echo "installing the optional OpenViking memory server..."
-	if ! "/bin/bash" "$SCRIPT_DIR/setup-openviking.sh" --yes; then
-		echo "openviking setup failed; continuing without the memory server" >&2
-	fi
-else
-	set_openviking_flag false
-fi
+echo "installing the OpenViking memory server..."
+"/bin/bash" "$SCRIPT_DIR/setup-openviking.sh" --yes
 
 install -d -m 0755 "$CONFIG_DIR"
 date -u +"%Y-%m-%dT%H:%M:%SZ" >"$MARKER"

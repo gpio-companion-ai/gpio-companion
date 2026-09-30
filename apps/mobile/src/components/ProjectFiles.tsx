@@ -4,6 +4,8 @@ import {
 	codeAttachFileName,
 	codeAttachKind,
 	codeComposerErrorKey,
+	type ExplorerPick,
+	explorerCreateDir,
 	stageExplorerFile,
 } from "gpio-companion-attach";
 import {
@@ -103,6 +105,7 @@ export default function ProjectFiles({
 		x: number;
 		y: number;
 	} | null>(null);
+	const [picked, setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState("");
 	const [nameDraft, setNameDraft] = useState("");
@@ -411,18 +414,35 @@ export default function ProjectFiles({
 		setNote("");
 	}
 
+	function reveal(dir: string) {
+		if (!dir) {
+			return;
+		}
+		setOpenDirs((current) => {
+			const copy = new Set(current);
+			let acc = "";
+			for (const part of dir.split("/")) {
+				acc = acc ? `${acc}/${part}` : part;
+				copy.add(acc);
+			}
+			return copy;
+		});
+	}
+
 	function startCreate() {
-		const dir = file?.path ? parentDir(file.path) : "";
+		const dir =
+			explorerCreateDir(picked) || (file?.path ? parentDir(file.path) : "");
 		setRenaming("");
 		setCreating(dir);
 		setNameDraft("untitled.txt");
-		if (dir) {
-			setOpenDirs((current) => new Set(current).add(dir));
-		}
+		reveal(dir);
 	}
 
 	function startRename(path?: string) {
-		const target = path || file?.path || "";
+		const target =
+			typeof path === "string" && path
+				? path
+				: picked?.path || file?.path || "";
 		if (!target) {
 			return;
 		}
@@ -430,6 +450,7 @@ export default function ProjectFiles({
 		setFileMenu(null);
 		setRenaming(target);
 		setNameDraft(target.split("/").pop() ?? target);
+		reveal(parentDir(target));
 	}
 
 	async function textFor(path: string) {
@@ -595,8 +616,8 @@ export default function ProjectFiles({
 				<Pressable
 					accessibilityRole="button"
 					accessibilityLabel={t("code.renameFile")}
-					disabled={!file?.path || busy === "file"}
-					onPress={startRename}
+					disabled={!(picked?.path || file?.path) || busy === "file"}
+					onPress={() => startRename()}
 				>
 					<Text style={{ color: colors.text, fontSize: 12 }}>A</Text>
 				</Pressable>
