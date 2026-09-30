@@ -4,7 +4,6 @@ import {
 	CODE_DEFAULT_MODEL,
 	codeNavBack,
 	codeQuestionAnswer,
-	codeQuestionChoice,
 	codeQuestionSlideIndex,
 	codeRepoLabel,
 	codeRepoOwner,
@@ -375,7 +374,8 @@ export default function Code() {
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [sessionsLoading, setSessionsLoading] = useState(false);
-	const [slides, setSlides] = useState<Record<string, number>>({});
+	const [slide, setSlide] = useState(0);
+	const [picks, setPicks] = useState<Record<string, string>>({});
 	const [custom, setCustom] = useState<Record<string, string>>({});
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
@@ -446,29 +446,57 @@ export default function Code() {
 		storeOpencodePrompts(view.sessionID, view.questions, view.permissions);
 	}, [mode, view.sessionID, view.questions, view.permissions]);
 
+	const askedId = useRef("");
 	useEffect(() => {
-		const prompts = view.questions.flatMap((item) => item.prompts);
-		setSlides((current) => pruneCodePromptState(current, prompts));
-		setCustom((current) => pruneCodePromptState(current, prompts));
-	}, [view.questions]);
+		const active = view.questions.find(
+			(item) => item.sessionID === view.sessionID,
+		);
+		const pending = active?.prompts ?? [];
+		const id = active?.id ?? "";
+		setPicks((current) => pruneCodePromptState(current, pending));
+		setCustom((current) => pruneCodePromptState(current, pending));
+		if (askedId.current !== id) {
+			askedId.current = id;
+			setSlide(0);
+			return;
+		}
+		setSlide((current) =>
+			codeQuestionSlideIndex(current, Math.max(pending.length, 1), 0),
+		);
+	}, [view.questions, view.sessionID]);
 
 	function clearQuestionDraft() {
-		setSlides({});
+		setSlide(0);
+		setPicks({});
 		setCustom({});
 	}
 
-	function promptAnswer(item: { question: string; options: string[] }) {
+	function promptAnswer(item: { question: string }) {
 		return codeQuestionAnswer(
-			codeQuestionChoice(item.options, slides[item.question] ?? 0),
+			picks[item.question],
 			custom[item.question] ?? "",
 		);
 	}
 
-	function moveSlide(prompt: string, count: number, delta: number) {
-		setSlides((current) => ({
-			...current,
-			[prompt]: codeQuestionSlideIndex(current[prompt] ?? 0, count, delta),
-		}));
+	function pickChoice(prompt: string, option: string) {
+		setPicks((current) => ({ ...current, [prompt]: option }));
+		setCustom((current) => ({ ...current, [prompt]: "" }));
+	}
+
+	function moveQuestion(delta: number) {
+		const current = view.questions.find(
+			(item) => item.sessionID === view.sessionID,
+		);
+		if (!current || current.prompts.length === 0) {
+			return;
+		}
+		const count = current.prompts.length;
+		const index = codeQuestionSlideIndex(slide, count, 0);
+		const prompt = current.prompts[index];
+		if (delta > 0 && (!prompt || !promptAnswer(prompt))) {
+			return;
+		}
+		setSlide(codeQuestionSlideIndex(index, count, delta));
 	}
 
 	function openSession(sessionID: string) {
@@ -1402,120 +1430,116 @@ export default function Code() {
 									backgroundColor: colors.chipBg,
 								}}
 							>
-								{question.prompts.map((item) => {
-									const index = codeQuestionSlideIndex(
-										slides[item.question] ?? 0,
-										item.options.length,
-										0,
-									);
-									const choice = codeQuestionChoice(item.options, index);
+								{(() => {
+									const count = question.prompts.length;
+									const index = codeQuestionSlideIndex(slide, count, 0);
+									const item = question.prompts[index];
+									if (!item) {
+										return null;
+									}
 									const typed = custom[item.question] ?? "";
-									const selected = choice.length > 0 && !typed.trim();
+									const picked = picks[item.question] ?? "";
+									const ready = Boolean(promptAnswer(item));
 									return (
-										<View key={item.question}>
-											<Text style={ink}>
-												{item.header ? `${item.header}: ` : ""}
-												{item.question}
-											</Text>
-											{item.options.length > 0 ? (
-												<View
+										<View
+											style={{
+												flexDirection: "row",
+												alignItems: "center",
+												gap: 8,
+											}}
+										>
+											{count > 1 ? (
+												<Pressable
+													accessibilityRole="button"
+													accessibilityLabel={t("code.previousQuestion")}
+													disabled={index === 0}
+													onPress={() => moveQuestion(-1)}
 													style={{
-														flexDirection: "row",
+														minWidth: 32,
 														alignItems: "center",
-														gap: 8,
-														marginTop: 8,
+														padding: 8,
+														borderRadius: 6,
+														backgroundColor: colors.surface,
+														opacity: index === 0 ? 0.35 : 1,
 													}}
 												>
-													{item.options.length > 1 ? (
-														<Pressable
-															accessibilityRole="button"
-															accessibilityLabel={t("code.previousOption")}
-															disabled={index === 0}
-															onPress={() =>
-																moveSlide(
-																	item.question,
-																	item.options.length,
-																	-1,
-																)
-															}
-															style={{
-																minWidth: 32,
-																alignItems: "center",
-																padding: 8,
-																borderRadius: 6,
-																backgroundColor: colors.surface,
-																opacity: index === 0 ? 0.35 : 1,
-															}}
-														>
-															<Text style={ink}>{"<"}</Text>
-														</Pressable>
-													) : null}
-													<Text
-														style={{
-															flex: 1,
-															textAlign: "center",
-															borderRadius: 6,
-															paddingVertical: 8,
-															paddingHorizontal: 10,
-															overflow: "hidden",
-															backgroundColor: selected
-																? colors.text
-																: colors.surface,
-															color: selected ? colors.surface : colors.text,
-														}}
-													>
-														{choice}
-													</Text>
-													{item.options.length > 1 ? (
-														<Pressable
-															accessibilityRole="button"
-															accessibilityLabel={t("code.nextOption")}
-															disabled={index >= item.options.length - 1}
-															onPress={() =>
-																moveSlide(item.question, item.options.length, 1)
-															}
-															style={{
-																minWidth: 32,
-																alignItems: "center",
-																padding: 8,
-																borderRadius: 6,
-																backgroundColor: colors.surface,
-																opacity:
-																	index >= item.options.length - 1 ? 0.35 : 1,
-															}}
-														>
-															<Text style={ink}>{">"}</Text>
-														</Pressable>
-													) : null}
-												</View>
+													<Text style={ink}>{"<"}</Text>
+												</Pressable>
 											) : null}
-											<TextInput
-												value={typed}
-												placeholder={t("code.customResponse")}
-												placeholderTextColor={colors.placeholder}
-												accessibilityLabel={t("code.customResponse")}
-												autoComplete="off"
-												enterKeyHint="send"
-												onChangeText={(text) =>
-													setCustom((current) => ({
-														...current,
-														[item.question]: text,
-													}))
-												}
-												onSubmitEditing={() => answerQuestion(false)}
-												style={{
-													marginTop: 8,
-													borderWidth: 1,
-													borderColor: colors.border,
-													borderRadius: 6,
-													paddingHorizontal: 10,
-													paddingVertical: 8,
-													color: colors.text,
-												}}
-											/>
+											<View style={{ flex: 1 }}>
+												<Text style={ink}>
+													{item.header ? `${item.header}: ` : ""}
+													{item.question}
+												</Text>
+												{item.options.map((option) => (
+													<Pressable
+														key={option}
+														onPress={() => pickChoice(item.question, option)}
+													>
+														<Text
+															style={
+																!typed.trim() && picked === option ? ink : muted
+															}
+														>
+															{option}
+														</Text>
+													</Pressable>
+												))}
+												<TextInput
+													value={typed}
+													placeholder={t("code.customResponse")}
+													placeholderTextColor={colors.placeholder}
+													accessibilityLabel={t("code.customResponse")}
+													autoComplete="off"
+													enterKeyHint={index < count - 1 ? "next" : "send"}
+													onChangeText={(text) =>
+														setCustom((current) => ({
+															...current,
+															[item.question]: text,
+														}))
+													}
+													onSubmitEditing={() => {
+														if (!ready) {
+															return;
+														}
+														if (index < count - 1) {
+															moveQuestion(1);
+															return;
+														}
+														answerQuestion(false);
+													}}
+													style={{
+														marginTop: 8,
+														borderWidth: 1,
+														borderColor: colors.border,
+														borderRadius: 6,
+														paddingHorizontal: 10,
+														paddingVertical: 8,
+														color: colors.text,
+													}}
+												/>
+											</View>
+											{count > 1 ? (
+												<Pressable
+													accessibilityRole="button"
+													accessibilityLabel={t("code.nextQuestion")}
+													disabled={index >= count - 1 || !ready}
+													onPress={() => moveQuestion(1)}
+													style={{
+														minWidth: 32,
+														alignItems: "center",
+														padding: 8,
+														borderRadius: 6,
+														backgroundColor: colors.surface,
+														opacity: index >= count - 1 || !ready ? 0.35 : 1,
+													}}
+												>
+													<Text style={ink}>{">"}</Text>
+												</Pressable>
+											) : null}
 										</View>
 									);
-								})}
+								})()}
 								<Pressable
 									disabled={question.prompts.some(
 										(item) => !promptAnswer(item),

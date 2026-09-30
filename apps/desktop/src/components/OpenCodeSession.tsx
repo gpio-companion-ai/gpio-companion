@@ -3,7 +3,6 @@ import {
 	CODE_DEFAULT_MODEL,
 	codeNavBack,
 	codeQuestionAnswer,
-	codeQuestionChoice,
 	codeQuestionSlideIndex,
 	codeRepoLabel,
 	codeRepoOwner,
@@ -495,7 +494,8 @@ export default function OpenCodeSession({
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [sessionsLoading, setSessionsLoading] = useState(false);
-	const [slides, setSlides] = useState<Record<string, number>>({});
+	const [slide, setSlide] = useState(0);
+	const [picks, setPicks] = useState<Record<string, string>>({});
 	const [custom, setCustom] = useState<Record<string, string>>({});
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
@@ -503,6 +503,7 @@ export default function OpenCodeSession({
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
+	const askedId = useRef("");
 	const prompts = useRef<OpencodePromptEpoch>({
 		epoch: 0,
 		dropped: new Set(),
@@ -548,22 +549,34 @@ export default function OpenCodeSession({
 	}, [repos]);
 
 	function clearQuestionDraft() {
-		setSlides({});
+		setSlide(0);
+		setPicks({});
 		setCustom({});
 	}
 
-	function promptAnswer(item: { question: string; options: string[] }) {
+	function promptAnswer(item: { question: string }) {
 		return codeQuestionAnswer(
-			codeQuestionChoice(item.options, slides[item.question] ?? 0),
+			picks[item.question],
 			custom[item.question] ?? "",
 		);
 	}
 
-	function moveSlide(prompt: string, count: number, delta: number) {
-		setSlides((current) => ({
-			...current,
-			[prompt]: codeQuestionSlideIndex(current[prompt] ?? 0, count, delta),
-		}));
+	function pickChoice(prompt: string, option: string) {
+		setPicks((current) => ({ ...current, [prompt]: option }));
+		setCustom((current) => ({ ...current, [prompt]: "" }));
+	}
+
+	function moveQuestion(delta: number) {
+		if (!question || question.prompts.length === 0) {
+			return;
+		}
+		const count = question.prompts.length;
+		const index = codeQuestionSlideIndex(slide, count, 0);
+		const current = question.prompts[index];
+		if (delta > 0 && (!current || !promptAnswer(current))) {
+			return;
+		}
+		setSlide(codeQuestionSlideIndex(index, count, delta));
 	}
 
 	function selectRepo(name: string) {
@@ -709,10 +722,22 @@ export default function OpenCodeSession({
 	}, [mode, view.sessionID, view.questions, view.permissions]);
 
 	useEffect(() => {
-		const prompts = view.questions.flatMap((item) => item.prompts);
-		setSlides((current) => pruneCodePromptState(current, prompts));
-		setCustom((current) => pruneCodePromptState(current, prompts));
-	}, [view.questions]);
+		const active = view.questions.find(
+			(item) => item.sessionID === view.sessionID,
+		);
+		const pending = active?.prompts ?? [];
+		const id = active?.id ?? "";
+		setPicks((current) => pruneCodePromptState(current, pending));
+		setCustom((current) => pruneCodePromptState(current, pending));
+		if (askedId.current !== id) {
+			askedId.current = id;
+			setSlide(0);
+			return;
+		}
+		setSlide((current) =>
+			codeQuestionSlideIndex(current, Math.max(pending.length, 1), 0),
+		);
+	}, [view.questions, view.sessionID]);
 
 	const boardRef = useRef(selected);
 	useEffect(() => {
@@ -1562,95 +1587,99 @@ export default function OpenCodeSession({
 							) : null}
 							{!permission && question ? (
 								<div className="oc-decision">
-									{question.prompts.map((item) => {
-										const index = codeQuestionSlideIndex(
-											slides[item.question] ?? 0,
-											item.options.length,
-											0,
-										);
-										const choice = codeQuestionChoice(item.options, index);
+									{(() => {
+										const count = question.prompts.length;
+										const index = codeQuestionSlideIndex(slide, count, 0);
+										const item = question.prompts[index];
+										if (!item) {
+											return null;
+										}
 										const typed = custom[item.question] ?? "";
-										const selected = choice.length > 0 && !typed.trim();
+										const picked = picks[item.question] ?? "";
+										const ready = Boolean(promptAnswer(item));
 										return (
-											<div key={item.question}>
-												<p>
-													{item.header ? `${item.header}: ` : ""}
-													{item.question}
-												</p>
-												{item.options.length > 0 ? (
-													<div className="oc-option-slide">
-														{item.options.length > 1 ? (
-															<button
-																type="button"
-																className="oc-option-nav"
-																aria-label={t("code.previousOption")}
-																disabled={index === 0}
-																onClick={() =>
-																	moveSlide(
-																		item.question,
-																		item.options.length,
-																		-1,
-																	)
-																}
-															>
-																{"<"}
-															</button>
-														) : null}
-														<p
-															className={
-																selected
-																	? "oc-option-choice is-on"
-																	: "oc-option-choice"
-															}
-														>
-															{choice}
-														</p>
-														{item.options.length > 1 ? (
-															<button
-																type="button"
-																className="oc-option-nav"
-																aria-label={t("code.nextOption")}
-																disabled={index >= item.options.length - 1}
-																onClick={() =>
-																	moveSlide(
-																		item.question,
-																		item.options.length,
-																		1,
-																	)
-																}
-															>
-																{">"}
-															</button>
-														) : null}
-													</div>
+											<div className="oc-question-slide">
+												{count > 1 ? (
+													<button
+														type="button"
+														className="oc-option-nav"
+														aria-label={t("code.previousQuestion")}
+														disabled={index === 0}
+														onClick={() => moveQuestion(-1)}
+													>
+														{"<"}
+													</button>
 												) : null}
-												<input
-													className="oc-custom-response"
-													type="text"
-													value={typed}
-													placeholder={t("code.customResponse")}
-													aria-label={t("code.customResponse")}
-													autoComplete="off"
-													onChange={(event) =>
-														setCustom((current) => ({
-															...current,
-															[item.question]: event.target.value,
-														}))
-													}
-													onKeyDown={(event) => {
-														if (
-															event.key === "Enter" &&
-															!event.shiftKey &&
-															!event.nativeEvent.isComposing
-														) {
-															event.preventDefault();
-															answerQuestion(false);
+												<div className="oc-question-panel">
+													<p>
+														{item.header ? `${item.header}: ` : ""}
+														{item.question}
+													</p>
+													{item.options.length > 0 ? (
+														<div className="oc-options">
+															{item.options.map((option) => (
+																<button
+																	key={option}
+																	type="button"
+																	className={
+																		!typed.trim() && picked === option
+																			? "is-on"
+																			: undefined
+																	}
+																	onClick={() =>
+																		pickChoice(item.question, option)
+																	}
+																>
+																	{option}
+																</button>
+															))}
+														</div>
+													) : null}
+													<input
+														className="oc-custom-response"
+														type="text"
+														value={typed}
+														placeholder={t("code.customResponse")}
+														aria-label={t("code.customResponse")}
+														autoComplete="off"
+														onChange={(event) =>
+															setCustom((current) => ({
+																...current,
+																[item.question]: event.target.value,
+															}))
 														}
-													}}
-												/>
+														onKeyDown={(event) => {
+															if (
+																event.key !== "Enter" ||
+																event.shiftKey ||
+																event.nativeEvent.isComposing ||
+																!ready
+															) {
+																return;
+															}
+															event.preventDefault();
+															if (index < count - 1) {
+																moveQuestion(1);
+																return;
+															}
+															answerQuestion(false);
+														}}
+													/>
+												</div>
+												{count > 1 ? (
+													<button
+														type="button"
+														className="oc-option-nav"
+														aria-label={t("code.nextQuestion")}
+														disabled={index >= count - 1 || !ready}
+														onClick={() => moveQuestion(1)}
+													>
+														{">"}
+													</button>
+												) : null}
 											</div>
 										);
-									})}
+									})()}
 									<div className="oc-decision-actions">
 										<button
 											type="button"

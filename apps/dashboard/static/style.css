@@ -8869,11 +8869,14 @@ mark {
   background: rgb(var(--text-main));
   color: rgb(var(--bg-surface));
 }
-.oc-option-slide {
+.oc-question-slide {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-top: 8px;
+}
+.oc-question-panel {
+  flex: 1;
+  min-width: 0;
 }
 .oc-option-nav {
   flex: none;
@@ -8883,20 +8886,6 @@ mark {
 .oc-option-nav:disabled {
   opacity: 0.35;
   cursor: default;
-}
-.oc-option-choice {
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  border-radius: 6px;
-  padding: 8px 10px;
-  background: rgba(var(--text-main), 0.08);
-  text-align: center;
-  overflow-wrap: anywhere;
-}
-.oc-option-choice.is-on {
-  background: rgb(var(--text-main));
-  color: rgb(var(--bg-surface));
 }
 .oc-custom-response {
   display: block;
