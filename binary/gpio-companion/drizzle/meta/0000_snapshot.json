@@ -1,0 +1,92 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "15beea4a-d529-4e97-8be6-2576e2fae873",
+  "prevId": "00000000-0000-0000-0000-000000000000",
+  "tables": {
+    "opencode_prompts": {
+      "name": "opencode_prompts",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repo": {
+          "name": "repo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "session_id": {
+          "name": "session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "opencode_prompts_repo_session": {
+          "name": "opencode_prompts_repo_session",
+          "columns": [
+            "repo",
+            "session_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "opencode_prompts_kind_check": {
+          "name": "opencode_prompts_kind_check",
+          "value": "\"opencode_prompts\".\"kind\" in ('question', 'permission')"
+        },
+        "opencode_prompts_repo_check": {
+          "name": "opencode_prompts_repo_check",
+          "value": "length(\"opencode_prompts\".\"repo\") > 0"
+        },
+        "opencode_prompts_session_check": {
+          "name": "opencode_prompts_session_check",
+          "value": "length(\"opencode_prompts\".\"session_id\") > 0"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

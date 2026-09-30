@@ -29,6 +29,7 @@ import {
 	parseOpencodeEventPath,
 	parseOpencodeMarkdown,
 	parseOpencodeSse,
+	pendingOpencodeFromMessages,
 	pendingOpencodeTurn,
 	readCodeNav,
 	readStoredOpencodePrompts,
@@ -36,6 +37,7 @@ import {
 	restoreOpencodePrompts,
 	restoreOpencodeViewPrompts,
 	scopeOpencodeSearch,
+	seedOpencodePrompts,
 	settleOpencodeTurns,
 } from "./opencode-session.ts";
 
@@ -680,8 +682,9 @@ describe("opencode session client", () => {
 		);
 		expect(opencodeQuestions({ nope: true })).toBeNull();
 		const store = new Map<string, string>();
-		const previous = globalThis.sessionStorage;
-		globalThis.sessionStorage = {
+		const previousSession = globalThis.sessionStorage;
+		const previousLocal = globalThis.localStorage;
+		const mock = {
 			getItem: (key) => store.get(key) ?? null,
 			setItem: (key, value) => {
 				store.set(key, value);
@@ -695,6 +698,8 @@ describe("opencode session client", () => {
 			key: () => null,
 			length: 0,
 		};
+		globalThis.sessionStorage = mock;
+		globalThis.localStorage = mock;
 		rememberOpencodePrompt({ type: "question.asked", properties: asked });
 		expect(
 			readStoredOpencodePrompts("ses_1").questions.map((item) => item.id),
@@ -704,7 +709,18 @@ describe("opencode session client", () => {
 			properties: { sessionID: "ses_1", requestID: "que_1" },
 		});
 		expect(readStoredOpencodePrompts("ses_1").questions).toEqual([]);
-		globalThis.sessionStorage = previous;
+		rememberOpencodePrompt({ type: "question.asked", properties: asked });
+		expect(
+			seedOpencodePrompts(emptyOpencodeView(), "ses_1").questions.map(
+				(item) => item.id,
+			),
+		).toEqual(["que_1"]);
+		rememberOpencodePrompt({
+			type: "question.replied",
+			properties: { sessionID: "ses_1", requestID: "que_1" },
+		});
+		globalThis.sessionStorage = previousSession;
+		globalThis.localStorage = previousLocal;
 		expect(epoch.epoch).toBe(2);
 		expect(
 			restoreOpencodePrompts(
@@ -720,6 +736,86 @@ describe("opencode session client", () => {
 				(item) => item.id,
 			),
 		).toEqual(["que_live"]);
+		expect(
+			restoreOpencodeViewPrompts(current, "ses_1", {
+				questions: [],
+				permissions: [],
+				stale: false,
+				dropped: new Set(),
+			}).questions,
+		).toEqual([]);
+	});
+
+	test("reads a pending question from loaded messages", () => {
+		const pending = pendingOpencodeFromMessages(
+			[
+				{
+					info: { id: "msg_1", role: "assistant" },
+					parts: [
+						{
+							type: "tool",
+							tool: "question",
+							callID: "call_1",
+							state: {
+								status: "running",
+								input: {
+									questions: [
+										{
+											header: "LED",
+											question: "Which pin?",
+											options: [{ label: "7" }],
+										},
+									],
+								},
+							},
+						},
+					],
+				},
+			],
+			"ses_1",
+			{
+				questions: [
+					{
+						id: "que_1",
+						sessionID: "ses_1",
+						callID: "call_1",
+						prompts: [
+							{ header: "LED", question: "Which pin?", options: ["7"] },
+						],
+					},
+				],
+				permissions: [
+					{
+						id: "per_1",
+						sessionID: "ses_1",
+						callID: "call_1",
+						title: "bash",
+						detail: "git push",
+					},
+				],
+			},
+		);
+		expect(pending.questions[0]?.id).toBe("que_1");
+		expect(pending.questions[0]?.prompts[0]?.question).toBe("Which pin?");
+		expect(pending.permissions.map((item) => item.id)).toEqual(["per_1"]);
+		expect(
+			pendingOpencodeFromMessages(
+				[
+					{
+						info: { id: "msg_1", role: "assistant" },
+						parts: [
+							{
+								type: "tool",
+								tool: "question",
+								callID: "call_1",
+								state: { status: "completed", input: {} },
+							},
+						],
+					},
+				],
+				"ses_1",
+			).questions,
+		).toEqual([]);
 	});
 
 	test("buckets sessions by local day", () => {

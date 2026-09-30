@@ -12,14 +12,17 @@
 		"dev": "bun run src/index.ts",
 		"compile": "bun build ./src/index.ts --compile --outfile dist/gpio-companion",
 		"compile:linux-arm64": "bun build ./src/index.ts --compile --target=bun-linux-arm64 --outfile dist/gpio-companion-linux-arm64",
+		"db:generate": "drizzle-kit generate",
 		"typecheck": "tsc --noEmit",
 		"test": "bun test"
 	},
 	"dependencies": {
+		"drizzle-orm": "^0.45.3",
 		"gpio-companion": "workspace:*"
 	},
 	"devDependencies": {
 		"@types/bun": "catalog:",
+		"drizzle-kit": "^0.31.11",
 		"typescript": "catalog:"
 	}
 }

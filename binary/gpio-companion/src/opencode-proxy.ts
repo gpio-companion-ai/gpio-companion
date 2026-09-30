@@ -179,6 +179,7 @@ export async function bridgeOpencodeEvents(options: {
 	fetchImpl?: FetchLike;
 	signal: AbortSignal;
 	send: (frame: string) => void;
+	onEvent?: (data: unknown) => void;
 }): Promise<void> {
 	const directory = opencodeProjectDirectory(options.projectsDir, options.repo);
 	const search = `?${new URLSearchParams({ directory }).toString()}`;
@@ -225,6 +226,7 @@ export async function bridgeOpencodeEvents(options: {
 			const parsed = parseOpencodeSse(buffer);
 			buffer = parsed.rest;
 			for (const event of parsed.events) {
+				options.onEvent?.(event.data);
 				options.send(opencodeEventFrame(event.id, event.data));
 			}
 		}

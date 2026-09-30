@@ -128,10 +128,12 @@
         "gpio-companion": "./src/index.ts",
       },
       "dependencies": {
+        "drizzle-orm": "^0.45.3",
         "gpio-companion": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
+        "drizzle-kit": "^0.31.11",
         "typescript": "catalog:",
       },
     },

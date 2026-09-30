@@ -34,6 +34,7 @@ import {
 	opencodeTurns,
 	parseOpencodeEventFrame,
 	parseOpencodeMarkdown,
+	pendingOpencodeFromMessages,
 	pendingOpencodeTurn,
 	pruneCodeAnswers,
 	type ReasoningEffort,
@@ -41,7 +42,7 @@ import {
 	readStoredOpencodePrompts,
 	rememberOpencodePrompt,
 	replaceCodeNav,
-	restoreOpencodeViewPrompts,
+	seedOpencodePrompts,
 	settleOpencodeTurns,
 	storeOpencodePrompts,
 } from "gpio-companion";
@@ -435,8 +436,20 @@ export default function OpenCodeSession({
 }) {
 	const t = useT();
 	const [repo, setRepo] = useState("");
-	const [view, setView] = useState<OpencodeView>(emptyOpencodeView);
-	const [mode, setMode] = useState<Mode>("home");
+	const [view, setView] = useState<OpencodeView>(() => {
+		if (typeof window === "undefined") {
+			return emptyOpencodeView();
+		}
+		return seedOpencodePrompts(
+			emptyOpencodeView(),
+			readCodeNav(window.location.search).sessionID,
+		);
+	});
+	const [mode, setMode] = useState<Mode>(() =>
+		typeof window === "undefined"
+			? "home"
+			: readCodeNav(window.location.search).mode,
+	);
 	const [prompt, setPrompt] = useState("");
 	const [query, setQuery] = useState("");
 	const [searching, setSearching] = useState(false);
@@ -454,8 +467,6 @@ export default function OpenCodeSession({
 		epoch: 0,
 		dropped: new Set(),
 	});
-	const promptSession = useRef("");
-	const [promptReload, setPromptReload] = useState(0);
 
 	useEffect(() => {
 		try {
@@ -499,11 +510,16 @@ export default function OpenCodeSession({
 	function openSession(sessionID: string) {
 		setQuery("");
 		setAnswers(clearCodeAnswers());
-		setView((current) => ({
-			...current,
-			sessionID,
-			turns: [],
-		}));
+		setView((current) =>
+			seedOpencodePrompts(
+				{
+					...current,
+					sessionID,
+					turns: current.sessionID === sessionID ? current.turns : [],
+				},
+				sessionID,
+			),
+		);
 		setMode("session");
 		replaceCodeNav({ mode: "session", sessionID });
 		if (field.current) {
@@ -602,6 +618,16 @@ export default function OpenCodeSession({
 	}, [menu, mode, model]);
 
 	useEffect(() => {
+		if (mode !== "session" || !view.sessionID) {
+			return;
+		}
+		if (view.questions.length === 0 && view.permissions.length === 0) {
+			return;
+		}
+		storeOpencodePrompts(view.sessionID, view.questions, view.permissions);
+	}, [mode, view.sessionID, view.questions, view.permissions]);
+
+	useEffect(() => {
 		setAnswers((current) =>
 			pruneCodeAnswers(
 				current,
@@ -647,7 +673,6 @@ export default function OpenCodeSession({
 
 	useEffect(() => {
 		if (!uuid || !repo) {
-			setView(emptyOpencodeView());
 			setSessionsLoading(false);
 			return;
 		}
@@ -656,13 +681,10 @@ export default function OpenCodeSession({
 			readCodeNav(window.location.search).mode === "session"
 				? readCodeNav(window.location.search).sessionID
 				: "";
-		const stored = readStoredOpencodePrompts(sessionID);
-		setView({
-			...emptyOpencodeView(),
-			sessionID,
-			questions: stored.questions,
-			permissions: stored.permissions,
-		});
+		if (sessionID) {
+			setMode("session");
+		}
+		setView((current) => seedOpencodePrompts(current, sessionID));
 		setSessionsLoading(true);
 		void postOpencode({ uuid, repo, op: "sessions" }).then((result) => {
 			if (cancelled) {
@@ -692,65 +714,47 @@ export default function OpenCodeSession({
 				if (cancelled || !result.ok) {
 					return;
 				}
-				setView((current) =>
-					current.sessionID === sessionID
-						? {
-								...current,
-								turns: settleOpencodeTurns(
-									current.turns,
-									opencodeTurns(result.data),
-								),
-							}
-						: current,
-				);
+				setView((current) => {
+					if (current.sessionID !== sessionID) {
+						return current;
+					}
+					const turns = settleOpencodeTurns(
+						current.turns,
+						opencodeTurns(result.data),
+					);
+					const pending = pendingOpencodeFromMessages(
+						result.data,
+						sessionID,
+						readStoredOpencodePrompts(sessionID),
+					);
+					storeOpencodePrompts(
+						sessionID,
+						pending.questions,
+						pending.permissions,
+					);
+					return {
+						...current,
+						turns,
+						questions: [
+							...current.questions.filter(
+								(item) => item.sessionID !== sessionID,
+							),
+							...pending.questions,
+						],
+						permissions: [
+							...current.permissions.filter(
+								(item) => item.sessionID !== sessionID,
+							),
+							...pending.permissions,
+						],
+					};
+				});
 			},
 		);
 		return () => {
 			cancelled = true;
 		};
 	}, [uuid, repo, mode, view.sessionID]);
-
-	useEffect(() => {
-		if (
-			!uuid ||
-			!repo ||
-			mode !== "session" ||
-			!view.sessionID ||
-			promptReload < 0
-		) {
-			return;
-		}
-		let cancelled = false;
-		const sessionID = view.sessionID;
-		if (promptSession.current !== sessionID) {
-			promptSession.current = sessionID;
-			prompts.current.dropped.clear();
-		}
-		const started = prompts.current.epoch;
-		void Promise.all([
-			postOpencode({ uuid, repo, op: "questions" }),
-			postOpencode({ uuid, repo, op: "permissions" }),
-		]).then(([questions, permissions]) => {
-			if (cancelled) {
-				return;
-			}
-			setView((current) => {
-				const next = restoreOpencodeViewPrompts(current, sessionID, {
-					questions: questions.ok ? questions.data : undefined,
-					permissions: permissions.ok ? permissions.data : undefined,
-					stale: prompts.current.epoch !== started,
-					dropped: prompts.current.dropped,
-				});
-				if (questions.ok || permissions.ok) {
-					storeOpencodePrompts(sessionID, next.questions, next.permissions);
-				}
-				return next;
-			});
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [uuid, repo, mode, view.sessionID, promptReload]);
 
 	useEffect(() => {
 		if (!uuid || !repo) {
@@ -775,7 +779,6 @@ export default function OpenCodeSession({
 							opened = true;
 							if (!stopped) {
 								setReconnecting(false);
-								setPromptReload((value) => value + 1);
 							}
 						});
 						next.addEventListener("message", (event) => {

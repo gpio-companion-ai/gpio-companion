@@ -33,6 +33,7 @@ import {
 	opencodeTurns,
 	parseOpencodeEventFrame,
 	parseOpencodeMarkdown,
+	pendingOpencodeFromMessages,
 	pendingOpencodeTurn,
 	pruneCodeAnswers,
 	pushCodeNav,
@@ -41,7 +42,7 @@ import {
 	readStoredOpencodePrompts,
 	rememberOpencodePrompt,
 	replaceCodeNav,
-	restoreOpencodeViewPrompts,
+	seedOpencodePrompts,
 	settleOpencodeTurns,
 	storeOpencodePrompts,
 } from "gpio-companion-opencode";
@@ -338,8 +339,20 @@ export default function Code() {
 	const selected = uuid || devices[0]?.uuid || "";
 	const [repos, setRepos] = useState<Repo[]>([]);
 	const [repo, setRepo] = useState("");
-	const [view, setView] = useState<OpencodeView>(emptyOpencodeView);
-	const [mode, setMode] = useState<Mode>("home");
+	const [view, setView] = useState<OpencodeView>(() => {
+		if (typeof window === "undefined") {
+			return emptyOpencodeView();
+		}
+		return seedOpencodePrompts(
+			emptyOpencodeView(),
+			readCodeNav(window.location.search).sessionID,
+		);
+	});
+	const [mode, setMode] = useState<Mode>(() =>
+		typeof window === "undefined"
+			? "home"
+			: readCodeNav(window.location.search).mode,
+	);
 	const [prompt, setPrompt] = useState("");
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState("");
@@ -358,8 +371,7 @@ export default function Code() {
 		epoch: 0,
 		dropped: new Set(),
 	});
-	const promptSession = useRef("");
-	const [promptReload, setPromptReload] = useState(0);
+
 	const modelChoices = useMemo(() => opencodeModelChoices(), []);
 	const chosenModel = modelChoices.find((item) => item.id === model);
 	const reasoning = chosenModel?.reasoning === true;
@@ -405,6 +417,16 @@ export default function Code() {
 	}, []);
 
 	useEffect(() => {
+		if (mode !== "session" || !view.sessionID) {
+			return;
+		}
+		if (view.questions.length === 0 && view.permissions.length === 0) {
+			return;
+		}
+		storeOpencodePrompts(view.sessionID, view.questions, view.permissions);
+	}, [mode, view.sessionID, view.questions, view.permissions]);
+
+	useEffect(() => {
 		setAnswers((current) =>
 			pruneCodeAnswers(
 				current,
@@ -416,11 +438,16 @@ export default function Code() {
 	function openSession(sessionID: string) {
 		setQuery("");
 		setAnswers(clearCodeAnswers());
-		setView((current) => ({
-			...current,
-			sessionID,
-			turns: [],
-		}));
+		setView((current) =>
+			seedOpencodePrompts(
+				{
+					...current,
+					sessionID,
+					turns: current.sessionID === sessionID ? current.turns : [],
+				},
+				sessionID,
+			),
+		);
 		setMode("session");
 		pushCodeNav({ mode: "session", sessionID });
 	}
@@ -535,7 +562,6 @@ export default function Code() {
 
 	useEffect(() => {
 		if (!token || !selected || !repo) {
-			setView(emptyOpencodeView());
 			setSessionsLoading(false);
 			return;
 		}
@@ -544,13 +570,10 @@ export default function Code() {
 			readCodeNav(window.location.search).mode === "session"
 				? readCodeNav(window.location.search).sessionID
 				: "";
-		const stored = readStoredOpencodePrompts(sessionID);
-		setView({
-			...emptyOpencodeView(),
-			sessionID,
-			questions: stored.questions,
-			permissions: stored.permissions,
-		});
+		if (sessionID) {
+			setMode("session");
+		}
+		setView((current) => seedOpencodePrompts(current, sessionID));
 		setSessionsLoading(true);
 		void opencodeCall(token, { uuid: selected, repo, op: "sessions" })
 			.then((data) => {
@@ -588,67 +611,43 @@ export default function Code() {
 				if (cancelled) {
 					return;
 				}
-				setView((current) =>
-					current.sessionID === sessionID
-						? {
-								...current,
-								turns: settleOpencodeTurns(current.turns, opencodeTurns(data)),
-							}
-						: current,
-				);
+				setView((current) => {
+					if (current.sessionID !== sessionID) {
+						return current;
+					}
+					const pending = pendingOpencodeFromMessages(
+						data,
+						sessionID,
+						readStoredOpencodePrompts(sessionID),
+					);
+					storeOpencodePrompts(
+						sessionID,
+						pending.questions,
+						pending.permissions,
+					);
+					return {
+						...current,
+						turns: settleOpencodeTurns(current.turns, opencodeTurns(data)),
+						questions: [
+							...current.questions.filter(
+								(item) => item.sessionID !== sessionID,
+							),
+							...pending.questions,
+						],
+						permissions: [
+							...current.permissions.filter(
+								(item) => item.sessionID !== sessionID,
+							),
+							...pending.permissions,
+						],
+					};
+				});
 			})
 			.catch(() => undefined);
 		return () => {
 			cancelled = true;
 		};
 	}, [token, selected, repo, mode, view.sessionID]);
-
-	useEffect(() => {
-		if (
-			!token ||
-			!selected ||
-			!repo ||
-			mode !== "session" ||
-			!view.sessionID ||
-			promptReload < 0
-		) {
-			return;
-		}
-		let cancelled = false;
-		const sessionID = view.sessionID;
-		if (promptSession.current !== sessionID) {
-			promptSession.current = sessionID;
-			prompts.current.dropped.clear();
-		}
-		const started = prompts.current.epoch;
-		void Promise.all([
-			opencodeCall(token, { uuid: selected, repo, op: "questions" }).catch(
-				() => undefined,
-			),
-			opencodeCall(token, { uuid: selected, repo, op: "permissions" }).catch(
-				() => undefined,
-			),
-		]).then(([questions, permissions]) => {
-			if (cancelled) {
-				return;
-			}
-			setView((current) => {
-				const next = restoreOpencodeViewPrompts(current, sessionID, {
-					questions,
-					permissions,
-					stale: prompts.current.epoch !== started,
-					dropped: prompts.current.dropped,
-				});
-				if (questions !== undefined || permissions !== undefined) {
-					storeOpencodePrompts(sessionID, next.questions, next.permissions);
-				}
-				return next;
-			});
-		});
-		return () => {
-			cancelled = true;
-		};
-	}, [token, selected, repo, mode, view.sessionID, promptReload]);
 
 	useEffect(() => {
 		if (!token || !selected || !repo) {
@@ -673,7 +672,6 @@ export default function Code() {
 							opened = true;
 							if (!stopped) {
 								setReconnecting(false);
-								setPromptReload((value) => value + 1);
 							}
 						});
 						next.addEventListener("message", (event) => {
