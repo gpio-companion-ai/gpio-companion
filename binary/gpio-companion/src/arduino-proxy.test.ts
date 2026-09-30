@@ -648,3 +648,120 @@ describe("signed flash proxy", () => {
 		expect(response.status).toBe(200);
 	});
 });
+
+const proxyPortRoot = await mkdtemp(join(tmpdir(), "proxy-port-"));
+const proxyPortKeys = await generateDeviceKeyPair();
+const proxyPortJobs: Array<{ port?: string }> = [];
+const proxyPortFlash = memoryFlash(
+	JSON.stringify({
+		detected_ports: [
+			{ port: { address: "/dev/ttyS0", protocol: "serial" } },
+			{
+				port: { address: "/dev/ttyACM0", protocol: "serial" },
+				matching_boards: [{ name: "Arduino Uno", fqbn: "arduino:avr:uno" }],
+			},
+		],
+	}),
+	async (job) => {
+		proxyPortJobs.push({ port: job.port });
+		return { ok: true, log: "ok" };
+	},
+);
+const proxyPortStores = {
+	store: fileConfigStore(join(proxyPortRoot, "config.json"), "raspberrypi"),
+	secrets: fileSecretsStore(join(proxyPortRoot, "secrets.env")),
+	pairing: filePairingStore(
+		join(proxyPortRoot, "pairing.json"),
+		"pair-uuid",
+		"pair-key",
+	),
+};
+const proxyPortServer = startDeviceApi({
+	port: 0,
+	hostname: "127.0.0.1",
+	store: proxyPortStores.store,
+	secrets: proxyPortStores.secrets,
+	pairing: proxyPortStores.pairing,
+	applyTunnel: async () => undefined,
+	deviceAuth: { keyId: "k", publicKeyPem: proxyPortKeys.publicKeyPem },
+	flash: proxyPortFlash,
+	run: memoryRun(),
+	proxy: memoryArduinoProxy(),
+});
+
+describe("proxy flash port", () => {
+	afterAll(() => {
+		proxyPortServer.stop();
+	});
+
+	test("ttyS0 alone does not start an upload", async () => {
+		let started = false;
+		const onlyUart = memoryFlash(
+			JSON.stringify({
+				detected_ports: [
+					{ port: { address: "/dev/ttyS0", protocol: "serial" } },
+				],
+			}),
+			async () => {
+				started = true;
+				return { ok: false, log: "should not upload" };
+			},
+		);
+		const uartServer = startDeviceApi({
+			port: 0,
+			hostname: "127.0.0.1",
+			store: proxyPortStores.store,
+			secrets: proxyPortStores.secrets,
+			pairing: proxyPortStores.pairing,
+			applyTunnel: async () => undefined,
+			deviceAuth: { keyId: "k", publicKeyPem: proxyPortKeys.publicKeyPem },
+			flash: onlyUart,
+			run: memoryRun(),
+			proxy: memoryArduinoProxy(),
+		});
+		try {
+			const response = await fetch(`${uartServer.url}v1/flash/proxy`, {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({
+					fqbn: "arduino:avr:uno",
+					port: "/dev/ttyS0",
+				}),
+			});
+			expect(response.status).toBe(400);
+			expect(await response.json()).toEqual({ error: "no arduino connected" });
+			expect(started).toBe(false);
+			expect(onlyUart.status().last).toBeNull();
+		} finally {
+			uartServer.stop();
+		}
+	});
+
+	test("ttyS0 plus ttyACM0 uploads to ttyACM0", async () => {
+		proxyPortJobs.length = 0;
+		const omitted = await fetch(`${proxyPortServer.url}v1/flash/proxy`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ fqbn: "arduino:avr:uno" }),
+		});
+		expect(omitted.status).toBe(200);
+		for (let i = 0; i < 20 && proxyPortFlash.status().running; i += 1) {
+			await Bun.sleep(10);
+		}
+		expect(proxyPortJobs.at(-1)?.port).toBe("/dev/ttyACM0");
+
+		const forced = await fetch(`${proxyPortServer.url}v1/flash/proxy`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({
+				fqbn: "arduino:avr:uno",
+				port: "/dev/ttyS0",
+			}),
+		});
+		expect(forced.status).toBe(200);
+		for (let i = 0; i < 20 && proxyPortFlash.status().running; i += 1) {
+			await Bun.sleep(10);
+		}
+		expect(proxyPortJobs.at(-1)?.port).toBe("/dev/ttyACM0");
+	});
+});

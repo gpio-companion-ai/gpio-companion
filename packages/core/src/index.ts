@@ -445,10 +445,12 @@ export {
 	type FlashTarget,
 	type FlashTargetHint,
 	isFlashPath,
+	isUsbArduinoPort,
 	parseArduinoBoardList,
 	parseFlashPut,
 	pickArduinoProxyFqbn,
 	pickFlashTarget,
+	pickProxyFlashPort,
 } from "./flash.ts";
 export {
 	createGithubAppJwt,

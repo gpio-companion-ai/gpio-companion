@@ -186,7 +186,9 @@ async function listArduinoBoardsCached(): Promise<string> {
 		BOARD_LIST_TIMEOUT_MS,
 	)
 		.then((json) => {
-			boardListCache = { at: Date.now(), json };
+			if (parseArduinoBoardList(json).length > 0) {
+				boardListCache = { at: Date.now(), json };
+			}
 			return json;
 		})
 		.catch(() => boardListCache?.json ?? '{"detected_ports":[]}')

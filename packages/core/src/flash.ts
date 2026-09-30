@@ -24,6 +24,23 @@ export type FlashTarget = {
 	baud?: number;
 };
 
+const USB_ARDUINO_PORT = /^\/dev\/tty(USB|ACM)[0-9]+$/;
+
+export function isUsbArduinoPort(address: string): boolean {
+	return USB_ARDUINO_PORT.test(address);
+}
+
+export function pickProxyFlashPort(
+	ports: FlashPort[],
+	requested?: string,
+): string | undefined {
+	const usb = ports.filter((port) => isUsbArduinoPort(port.address));
+	if (requested && isUsbArduinoPort(requested)) {
+		return requested;
+	}
+	return usb.find((port) => port.fqbn)?.address ?? usb[0]?.address;
+}
+
 export function pickFlashTarget(
 	ports: FlashPort[],
 	hint?: FlashTargetHint | null,
@@ -135,7 +152,7 @@ export function parseArduinoBoardList(input: unknown): FlashPort[] {
 				? (row.port as Record<string, unknown>)
 				: row;
 		const address = stringField(port.address) || stringField(port.label);
-		if (!address) {
+		if (!address || !isUsbArduinoPort(address)) {
 			continue;
 		}
 		const props =

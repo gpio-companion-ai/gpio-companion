@@ -41,6 +41,7 @@ import {
 	isGpioWsRefresh,
 	isOpencodeProxyPath,
 	isRunPath,
+	isUsbArduinoPort,
 	isVerifyPath,
 	LOGS_PATH,
 	LOGS_SINCE_HOURS,
@@ -68,6 +69,7 @@ import {
 	parseProjectSyncPut,
 	parseTunnelConfig,
 	parseWifiConfig,
+	pickProxyFlashPort,
 	publicDeviceUrl,
 	publicPairing,
 	publicWifiFailure,
@@ -107,7 +109,11 @@ import { readBoardModel } from "./board-model.ts";
 import { type ConsoleHub, createConsoleHub } from "./console.ts";
 import { createDebugHub } from "./debug.ts";
 import { readDiskStats } from "./disk.ts";
-import { createArduinoFlash, type FlashController } from "./flash.ts";
+import {
+	createArduinoFlash,
+	type FlashController,
+	invalidateArduinoBoardCache,
+} from "./flash.ts";
 import type { GithubInstallationCreds } from "./github-credentials.ts";
 import { createLibgpiodGpio, type GpioController } from "./gpio.ts";
 import { createGpioStream } from "./gpio-stream.ts";
@@ -1436,15 +1442,16 @@ async function handleFlash(
 	}
 	if (method === "POST" && path === FLASH_PROXY_PATH) {
 		const put = bodyText.trim() ? parseFlashProxyPut(parseJson(bodyText)) : {};
+		invalidateArduinoBoardCache();
 		const listed = await flash.ports();
-		const selected =
-			listed.ports.find((port) =>
-				put.port ? port.address === put.port : true,
-			) ?? listed.ports[0];
 		const live = extras?.proxy?.status();
+		const requested =
+			(put.port && isUsbArduinoPort(put.port) ? put.port : undefined) ||
+			(live?.port && isUsbArduinoPort(live.port) ? live.port : undefined);
+		const port = pickProxyFlashPort(listed.ports, requested);
+		const selected = listed.ports.find((item) => item.address === port);
 		const fqbn =
 			put.fqbn || (live?.connected ? live.fqbn : undefined) || selected?.fqbn;
-		const port = put.port || live?.port || selected?.address;
 		if (!port) {
 			throw new ArduinoProxyError("no arduino connected");
 		}

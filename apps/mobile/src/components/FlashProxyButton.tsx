@@ -28,6 +28,10 @@ const PROXY_BOARDS = [
 	{ fqbn: "esp32:esp32:esp32c3", name: "ESP32-C3" },
 ] as const;
 
+function isUsbArduinoPort(address: string): boolean {
+	return /^\/dev\/tty(USB|ACM)[0-9]+$/.test(address);
+}
+
 function isProxyFqbn(fqbn: string): boolean {
 	const trimmed = fqbn.trim();
 	const normalized = trimmed.startsWith("arduino:avr:mega")
@@ -126,13 +130,11 @@ export default function FlashProxyButton({
 			return;
 		}
 		const listed = await loadFlashPorts(token, uuid);
-		setPorts(listed.ports);
-		const first = listed.ports.find((item) =>
-			item.fqbn ? isProxyFqbn(item.fqbn) : true,
-		);
-		if (first?.address) {
-			setPort(first.address);
-		}
+		const usb = listed.ports.filter((item) => isUsbArduinoPort(item.address));
+		setPorts(usb);
+		const first =
+			usb.find((item) => item.fqbn && isProxyFqbn(item.fqbn)) ?? usb[0];
+		setPort(first?.address ?? "");
 		if (first?.fqbn && isProxyFqbn(first.fqbn)) {
 			setFqbn(first.fqbn);
 		}
@@ -333,9 +335,16 @@ export default function FlashProxyButton({
 							? t("flash.reflashProxy")
 							: t("flash.asProxy")
 				}
-				disabled={busy || flashing || !uuid || !token || !fqbn.trim()}
+				disabled={
+					busy ||
+					flashing ||
+					!uuid ||
+					!token ||
+					!fqbn.trim() ||
+					!isUsbArduinoPort(port)
+				}
 				onPress={() => {
-					if (!token) {
+					if (!token || !isUsbArduinoPort(port)) {
 						return;
 					}
 					beforeKeyRef.current = lastKey(status?.last ?? null);
@@ -348,7 +357,7 @@ export default function FlashProxyButton({
 					void startFlashProxy(token, {
 						uuid,
 						fqbn,
-						port: port || undefined,
+						port,
 					})
 						.then(() => undefined)
 						.catch((caught) => {

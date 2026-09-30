@@ -4,10 +4,12 @@ import {
 	FLASH_LOG_MAX,
 	FlashError,
 	isFlashPath,
+	isUsbArduinoPort,
 	parseArduinoBoardList,
-	pickArduinoProxyFqbn,
 	parseFlashPut,
+	pickArduinoProxyFqbn,
 	pickFlashTarget,
+	pickProxyFlashPort,
 } from "./flash.ts";
 
 describe("parseFlashPut", () => {
@@ -146,6 +148,34 @@ describe("parseArduinoBoardList", () => {
 				detected_ports: [{ port: { address: "/dev/ttyUSB0" } }],
 			})[0]?.fqbn,
 		).toBeUndefined();
+	});
+
+	test("drops the onboard debug uart", () => {
+		expect(isUsbArduinoPort("/dev/ttyACM0")).toBe(true);
+		expect(isUsbArduinoPort("/dev/ttyUSB0")).toBe(true);
+		expect(isUsbArduinoPort("/dev/ttyS0")).toBe(false);
+		expect(
+			parseArduinoBoardList({
+				detected_ports: [
+					{ port: { address: "/dev/ttyS0", protocol: "serial" } },
+					{
+						port: { address: "/dev/ttyACM0", protocol: "serial" },
+						matching_boards: [{ name: "Arduino Uno", fqbn: "arduino:avr:uno" }],
+					},
+				],
+			}).map((port) => port.address),
+		).toEqual(["/dev/ttyACM0"]);
+	});
+
+	test("proxy flash ignores ttyS0", () => {
+		const ports = [
+			{ address: "/dev/ttyS0" },
+			{ address: "/dev/ttyACM0", fqbn: "arduino:avr:uno" },
+		];
+		expect(pickProxyFlashPort(ports)).toBe("/dev/ttyACM0");
+		expect(pickProxyFlashPort(ports, "/dev/ttyS0")).toBe("/dev/ttyACM0");
+		expect(pickProxyFlashPort([{ address: "/dev/ttyS0" }])).toBeUndefined();
+		expect(pickProxyFlashPort(ports, "/dev/ttyACM0")).toBe("/dev/ttyACM0");
 	});
 
 	test("parses json string", () => {

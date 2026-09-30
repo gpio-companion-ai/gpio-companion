@@ -16,6 +16,7 @@ import {
 	type FlashPort,
 	type FlashStatus,
 	isArduinoProxyFqbn,
+	isUsbArduinoPort,
 } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -107,13 +108,11 @@ export default function FlashProxyButton({
 			return;
 		}
 		const listed = unwrapAction(await loadFlashPorts(uuid));
-		setPorts(listed.ports);
-		const first = listed.ports.find((item) =>
-			item.fqbn ? isArduinoProxyFqbn(item.fqbn) : true,
-		);
-		if (first?.address) {
-			setPort(first.address);
-		}
+		const usb = listed.ports.filter((item) => isUsbArduinoPort(item.address));
+		setPorts(usb);
+		const first =
+			usb.find((item) => item.fqbn && isArduinoProxyFqbn(item.fqbn)) ?? usb[0];
+		setPort(first?.address ?? "");
 		if (first?.fqbn && isArduinoProxyFqbn(first.fqbn)) {
 			setFqbn(first.fqbn);
 		}
@@ -301,8 +300,13 @@ export default function FlashProxyButton({
 					type="button"
 					variant="contained"
 					size="small"
-					disabled={busy || flashing || !uuid || !fqbn.trim()}
+					disabled={
+						busy || flashing || !uuid || !fqbn.trim() || !isUsbArduinoPort(port)
+					}
 					onClick={() => {
+						if (!isUsbArduinoPort(port)) {
+							return;
+						}
 						beforeKeyRef.current = lastKey(status?.last ?? null);
 						seenRunningRef.current = false;
 						waitingRef.current = true;
@@ -310,7 +314,7 @@ export default function FlashProxyButton({
 						setBusy(true);
 						setError("");
 						setNotice("");
-						void startFlashProxy({ uuid, fqbn, port: port || undefined })
+						void startFlashProxy({ uuid, fqbn, port })
 							.then((result) => {
 								unwrapAction(result);
 							})
