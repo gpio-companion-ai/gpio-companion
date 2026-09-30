@@ -974,15 +974,11 @@ body {
 	color: #201500;
 }
 
-.MUI_Chip_Root._warning._filled
-	> .MUI_Chip_Delete_Icon_Wrapper
-	> svg {
+.MUI_Chip_Root._warning._filled > .MUI_Chip_Delete_Icon_Wrapper > svg {
 	color: rgba(32, 21, 0, 0.6);
 }
 
-.MUI_Chip_Root._warning._filled
-	> .MUI_Chip_Delete_Icon_Wrapper
-	> svg:hover {
+.MUI_Chip_Root._warning._filled > .MUI_Chip_Delete_Icon_Wrapper > svg:hover {
 	color: rgba(32, 21, 0, 0.9);
 }
 
@@ -1686,6 +1682,13 @@ button.oc-chip,
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
+.oc-model-menu.is-down {
+	top: calc(100% + 6px);
+	right: auto;
+	bottom: auto;
+	left: 0;
+}
+
 .oc-model-menu button,
 .oc-model-row {
 	display: flex;
@@ -1717,14 +1720,6 @@ button.oc-chip,
 	font-size: 12px;
 }
 
-.oc-chip select {
-	max-width: 14rem;
-	border: 0;
-	background: transparent;
-	color: rgb(var(--text-main));
-	outline: 0;
-}
-
 .oc-composer {
 	display: flex;
 	width: calc(100% - 32px);
@@ -1737,13 +1732,14 @@ button.oc-chip,
 	border-radius: 12px;
 	padding: 8px 8px 8px 12px;
 	background: rgba(var(--text-main), 0.05);
-	transition: border-color 120ms ease, background-color 120ms ease;
+	transition:
+		border-color 120ms ease,
+		background-color 120ms ease;
 }
 
 .oc-composer:focus-within {
 	border-color: rgba(var(--text-primary), 0.45);
 	background: rgba(var(--text-main), 0.07);
-}
 }
 
 .oc-composer textarea {
@@ -2054,6 +2050,8 @@ button.oc-chip,
 }
 
 .oc-boardbar {
+	position: relative;
+	z-index: 4;
 	display: flex;
 	flex: none;
 	align-items: center;

@@ -78,6 +78,21 @@ import { storageGet, storageSet } from "../lib/storage.ts";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
+function boardChipName(item: { uuid: string; label?: string } | undefined) {
+	return item?.label?.trim() || item?.uuid || "";
+}
+
+function boardChipHint(
+	item: { uuid: string; label?: string } | undefined,
+	model?: string,
+) {
+	const named = model?.trim();
+	if (named) {
+		return named;
+	}
+	return item?.label?.trim() ? item.uuid.slice(0, 8) : undefined;
+}
+
 function formatSessionTime(updated: number): string {
 	if (!updated) {
 		return "";
@@ -333,8 +348,8 @@ export default function Code() {
 	const insets = useSafeAreaInsets();
 	const auth = useAuth();
 	const { setTab } = useDeviceHub();
-	const { uuid } = useBoardSelection();
-	const { devices } = useUserBoards();
+	const { uuid, setUuid } = useBoardSelection();
+	const { devices, boards } = useUserBoards();
 	const token = auth.token ?? "";
 	const selected = uuid || devices[0]?.uuid || "";
 	const [repos, setRepos] = useState<Repo[]>([]);
@@ -362,7 +377,9 @@ export default function Code() {
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
-	const [picker, setPicker] = useState<"" | "model" | "effort" | "project">("");
+	const [picker, setPicker] = useState<
+		"" | "model" | "effort" | "project" | "board"
+	>("");
 	const [pane, setPane] = useState<"chat" | "files">("chat");
 	const [filesDirty, setFilesDirty] = useState(false);
 	const [filesStale, setFilesStale] = useState(false);
@@ -961,8 +978,51 @@ export default function Code() {
 		);
 	}
 
+	const selectedDevice = devices.find((item) => item.uuid === selected);
+	const selectedModel = boards.find((item) => item.device.uuid === selected)
+		?.status?.model;
+
 	return (
 		<View style={{ flex: 1, backgroundColor: colors.bg }}>
+			{devices.length > 1 ? (
+				<View style={{ paddingHorizontal: 8, paddingTop: 8 }}>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={t("code.board")}
+						onPress={() => setPicker("board")}
+						style={({ pressed }) => ({
+							alignSelf: "flex-start",
+							flexDirection: "row",
+							alignItems: "center",
+							gap: 6,
+							maxWidth: "100%",
+							borderRadius: 8,
+							borderWidth: 1,
+							borderColor:
+								pressed || picker === "board" ? colors.text : colors.border,
+							paddingHorizontal: 10,
+							paddingVertical: 6,
+							backgroundColor: pressed ? colors.border : colors.chipBg,
+						})}
+					>
+						<Text style={{ color: colors.muted, fontSize: 12 }}>
+							{t("code.board")}
+						</Text>
+						<Text
+							style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
+							numberOfLines={1}
+						>
+							{boardChipName(selectedDevice)}
+						</Text>
+						{boardChipHint(selectedDevice, selectedModel) ? (
+							<Text style={{ color: colors.muted, fontSize: 11 }}>
+								{boardChipHint(selectedDevice, selectedModel)}
+							</Text>
+						) : null}
+						<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+					</Pressable>
+				</View>
+			) : null}
 			<View
 				style={{
 					flex: 1,
@@ -1466,7 +1526,11 @@ export default function Code() {
 							) : null}
 						</View>
 						<Modal
-							visible={picker !== ""}
+							visible={
+								picker === "model" ||
+								picker === "effort" ||
+								picker === "project"
+							}
 							transparent
 							animationType="fade"
 							onRequestClose={() => setPicker("")}
@@ -1596,6 +1660,77 @@ export default function Code() {
 					</View>
 				) : null}
 			</View>
+			<Modal
+				visible={picker === "board"}
+				transparent
+				animationType="fade"
+				onRequestClose={() => setPicker("")}
+			>
+				<Pressable
+					onPress={() => setPicker("")}
+					style={{
+						flex: 1,
+						justifyContent: "flex-end",
+						backgroundColor: "rgba(0,0,0,0.4)",
+						paddingBottom: 56 + Math.max(insets.bottom, 8),
+					}}
+				>
+					<Pressable
+						onPress={() => undefined}
+						style={{
+							maxHeight: "70%",
+							borderTopLeftRadius: 12,
+							borderTopRightRadius: 12,
+							backgroundColor: colors.surface,
+							padding: 12,
+						}}
+					>
+						<Text style={[ink, { fontWeight: "600", marginBottom: 8 }]}>
+							{t("code.board")}
+						</Text>
+						<ScrollView
+							style={{ maxHeight: 360 }}
+							contentContainerStyle={{ paddingBottom: 12 }}
+						>
+							{devices.map((item) => {
+								const model = boards.find(
+									(board) => board.device.uuid === item.uuid,
+								)?.status?.model;
+								return (
+									<Pressable
+										key={item.uuid}
+										onPress={() => {
+											setUuid(item.uuid);
+											setPicker("");
+										}}
+										style={({ pressed }) => ({
+											flexDirection: "row",
+											alignItems: "center",
+											gap: 12,
+											paddingVertical: 12,
+											paddingHorizontal: 8,
+											borderRadius: 8,
+											backgroundColor:
+												pressed || item.uuid === selected
+													? colors.chipBg
+													: "transparent",
+										})}
+									>
+										<Text style={[ink, { flex: 1 }]} numberOfLines={1}>
+											{boardChipName(item)}
+										</Text>
+										{boardChipHint(item, model) ? (
+											<Text style={[muted, { fontSize: 12 }]}>
+												{boardChipHint(item, model)}
+											</Text>
+										) : null}
+									</Pressable>
+								);
+							})}
+						</ScrollView>
+					</Pressable>
+				</Pressable>
+			</Modal>
 		</View>
 	);
 }

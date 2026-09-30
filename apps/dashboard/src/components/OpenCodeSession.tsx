@@ -64,7 +64,7 @@ type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
 type ChipMenuId = "model" | "effort" | "project";
 
-function ChipMenu({
+export function ChipMenu({
 	open,
 	label,
 	value,
@@ -72,6 +72,7 @@ function ChipMenu({
 	selected,
 	options,
 	menuRef,
+	place = "up",
 	onOpen,
 	onPick,
 }: {
@@ -82,6 +83,7 @@ function ChipMenu({
 	selected: string;
 	options: Array<{ id: string; name: string; hint?: string }>;
 	menuRef: { current: HTMLDivElement | null };
+	place?: "up" | "down";
 	onOpen: () => void;
 	onPick: (id: string) => void;
 }) {
@@ -103,7 +105,11 @@ function ChipMenu({
 				{hint ? <span className="oc-model-provider">{hint}</span> : null}
 			</button>
 			{open ? (
-				<div className="oc-model-menu" role="listbox" aria-label={label}>
+				<div
+					className={`oc-model-menu${place === "down" ? " is-down" : ""}`}
+					role="listbox"
+					aria-label={label}
+				>
 					{options.map((item) => (
 						<button
 							key={item.id}

@@ -1,6 +1,7 @@
 import { GET as getPairing } from "@api/pair";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import OpenCodeSession, {
+	ChipMenu,
 	loadCodeRepos,
 } from "../../components/OpenCodeSession.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
@@ -8,6 +9,14 @@ import { useAuthSession } from "../../hooks/useAuth.ts";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
 import type { StoredPairing } from "../../lib/pairing-store.ts";
+
+function boardName(item: StoredPairing) {
+	return item.label.trim() || item.uuid;
+}
+
+function boardHint(item: StoredPairing) {
+	return item.label.trim() ? item.uuid.slice(0, 8) : undefined;
+}
 
 export default function CodePage() {
 	const session = useAuthSession();
@@ -21,6 +30,8 @@ export default function CodePage() {
 	);
 	const [loading, setLoading] = useState(true);
 	const [reposError, setReposError] = useState("");
+	const [boardMenu, setBoardMenu] = useState(false);
+	const boardMenuRef = useRef<HTMLDivElement | null>(null);
 
 	useEffect(() => {
 		if (!session.data?.id) {
@@ -49,26 +60,57 @@ export default function CodePage() {
 			.finally(() => setLoading(false));
 	}, [session.data?.id, run, t]);
 
+	useEffect(() => {
+		if (!boardMenu) {
+			return;
+		}
+		function onPointer(event: PointerEvent) {
+			if (
+				boardMenuRef.current &&
+				!boardMenuRef.current.contains(event.target as Node)
+			) {
+				setBoardMenu(false);
+			}
+		}
+		function onKey(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				setBoardMenu(false);
+			}
+		}
+		document.addEventListener("pointerdown", onPointer);
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("pointerdown", onPointer);
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [boardMenu]);
+
 	const selected = uuid || devices[0]?.uuid || "";
+	const current = devices.find((item) => item.uuid === selected);
 
 	return (
 		<div className="oc-shell">
 			{loggedIn && devices.length > 1 ? (
 				<div className="oc-boardbar">
-					<label className="oc-chip">
-						{t("code.board")}
-						<select
-							value={selected}
-							aria-label={t("code.board")}
-							onChange={(event) => setUuid(event.target.value)}
-						>
-							{devices.map((item) => (
-								<option key={item.uuid} value={item.uuid}>
-									{item.label || item.uuid}
-								</option>
-							))}
-						</select>
-					</label>
+					<ChipMenu
+						open={boardMenu}
+						label={t("code.board")}
+						value={current ? boardName(current) : selected}
+						hint={current ? boardHint(current) : undefined}
+						selected={selected}
+						options={devices.map((item) => ({
+							id: item.uuid,
+							name: boardName(item),
+							hint: boardHint(item),
+						}))}
+						menuRef={boardMenuRef}
+						place="down"
+						onOpen={() => setBoardMenu((open) => !open)}
+						onPick={(id) => {
+							setUuid(id);
+							setBoardMenu(false);
+						}}
+					/>
 				</div>
 			) : null}
 			{!loggedIn ? (

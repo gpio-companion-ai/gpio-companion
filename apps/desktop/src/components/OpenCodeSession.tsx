@@ -68,7 +68,7 @@ const PROJECT_KEY = "gpio-companion-selected-project";
 
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
-type ChipMenuId = "model" | "effort" | "project";
+type ChipMenuId = "model" | "effort" | "project" | "board";
 
 function ChipMenu({
 	open,
@@ -78,6 +78,7 @@ function ChipMenu({
 	selected,
 	options,
 	menuRef,
+	place = "up",
 	onOpen,
 	onPick,
 }: {
@@ -88,6 +89,7 @@ function ChipMenu({
 	selected: string;
 	options: Array<{ id: string; name: string; hint?: string }>;
 	menuRef: { current: HTMLDivElement | null };
+	place?: "up" | "down";
 	onOpen: () => void;
 	onPick: (id: string) => void;
 }) {
@@ -109,7 +111,11 @@ function ChipMenu({
 				{hint ? <span className="oc-model-provider">{hint}</span> : null}
 			</button>
 			{open ? (
-				<div className="oc-model-menu" role="listbox" aria-label={label}>
+				<div
+					className={`oc-model-menu${place === "down" ? " is-down" : ""}`}
+					role="listbox"
+					aria-label={label}
+				>
 					{options.map((item) => (
 						<button
 							key={item.id}
@@ -129,6 +135,21 @@ function ChipMenu({
 			) : null}
 		</div>
 	);
+}
+
+function boardChipName(item: { uuid: string; label?: string } | undefined) {
+	return item?.label?.trim() || item?.uuid || "";
+}
+
+function boardChipHint(
+	item: { uuid: string; label?: string } | undefined,
+	model?: string,
+) {
+	const named = model?.trim();
+	if (named) {
+		return named;
+	}
+	return item?.label?.trim() ? item.uuid.slice(0, 8) : undefined;
 }
 
 function SearchIcon() {
@@ -448,7 +469,7 @@ export default function OpenCodeSession({
 }) {
 	const t = useT();
 	const { uuid, setUuid } = useBoardSelection();
-	const { devices } = useUserBoards();
+	const { devices, boards } = useUserBoards();
 	const selected = uuid || devices[0]?.uuid || "";
 	const [repos, setRepos] = useState<Repo[]>([]);
 	const [repo, setRepo] = useState("");
@@ -626,6 +647,10 @@ export default function OpenCodeSession({
 			setMenu("");
 			return;
 		}
+		if (menu === "board" && devices.length < 2) {
+			setMenu("");
+			return;
+		}
 		if (
 			menu === "effort" &&
 			!opencodeModelChoices().find((item) => item.id === model)?.reasoning
@@ -649,7 +674,7 @@ export default function OpenCodeSession({
 			document.removeEventListener("pointerdown", onPointer);
 			document.removeEventListener("keydown", onKey);
 		};
-	}, [menu, mode, model]);
+	}, [menu, mode, model, devices.length]);
 
 	useEffect(() => {
 		if (mode !== "session" || !view.sessionID) {
@@ -1155,20 +1180,35 @@ export default function OpenCodeSession({
 		<div className="oc-shell">
 			{devices.length > 1 ? (
 				<div className="oc-boardbar">
-					<label className="oc-chip">
-						{t("code.board")}
-						<select
-							value={selected}
-							aria-label={t("code.board")}
-							onChange={(event) => setUuid(event.target.value)}
-						>
-							{devices.map((item) => (
-								<option key={item.uuid} value={item.uuid}>
-									{item.label || item.uuid}
-								</option>
-							))}
-						</select>
-					</label>
+					<ChipMenu
+						open={menu === "board"}
+						label={t("code.board")}
+						value={boardChipName(
+							devices.find((item) => item.uuid === selected),
+						)}
+						hint={boardChipHint(
+							devices.find((item) => item.uuid === selected),
+							boards.find((item) => item.device.uuid === selected)?.status
+								?.model,
+						)}
+						selected={selected}
+						options={devices.map((item) => ({
+							id: item.uuid,
+							name: boardChipName(item),
+							hint: boardChipHint(
+								item,
+								boards.find((board) => board.device.uuid === item.uuid)?.status
+									?.model,
+							),
+						}))}
+						menuRef={menuRef}
+						place="down"
+						onOpen={() => toggleMenu("board")}
+						onPick={(id) => {
+							setUuid(id);
+							setMenu("");
+						}}
+					/>
 				</div>
 			) : null}
 			<div className="oc-card">

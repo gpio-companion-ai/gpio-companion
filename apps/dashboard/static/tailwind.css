@@ -2141,6 +2141,13 @@ button.oc-chip,
 	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
+.oc-model-menu.is-down {
+	top: calc(100% + 6px);
+	right: auto;
+	bottom: auto;
+	left: 0;
+}
+
 .oc-model-menu button,
 .oc-model-row {
 	display: flex;
@@ -2170,14 +2177,6 @@ button.oc-chip,
 	flex: none;
 	color: rgba(var(--text-main), 0.55);
 	font-size: 12px;
-}
-
-.oc-chip select {
-	max-width: 14rem;
-	border: 0;
-	background: transparent;
-	color: rgb(var(--text-main));
-	outline: 0;
 }
 
 .oc-composer {
@@ -2489,6 +2488,8 @@ button.oc-chip,
 }
 
 .oc-boardbar {
+	position: relative;
+	z-index: 4;
 	display: flex;
 	flex: none;
 	align-items: center;
