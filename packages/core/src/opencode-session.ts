@@ -1360,6 +1360,119 @@ export function restoreOpencodeViewPrompts(
 	};
 }
 
+export function opencodeReplyAccepted(data: unknown): boolean {
+	if (data == null) {
+		return false;
+	}
+	const record = asRecord(data);
+	if (!record) {
+		return true;
+	}
+	if (typeof record.error === "string" && record.error.trim()) {
+		return false;
+	}
+	if (record.ok === false) {
+		return false;
+	}
+	return true;
+}
+
+export function opencodePromptDropID(event: unknown): string {
+	const write = opencodePromptWrite(event);
+	return write?.op === "drop" ? write.id : "";
+}
+
+export function holdOpencodePromptEvent(
+	event: unknown,
+	held: ReadonlySet<string>,
+): boolean {
+	const id = opencodePromptDropID(event);
+	return id !== "" && held.has(id);
+}
+
+function dedupeSessionPrompts<T extends { id: string; sessionID: string }>(
+	items: readonly T[],
+	sessionID: string,
+): T[] {
+	const seen = new Set<string>();
+	const next: T[] = [];
+	for (const item of items) {
+		if (item.sessionID !== sessionID || seen.has(item.id)) {
+			continue;
+		}
+		seen.add(item.id);
+		next.push(item);
+	}
+	return next;
+}
+
+export function recoverOpencodePrompts(
+	view: OpencodeView,
+	sessionID: string,
+	input: {
+		questions?: unknown;
+		permissions?: unknown;
+		messages?: unknown;
+	},
+): OpencodeView {
+	if (!sessionID || view.sessionID !== sessionID) {
+		return view;
+	}
+	const stored = readStoredOpencodePrompts(sessionID);
+	const fromMessages =
+		input.messages === undefined
+			? null
+			: pendingOpencodeFromMessages(input.messages, sessionID, stored);
+	const listedQuestions =
+		input.questions === undefined ? null : opencodeQuestions(input.questions);
+	const listedPermissions =
+		input.permissions === undefined
+			? null
+			: opencodePermissions(input.permissions);
+	return {
+		...view,
+		questions: mergeOpencodeQuestions(
+			view.questions,
+			[...(listedQuestions ?? []), ...(fromMessages?.questions ?? [])],
+			sessionID,
+		),
+		permissions: [
+			...view.permissions.filter((item) => item.sessionID !== sessionID),
+			...dedupeSessionPrompts(
+				[
+					...view.permissions.filter((item) => item.sessionID === sessionID),
+					...(listedPermissions ?? []),
+					...(fromMessages?.permissions ?? []),
+				],
+				sessionID,
+			),
+		],
+	};
+}
+
+export function releaseSettledPromptHolds(
+	held: Set<string>,
+	view: OpencodeView,
+	sessionID: string,
+): void {
+	for (const id of [...held]) {
+		const live =
+			view.questions.some(
+				(item) =>
+					item.sessionID === sessionID &&
+					(item.id === id || item.callID === id),
+			) ||
+			view.permissions.some(
+				(item) =>
+					item.sessionID === sessionID &&
+					(item.id === id || item.callID === id),
+			);
+		if (!live) {
+			held.delete(id);
+		}
+	}
+}
+
 const PROMPT_STORE_KEY = "gpio-companion-code-prompts";
 
 type StoredPromptBook = Record<

@@ -12,6 +12,7 @@ import {
 	codeSessionTitle,
 	emptyOpencodeView,
 	filterCodeSessions,
+	holdOpencodePromptEvent,
 	matchCodeRepo,
 	matchOpencodeQuestionID,
 	mergeOpencodeQuestions,
@@ -30,6 +31,7 @@ import {
 	opencodeModelChoices,
 	opencodePromptFields,
 	opencodeQuestions,
+	opencodeReplyAccepted,
 	opencodeSessionBucket,
 	opencodeSessions,
 	opencodeStoredEffort,
@@ -45,6 +47,8 @@ import {
 	type ReasoningEffort,
 	readCodeNav,
 	readStoredOpencodePrompts,
+	recoverOpencodePrompts,
+	releaseSettledPromptHolds,
 	rememberOpencodePrompt,
 	replaceCodeNav,
 	seedOpencodePrompts,
@@ -381,12 +385,14 @@ export default function Code() {
 	const [slide, setSlide] = useState(0);
 	const [picks, setPicks] = useState<Record<string, string>>({});
 	const [custom, setCustom] = useState<Record<string, string>>({});
+	const [showCustom, setShowCustom] = useState(false);
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
 	const [picker, setPicker] = useState<
 		"" | "model" | "effort" | "project" | "board"
 	>("");
+	const [replyBusy, setReplyBusy] = useState(false);
 	const [pane, setPane] = useState<"chat" | "files">("chat");
 	const [filesDirty, setFilesDirty] = useState(false);
 	const [filesStale, setFilesStale] = useState(false);
@@ -395,6 +401,8 @@ export default function Code() {
 		epoch: 0,
 		dropped: new Set(),
 	});
+	const held = useRef(new Set<string>());
+	const replying = useRef(false);
 
 	const modelChoices = useMemo(() => opencodeModelChoices(), []);
 	const chosenModel = modelChoices.find((item) => item.id === model);
@@ -462,6 +470,7 @@ export default function Code() {
 		if (askedId.current !== id) {
 			askedId.current = id;
 			setSlide(0);
+			setShowCustom(false);
 			return;
 		}
 		setSlide((current) =>
@@ -473,6 +482,7 @@ export default function Code() {
 		setSlide(0);
 		setPicks({});
 		setCustom({});
+		setShowCustom(false);
 	}
 
 	function promptAnswer(item: { question: string }) {
@@ -485,6 +495,7 @@ export default function Code() {
 	function pickChoice(prompt: string, option: string) {
 		setPicks((current) => ({ ...current, [prompt]: option }));
 		setCustom((current) => ({ ...current, [prompt]: "" }));
+		setShowCustom(false);
 	}
 
 	function moveQuestion(delta: number) {
@@ -750,6 +761,9 @@ export default function Code() {
 							if (frame.id) {
 								lastEventId = frame.id;
 							}
+							if (holdOpencodePromptEvent(frame.data, held.current)) {
+								return;
+							}
 							rememberOpencodePrompt(frame.data);
 							noteOpencodePrompt(frame.data, prompts.current);
 							setView((current) => applyOpencodeEvent(current, frame.data));
@@ -851,23 +865,92 @@ export default function Code() {
 		setView((current) => ({ ...current, busy: false }));
 	}
 
+	function beginReply() {
+		if (replying.current) {
+			return false;
+		}
+		replying.current = true;
+		setReplyBusy(true);
+		return true;
+	}
+
+	function endReply() {
+		replying.current = false;
+		setReplyBusy(false);
+	}
+
+	async function quietOpencode(call: Omit<OpencodeClientCall, "uuid">) {
+		try {
+			return await opencodeCall(token, { ...call, uuid: selected });
+		} catch {
+			return undefined;
+		}
+	}
+
+	async function recoverPrompts(sessionID: string) {
+		if (!token || !selected || !repo || !sessionID) {
+			return;
+		}
+		const [questions, permissions, messages] = await Promise.all([
+			quietOpencode({ repo, op: "questions" }),
+			quietOpencode({ repo, op: "permissions" }),
+			quietOpencode({ repo, op: "messages", sessionID }),
+		]);
+		setView((current) => {
+			if (current.sessionID !== sessionID) {
+				return current;
+			}
+			const next = recoverOpencodePrompts(current, sessionID, {
+				...(questions === undefined ? {} : { questions }),
+				...(permissions === undefined ? {} : { permissions }),
+				...(messages === undefined ? {} : { messages }),
+			});
+			storeOpencodePrompts(sessionID, next.questions, next.permissions);
+			for (const item of [...next.questions, ...next.permissions]) {
+				if (item.sessionID !== sessionID) {
+					continue;
+				}
+				held.current.add(item.id);
+				if (item.callID) {
+					held.current.add(item.callID);
+				}
+			}
+			releaseSettledPromptHolds(held.current, next, sessionID);
+			return next;
+		});
+	}
+
 	async function replyPermission(
 		permissionID: string,
 		response: OpencodePermissionResponse,
 	) {
-		await run({
-			repo,
-			op: "permission",
-			sessionID: view.sessionID,
-			permissionID,
-			response,
-		});
-		setView((current) => ({
-			...current,
-			permissions: current.permissions.filter(
-				(item) => item.id !== permissionID,
-			),
-		}));
+		if (!beginReply()) {
+			return;
+		}
+		const sessionID = view.sessionID;
+		held.current.add(permissionID);
+		try {
+			const sent = await run({
+				repo,
+				op: "permission",
+				sessionID,
+				permissionID,
+				response,
+			});
+			if (!opencodeReplyAccepted(sent)) {
+				await recoverPrompts(sessionID);
+				return;
+			}
+			held.current.delete(permissionID);
+			setView((current) => ({
+				...current,
+				permissions: current.permissions.filter(
+					(item) => item.id !== permissionID,
+				),
+			}));
+		} finally {
+			endReply();
+		}
 	}
 
 	async function questionRequestID(current: {
@@ -895,29 +978,41 @@ export default function Code() {
 
 	function answerQuestion(reject: boolean) {
 		const current = activeOpencodeQuestion(view.questions, view.sessionID);
-		if (!current) {
+		if (!current || replying.current) {
 			return;
 		}
 		if (!reject && current.prompts.some((item) => !promptAnswer(item))) {
 			return;
 		}
-		void questionRequestID(current).then((requestID) => {
-			if (!requestID) {
-				return;
-			}
-			void run({
-				repo,
-				op: "question",
-				requestID,
-				...(reject
-					? { reject: true }
-					: {
-							answers: current.prompts.map((item) => [promptAnswer(item)]),
-						}),
-			}).then((sent) => {
-				if (!sent) {
+		if (!beginReply()) {
+			return;
+		}
+		const sessionID = current.sessionID;
+		held.current.add(current.id);
+		void questionRequestID(current)
+			.then(async (requestID) => {
+				if (!requestID) {
+					held.current.delete(current.id);
+					await recoverPrompts(sessionID);
 					return;
 				}
+				held.current.add(requestID);
+				const sent = await run({
+					repo,
+					op: "question",
+					requestID,
+					...(reject
+						? { reject: true }
+						: {
+								answers: current.prompts.map((item) => [promptAnswer(item)]),
+							}),
+				});
+				if (!opencodeReplyAccepted(sent)) {
+					await recoverPrompts(sessionID);
+					return;
+				}
+				held.current.delete(current.id);
+				held.current.delete(requestID);
 				clearQuestionDraft();
 				setView((viewCurrent) => ({
 					...viewCurrent,
@@ -925,8 +1020,10 @@ export default function Code() {
 						(item) => item.id !== current.id && item.id !== requestID,
 					),
 				}));
+			})
+			.finally(() => {
+				endReply();
 			});
-		});
 	}
 
 	const ink = { color: colors.text };
@@ -1420,16 +1517,19 @@ export default function Code() {
 									<Text style={muted}>{permission.detail}</Text>
 								) : null}
 								<Pressable
+									disabled={replyBusy}
 									onPress={() => void replyPermission(permission.id, "once")}
 								>
 									<Text style={ink}>{t("code.allowOnce")}</Text>
 								</Pressable>
 								<Pressable
+									disabled={replyBusy}
 									onPress={() => void replyPermission(permission.id, "always")}
 								>
 									<Text style={ink}>{t("code.allowAlways")}</Text>
 								</Pressable>
 								<Pressable
+									disabled={replyBusy}
 									onPress={() => void replyPermission(permission.id, "reject")}
 								>
 									<Text style={{ color: colors.danger }}>{t("code.deny")}</Text>
@@ -1455,51 +1555,140 @@ export default function Code() {
 									const typed = custom[item.question] ?? "";
 									const picked = picks[item.question] ?? "";
 									const ready = Boolean(promptAnswer(item));
+									const answered = question.prompts.filter((entry) =>
+										promptAnswer(entry),
+									).length;
+									const allReady = question.prompts.every((entry) =>
+										promptAnswer(entry),
+									);
 									return (
-										<View
-											style={{
-												flexDirection: "row",
-												alignItems: "center",
-												gap: 8,
-											}}
-										>
-											{count > 1 ? (
-												<Pressable
-													accessibilityRole="button"
-													accessibilityLabel={t("code.previousQuestion")}
-													disabled={index === 0}
-													onPress={() => moveQuestion(-1)}
+										<View style={{ gap: 10 }}>
+											<View
+												style={{
+													flexDirection: "row",
+													alignItems: "center",
+													gap: 8,
+												}}
+											>
+												<Text
+													style={[muted, { fontSize: 12, fontWeight: "700" }]}
+												>
+													{t("code.questionOf", {
+														current: index + 1,
+														total: count,
+													})}
+												</Text>
+												<View style={{ flex: 1, flexDirection: "row", gap: 6 }}>
+													{question.prompts.map((entry) => (
+														<View
+															key={entry.question}
+															style={{
+																flex: 1,
+																height: 4,
+																borderRadius: 99,
+																backgroundColor: promptAnswer(entry)
+																	? colors.text
+																	: colors.border,
+															}}
+														/>
+													))}
+												</View>
+												<Text style={[muted, { fontSize: 12 }]}>
+													{t("code.questionsAnswered", {
+														done: answered,
+														total: count,
+													})}
+												</Text>
+											</View>
+											<Text style={[ink, { fontWeight: "600" }]}>
+												{item.header ? `${item.header}: ` : ""}
+												{item.question}
+											</Text>
+											{item.options.length > 0 ? (
+												<View
 													style={{
-														minWidth: 32,
-														alignItems: "center",
-														padding: 8,
-														borderRadius: 6,
-														backgroundColor: colors.surface,
-														opacity: index === 0 ? 0.35 : 1,
+														flexDirection: "row",
+														flexWrap: "wrap",
+														gap: 8,
 													}}
 												>
-													<Text style={ink}>{"<"}</Text>
-												</Pressable>
+													{item.options.map((option, optionIndex) => {
+														const on = !typed.trim() && picked === option;
+														return (
+															<Pressable
+																key={option}
+																accessibilityRole="button"
+																onPress={() =>
+																	pickChoice(item.question, option)
+																}
+																style={{
+																	flexBasis: "48%",
+																	flexGrow: 1,
+																	flexDirection: "row",
+																	alignItems: "center",
+																	gap: 8,
+																	minHeight: 48,
+																	borderWidth: 1,
+																	borderColor: on ? colors.text : colors.border,
+																	borderRadius: 8,
+																	paddingHorizontal: 10,
+																	paddingVertical: 10,
+																	backgroundColor: on
+																		? colors.text
+																		: colors.surface,
+																}}
+															>
+																<View
+																	style={{
+																		minWidth: 24,
+																		height: 24,
+																		borderRadius: 6,
+																		alignItems: "center",
+																		justifyContent: "center",
+																		backgroundColor: on
+																			? colors.surface
+																			: colors.chipBg,
+																	}}
+																>
+																	<Text
+																		style={{
+																			fontSize: 12,
+																			fontWeight: "700",
+																			color: on ? colors.text : colors.muted,
+																		}}
+																	>
+																		{optionIndex + 1}
+																	</Text>
+																</View>
+																<Text
+																	style={{
+																		flex: 1,
+																		flexShrink: 1,
+																		color: on ? colors.surface : colors.text,
+																	}}
+																>
+																	{option}
+																</Text>
+															</Pressable>
+														);
+													})}
+												</View>
 											) : null}
-											<View style={{ flex: 1 }}>
-												<Text style={ink}>
-													{item.header ? `${item.header}: ` : ""}
-													{item.question}
+											<Pressable
+												accessibilityRole="button"
+												onPress={() => setShowCustom((current) => !current)}
+											>
+												<Text
+													style={{ color: colors.primary, paddingVertical: 2 }}
+												>
+													{showCustom
+														? t("code.hideCustomResponse")
+														: typed.trim()
+															? t("code.customResponseSet")
+															: t("code.customResponseToggle")}
 												</Text>
-												{item.options.map((option) => (
-													<Pressable
-														key={option}
-														onPress={() => pickChoice(item.question, option)}
-													>
-														<Text
-															style={
-																!typed.trim() && picked === option ? ink : muted
-															}
-														>
-															{option}
-														</Text>
-													</Pressable>
-												))}
+											</Pressable>
+											{showCustom ? (
 												<TextInput
 													value={typed}
 													placeholder={t("code.customResponse")}
@@ -1524,7 +1713,6 @@ export default function Code() {
 														answerQuestion(false);
 													}}
 													style={{
-														marginTop: 8,
 														borderWidth: 1,
 														borderColor: colors.border,
 														borderRadius: 6,
@@ -1533,41 +1721,80 @@ export default function Code() {
 														color: colors.text,
 													}}
 												/>
-											</View>
-											{count > 1 ? (
+											) : null}
+											<View style={{ flexDirection: "row", gap: 8 }}>
+												<Pressable
+													accessibilityRole="button"
+													accessibilityLabel={t("code.previousQuestion")}
+													disabled={index === 0}
+													onPress={() => moveQuestion(-1)}
+													style={{
+														flex: 1,
+														alignItems: "center",
+														paddingVertical: 10,
+														borderRadius: 8,
+														backgroundColor: colors.chipBg,
+														opacity: index === 0 ? 0.35 : 1,
+													}}
+												>
+													<Text style={ink}>‹ {t("code.stepBack")}</Text>
+												</Pressable>
 												<Pressable
 													accessibilityRole="button"
 													accessibilityLabel={t("code.nextQuestion")}
 													disabled={index >= count - 1 || !ready}
 													onPress={() => moveQuestion(1)}
 													style={{
-														minWidth: 32,
+														flex: 1,
 														alignItems: "center",
-														padding: 8,
-														borderRadius: 6,
-														backgroundColor: colors.surface,
+														paddingVertical: 10,
+														borderRadius: 8,
+														backgroundColor: colors.chipBg,
 														opacity: index >= count - 1 || !ready ? 0.35 : 1,
 													}}
 												>
-													<Text style={ink}>{">"}</Text>
+													<Text style={ink}>{t("code.stepNext")} ›</Text>
 												</Pressable>
-											) : null}
+												<Pressable
+													accessibilityRole="button"
+													accessibilityLabel={t("code.reply")}
+													disabled={replyBusy || !allReady}
+													onPress={() => answerQuestion(false)}
+													style={{
+														flex: 1,
+														alignItems: "center",
+														paddingVertical: 10,
+														borderRadius: 8,
+														backgroundColor: colors.text,
+														opacity: !replyBusy && allReady ? 1 : 0.35,
+													}}
+												>
+													<Text style={{ color: colors.surface }}>
+														{t("code.reply")}
+													</Text>
+												</Pressable>
+												<Pressable
+													accessibilityRole="button"
+													accessibilityLabel={t("code.reject")}
+													disabled={replyBusy}
+													onPress={() => answerQuestion(true)}
+													style={{
+														flex: 1,
+														alignItems: "center",
+														paddingVertical: 10,
+														borderRadius: 8,
+														backgroundColor: colors.chipBg,
+														opacity: replyBusy ? 0.35 : 1,
+													}}
+												>
+													<Text style={{ color: colors.danger }}>
+														{t("code.reject")}
+													</Text>
+												</Pressable>
+											</View>
 										</View>
 									);
 								})()}
-								<Pressable
-									disabled={question.prompts.some(
-										(item) => !promptAnswer(item),
-									)}
-									onPress={() => answerQuestion(false)}
-								>
-									<Text style={ink}>{t("code.reply")}</Text>
-								</Pressable>
-								<Pressable onPress={() => answerQuestion(true)}>
-									<Text style={{ color: colors.danger }}>
-										{t("code.reject")}
-									</Text>
-								</Pressable>
 							</View>
 						) : null}
 						{mode === "draft" ? (

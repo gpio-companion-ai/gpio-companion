@@ -5,6 +5,7 @@ import {
 	CODE_DEFAULT_MODEL,
 	codeNavHref,
 	emptyOpencodeView,
+	holdOpencodePromptEvent,
 	noteOpencodePrompt,
 	opencodeClientRequest,
 	opencodeEventFrame,
@@ -15,9 +16,11 @@ import {
 	opencodeModelChoices,
 	opencodePermissions,
 	opencodeProjectDirectory,
+	opencodePromptDropID,
 	opencodePromptFields,
 	opencodeProxyAllows,
 	opencodeQuestions,
+	opencodeReplyAccepted,
 	opencodeRepoNameFromSelection,
 	opencodeSessionBucket,
 	opencodeSessions,
@@ -33,6 +36,8 @@ import {
 	pendingOpencodeTurn,
 	readCodeNav,
 	readStoredOpencodePrompts,
+	recoverOpencodePrompts,
+	releaseSettledPromptHolds,
 	rememberOpencodePrompt,
 	restoreOpencodePrompts,
 	restoreOpencodeViewPrompts,
@@ -816,6 +821,79 @@ describe("opencode session client", () => {
 				"ses_1",
 			).questions,
 		).toEqual([]);
+	});
+
+	test("keeps a failed reply and restores a prompt the server still has", () => {
+		expect(opencodeReplyAccepted(null)).toBe(false);
+		expect(opencodeReplyAccepted({ error: "device 502" })).toBe(false);
+		expect(opencodeReplyAccepted({ ok: false })).toBe(false);
+		expect(opencodeReplyAccepted({ accepted: true })).toBe(true);
+		const dropped = {
+			type: "permission.replied",
+			properties: { sessionID: "ses_1", requestID: "per_1" },
+		};
+		expect(opencodePromptDropID(dropped)).toBe("per_1");
+		const held = new Set(["per_1"]);
+		expect(holdOpencodePromptEvent(dropped, held)).toBe(true);
+		expect(
+			holdOpencodePromptEvent(
+				{ type: "question.asked", properties: { id: "que_1" } },
+				held,
+			),
+		).toBe(false);
+		const cleared = {
+			...applyOpencodeEvent(
+				{
+					...emptyOpencodeView(),
+					sessionID: "ses_1",
+					permissions: [
+						{
+							id: "per_1",
+							sessionID: "ses_1",
+							title: "bash",
+							detail: "",
+						},
+					],
+					questions: [
+						{
+							id: "que_1",
+							sessionID: "ses_1",
+							prompts: [{ header: "", question: "Pick one", options: ["A"] }],
+						},
+					],
+				},
+				{
+					type: "question.rejected",
+					properties: { sessionID: "ses_1", requestID: "que_1" },
+				},
+			),
+			permissions: [],
+		};
+		expect(cleared.questions).toEqual([]);
+		const recovered = recoverOpencodePrompts(cleared, "ses_1", {
+			questions: [
+				{
+					id: "que_1",
+					sessionID: "ses_1",
+					questions: [{ question: "Pick one", options: ["A"] }],
+				},
+			],
+			permissions: [
+				{
+					id: "per_1",
+					sessionID: "ses_1",
+					permission: "bash",
+					patterns: ["git push"],
+				},
+			],
+		});
+		expect(recovered.questions.map((item) => item.id)).toEqual(["que_1"]);
+		expect(recovered.permissions.map((item) => item.id)).toEqual(["per_1"]);
+		expect(recovered.permissions[0]?.title).toBe("bash");
+		releaseSettledPromptHolds(held, recovered, "ses_1");
+		expect([...held]).toEqual(["per_1"]);
+		releaseSettledPromptHolds(held, cleared, "ses_1");
+		expect([...held]).toEqual([]);
 	});
 
 	test("buckets sessions by local day", () => {

@@ -13,6 +13,7 @@ import {
 	codeSessionTitle,
 	emptyOpencodeView,
 	filterCodeSessions,
+	holdOpencodePromptEvent,
 	matchCodeRepo,
 	matchOpencodeQuestionID,
 	mergeOpencodeQuestions,
@@ -31,6 +32,7 @@ import {
 	opencodeModelChoices,
 	opencodePromptFields,
 	opencodeQuestions,
+	opencodeReplyAccepted,
 	opencodeSessionBucket,
 	opencodeSessions,
 	opencodeStoredEffort,
@@ -45,6 +47,8 @@ import {
 	type ReasoningEffort,
 	readCodeNav,
 	readStoredOpencodePrompts,
+	recoverOpencodePrompts,
+	releaseSettledPromptHolds,
 	rememberOpencodePrompt,
 	replaceCodeNav,
 	seedOpencodePrompts,
@@ -54,6 +58,7 @@ import {
 import {
 	Fragment,
 	type ReactNode,
+	useCallback,
 	useEffect,
 	useLayoutEffect,
 	useRef,
@@ -470,9 +475,11 @@ export default function OpenCodeSession({
 	const [slide, setSlide] = useState(0);
 	const [picks, setPicks] = useState<Record<string, string>>({});
 	const [custom, setCustom] = useState<Record<string, string>>({});
+	const [showCustom, setShowCustom] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
 	const [menu, setMenu] = useState<ChipMenuId | "">("");
+	const [replyBusy, setReplyBusy] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
 	const menuRef = useRef<HTMLDivElement>(null);
@@ -480,6 +487,8 @@ export default function OpenCodeSession({
 		epoch: 0,
 		dropped: new Set(),
 	});
+	const held = useRef(new Set<string>());
+	const replying = useRef(false);
 
 	useEffect(() => {
 		try {
@@ -509,6 +518,7 @@ export default function OpenCodeSession({
 		setSlide(0);
 		setPicks({});
 		setCustom({});
+		setShowCustom(false);
 	}
 
 	function promptAnswer(item: { question: string }) {
@@ -518,10 +528,11 @@ export default function OpenCodeSession({
 		);
 	}
 
-	function pickChoice(prompt: string, option: string) {
+	const pickChoice = useCallback((prompt: string, option: string) => {
 		setPicks((current) => ({ ...current, [prompt]: option }));
 		setCustom((current) => ({ ...current, [prompt]: "" }));
-	}
+		setShowCustom(false);
+	}, []);
 
 	function moveQuestion(delta: number) {
 		if (!question || question.prompts.length === 0) {
@@ -683,12 +694,50 @@ export default function OpenCodeSession({
 		if (askedId.current !== id) {
 			askedId.current = id;
 			setSlide(0);
+			setShowCustom(false);
 			return;
 		}
 		setSlide((current) =>
 			codeQuestionSlideIndex(current, Math.max(prompts.length, 1), 0),
 		);
 	}, [view.questions, view.sessionID]);
+
+	useEffect(() => {
+		const active = view.questions.find(
+			(item) => item.sessionID === view.sessionID,
+		);
+		if (!active) {
+			return;
+		}
+		const pending = active.prompts;
+		function onKey(event: KeyboardEvent) {
+			const target = event.target as HTMLElement | null;
+			if (
+				target &&
+				(target.tagName === "INPUT" ||
+					target.tagName === "TEXTAREA" ||
+					target.isContentEditable)
+			) {
+				return;
+			}
+			const digit = Number.parseInt(event.key, 10);
+			if (!Number.isInteger(digit) || digit < 1 || digit > 9) {
+				return;
+			}
+			const count = pending.length;
+			const index = codeQuestionSlideIndex(slide, count, 0);
+			const current = pending[index];
+			const option = current?.options[digit - 1];
+			if (!current || option === undefined) {
+				return;
+			}
+			pickChoice(current.question, option);
+		}
+		document.addEventListener("keydown", onKey);
+		return () => {
+			document.removeEventListener("keydown", onKey);
+		};
+	}, [view.questions, view.sessionID, slide, pickChoice]);
 
 	const boardRef = useRef(uuid);
 	useEffect(() => {
@@ -845,6 +894,9 @@ export default function OpenCodeSession({
 							if (frame.id) {
 								lastEventId = frame.id;
 							}
+							if (holdOpencodePromptEvent(frame.data, held.current)) {
+								return;
+							}
 							rememberOpencodePrompt(frame.data);
 							noteOpencodePrompt(frame.data, prompts.current);
 							setView((current) => applyOpencodeEvent(current, frame.data));
@@ -968,24 +1020,85 @@ export default function OpenCodeSession({
 		setView((current) => ({ ...current, busy: false }));
 	}
 
+	function beginReply() {
+		if (replying.current) {
+			return false;
+		}
+		replying.current = true;
+		setReplyBusy(true);
+		return true;
+	}
+
+	function endReply() {
+		replying.current = false;
+		setReplyBusy(false);
+	}
+
+	async function recoverPrompts(sessionID: string) {
+		if (!uuid || !repo || !sessionID) {
+			return;
+		}
+		const [questions, permissions, messages] = await Promise.all([
+			postOpencode({ uuid, repo, op: "questions" }),
+			postOpencode({ uuid, repo, op: "permissions" }),
+			postOpencode({ uuid, repo, op: "messages", sessionID }),
+		]);
+		setView((current) => {
+			if (current.sessionID !== sessionID) {
+				return current;
+			}
+			const next = recoverOpencodePrompts(current, sessionID, {
+				...(questions.ok ? { questions: questions.data } : {}),
+				...(permissions.ok ? { permissions: permissions.data } : {}),
+				...(messages.ok ? { messages: messages.data } : {}),
+			});
+			storeOpencodePrompts(sessionID, next.questions, next.permissions);
+			for (const item of [...next.questions, ...next.permissions]) {
+				if (item.sessionID !== sessionID) {
+					continue;
+				}
+				held.current.add(item.id);
+				if (item.callID) {
+					held.current.add(item.callID);
+				}
+			}
+			releaseSettledPromptHolds(held.current, next, sessionID);
+			return next;
+		});
+	}
+
 	async function replyPermission(
 		permissionID: string,
 		response: OpencodePermissionResponse,
 	) {
-		await run({
-			uuid,
-			repo,
-			op: "permission",
-			sessionID: view.sessionID,
-			permissionID,
-			response,
-		});
-		setView((current) => ({
-			...current,
-			permissions: current.permissions.filter(
-				(item) => item.id !== permissionID,
-			),
-		}));
+		if (!beginReply()) {
+			return;
+		}
+		const sessionID = view.sessionID;
+		held.current.add(permissionID);
+		try {
+			const sent = await run({
+				uuid,
+				repo,
+				op: "permission",
+				sessionID,
+				permissionID,
+				response,
+			});
+			if (!opencodeReplyAccepted(sent)) {
+				await recoverPrompts(sessionID);
+				return;
+			}
+			held.current.delete(permissionID);
+			setView((current) => ({
+				...current,
+				permissions: current.permissions.filter(
+					(item) => item.id !== permissionID,
+				),
+			}));
+		} finally {
+			endReply();
+		}
 	}
 
 	const needle = query.trim().toLowerCase();
@@ -1145,31 +1258,43 @@ export default function OpenCodeSession({
 	}
 
 	function answerQuestion(reject: boolean) {
-		if (!question) {
+		if (!question || replying.current) {
 			return;
 		}
 		const current = question;
 		if (!reject && current.prompts.some((item) => !promptAnswer(item))) {
 			return;
 		}
-		void questionRequestID(current).then((requestID) => {
-			if (!requestID) {
-				return;
-			}
-			void run({
-				uuid,
-				repo,
-				op: "question",
-				requestID,
-				...(reject
-					? { reject: true }
-					: {
-							answers: current.prompts.map((item) => [promptAnswer(item)]),
-						}),
-			}).then((sent) => {
-				if (!sent) {
+		if (!beginReply()) {
+			return;
+		}
+		const sessionID = current.sessionID;
+		held.current.add(current.id);
+		void questionRequestID(current)
+			.then(async (requestID) => {
+				if (!requestID) {
+					held.current.delete(current.id);
+					await recoverPrompts(sessionID);
 					return;
 				}
+				held.current.add(requestID);
+				const sent = await run({
+					uuid,
+					repo,
+					op: "question",
+					requestID,
+					...(reject
+						? { reject: true }
+						: {
+								answers: current.prompts.map((item) => [promptAnswer(item)]),
+							}),
+				});
+				if (!opencodeReplyAccepted(sent)) {
+					await recoverPrompts(sessionID);
+					return;
+				}
+				held.current.delete(current.id);
+				held.current.delete(requestID);
 				clearQuestionDraft();
 				setView((viewCurrent) => ({
 					...viewCurrent,
@@ -1177,8 +1302,10 @@ export default function OpenCodeSession({
 						(item) => item.id !== current.id && item.id !== requestID,
 					),
 				}));
+			})
+			.finally(() => {
+				endReply();
 			});
-		});
 	}
 
 	const owner = codeRepoOwner(repos, repo);
@@ -1481,12 +1608,14 @@ export default function OpenCodeSession({
 								<div className="oc-decision-actions">
 									<button
 										type="button"
+										disabled={replyBusy}
 										onClick={() => void replyPermission(permission.id, "once")}
 									>
 										{t("code.allowOnce")}
 									</button>
 									<button
 										type="button"
+										disabled={replyBusy}
 										onClick={() =>
 											void replyPermission(permission.id, "always")
 										}
@@ -1495,6 +1624,7 @@ export default function OpenCodeSession({
 									</button>
 									<button
 										type="button"
+										disabled={replyBusy}
 										onClick={() =>
 											void replyPermission(permission.id, "reject")
 										}
@@ -1516,44 +1646,76 @@ export default function OpenCodeSession({
 									const typed = custom[item.question] ?? "";
 									const picked = picks[item.question] ?? "";
 									const ready = Boolean(promptAnswer(item));
+									const answered = question.prompts.filter((entry) =>
+										promptAnswer(entry),
+									).length;
 									return (
-										<div className="oc-question-slide">
-											{count > 1 ? (
-												<button
-													type="button"
-													className="oc-option-nav"
-													aria-label={t("code.previousQuestion")}
-													disabled={index === 0}
-													onClick={() => moveQuestion(-1)}
-												>
-													{"<"}
-												</button>
-											) : null}
-											<div className="oc-question-panel">
-												<p>
-													{item.header ? `${item.header}: ` : ""}
-													{item.question}
-												</p>
-												{item.options.length > 0 ? (
-													<div className="oc-options">
-														{item.options.map((option) => (
-															<button
-																key={option}
-																type="button"
-																className={
-																	!typed.trim() && picked === option
-																		? "is-on"
+										<div className="oc-question-wizard">
+											<div className="oc-stepper">
+												<span className="oc-stepper-count">
+													{t("code.questionOf", {
+														current: index + 1,
+														total: count,
+													})}
+												</span>
+												<div className="oc-stepper-bars" aria-hidden="true">
+													{question.prompts.map((entry, entryIndex) => (
+														<i
+															key={entry.question}
+															className={
+																promptAnswer(entry)
+																	? "is-done"
+																	: entryIndex === index
+																		? "is-now"
 																		: undefined
-																}
-																onClick={() =>
-																	pickChoice(item.question, option)
-																}
-															>
-																{option}
-															</button>
-														))}
-													</div>
-												) : null}
+															}
+														/>
+													))}
+												</div>
+												<span className="oc-stepper-answered">
+													{t("code.questionsAnswered", {
+														done: answered,
+														total: count,
+													})}
+												</span>
+											</div>
+											<p className="oc-question-title">
+												{item.header ? `${item.header}: ` : ""}
+												{item.question}
+											</p>
+											{item.options.length > 0 ? (
+												<div className="oc-options-grid">
+													{item.options.map((option, optionIndex) => (
+														<button
+															key={option}
+															type="button"
+															className={
+																!typed.trim() && picked === option
+																	? "is-on"
+																	: undefined
+															}
+															onClick={() => pickChoice(item.question, option)}
+														>
+															<span className="oc-option-key">
+																{optionIndex + 1}
+															</span>
+															<span className="oc-option-label">{option}</span>
+														</button>
+													))}
+												</div>
+											) : null}
+											<button
+												type="button"
+												className="oc-custom-toggle"
+												onClick={() => setShowCustom((current) => !current)}
+											>
+												{showCustom
+													? t("code.hideCustomResponse")
+													: typed.trim()
+														? t("code.customResponseSet")
+														: t("code.customResponseToggle")}
+											</button>
+											{showCustom ? (
 												<input
 													className="oc-custom-response"
 													type="text"
@@ -1584,35 +1746,50 @@ export default function OpenCodeSession({
 														answerQuestion(false);
 													}}
 												/>
-											</div>
-											{count > 1 ? (
+											) : null}
+											<div className="oc-question-foot">
 												<button
 													type="button"
-													className="oc-option-nav"
+													aria-label={t("code.previousQuestion")}
+													disabled={index === 0}
+													onClick={() => moveQuestion(-1)}
+												>
+													{"‹ "}
+													{t("code.stepBack")}
+												</button>
+												<button
+													type="button"
 													aria-label={t("code.nextQuestion")}
 													disabled={index >= count - 1 || !ready}
 													onClick={() => moveQuestion(1)}
 												>
-													{">"}
+													{t("code.stepNext")}
+													{" ›"}
 												</button>
-											) : null}
+												<button
+													type="button"
+													className="is-primary"
+													disabled={
+														replyBusy ||
+														question.prompts.some(
+															(entry) => !promptAnswer(entry),
+														)
+													}
+													onClick={() => answerQuestion(false)}
+												>
+													{t("code.reply")}
+												</button>
+												<button
+													type="button"
+													disabled={replyBusy}
+													onClick={() => answerQuestion(true)}
+												>
+													{t("code.reject")}
+												</button>
+											</div>
 										</div>
 									);
 								})()}
-								<div className="oc-decision-actions">
-									<button
-										type="button"
-										disabled={question.prompts.some(
-											(item) => !promptAnswer(item),
-										)}
-										onClick={() => answerQuestion(false)}
-									>
-										{t("code.reply")}
-									</button>
-									<button type="button" onClick={() => answerQuestion(true)}>
-										{t("code.reject")}
-									</button>
-								</div>
 							</div>
 						) : null}
 						<div className="oc-chips">{modelSelects()}</div>
