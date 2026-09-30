@@ -1,8 +1,10 @@
 import {
 	applyOpencodeEvent,
 	CODE_DEFAULT_MODEL,
-	clearCodeAnswers,
 	codeNavBack,
+	codeQuestionAnswer,
+	codeQuestionChoice,
+	codeQuestionSlideIndex,
 	codeRepoLabel,
 	codeRepoOwner,
 	codeScrollKey,
@@ -34,7 +36,7 @@ import {
 	parseOpencodeMarkdown,
 	pendingOpencodeFromMessages,
 	pendingOpencodeTurn,
-	pruneCodeAnswers,
+	pruneCodePromptState,
 	pushCodeNav,
 	type ReasoningEffort,
 	readCodeNav,
@@ -493,7 +495,8 @@ export default function OpenCodeSession({
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [sessionsLoading, setSessionsLoading] = useState(false);
-	const [answers, setAnswers] = useState<Record<string, string>>({});
+	const [slides, setSlides] = useState<Record<string, number>>({});
+	const [custom, setCustom] = useState<Record<string, string>>({});
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
 	const [menu, setMenu] = useState<ChipMenuId | "">("");
@@ -544,6 +547,25 @@ export default function OpenCodeSession({
 		setRepo(matchCodeRepo(repos, stored));
 	}, [repos]);
 
+	function clearQuestionDraft() {
+		setSlides({});
+		setCustom({});
+	}
+
+	function promptAnswer(item: { question: string; options: string[] }) {
+		return codeQuestionAnswer(
+			codeQuestionChoice(item.options, slides[item.question] ?? 0),
+			custom[item.question] ?? "",
+		);
+	}
+
+	function moveSlide(prompt: string, count: number, delta: number) {
+		setSlides((current) => ({
+			...current,
+			[prompt]: codeQuestionSlideIndex(current[prompt] ?? 0, count, delta),
+		}));
+	}
+
 	function selectRepo(name: string) {
 		setRepo(name);
 		const match = repos.find((item) => item.name === name);
@@ -555,13 +577,13 @@ export default function OpenCodeSession({
 	function remember(name: string) {
 		selectRepo(name);
 		setQuery("");
-		setAnswers(clearCodeAnswers());
+		clearQuestionDraft();
 		leaveChat();
 	}
 
 	function openSession(sessionID: string) {
 		setQuery("");
-		setAnswers(clearCodeAnswers());
+		clearQuestionDraft();
 		setView((current) =>
 			seedOpencodePrompts(
 				{
@@ -601,7 +623,7 @@ export default function OpenCodeSession({
 
 	function openDraft() {
 		setPrompt("");
-		setAnswers(clearCodeAnswers());
+		clearQuestionDraft();
 		setMode("draft");
 		pushCodeNav({ mode: "draft", sessionID: "" });
 		window.setTimeout(() => field.current?.focus(), 50);
@@ -687,12 +709,9 @@ export default function OpenCodeSession({
 	}, [mode, view.sessionID, view.questions, view.permissions]);
 
 	useEffect(() => {
-		setAnswers((current) =>
-			pruneCodeAnswers(
-				current,
-				view.questions.flatMap((item) => item.prompts),
-			),
-		);
+		const prompts = view.questions.flatMap((item) => item.prompts);
+		setSlides((current) => pruneCodePromptState(current, prompts));
+		setCustom((current) => pruneCodePromptState(current, prompts));
 	}, [view.questions]);
 
 	const boardRef = useRef(selected);
@@ -1130,6 +1149,9 @@ export default function OpenCodeSession({
 			return;
 		}
 		const current = question;
+		if (!reject && current.prompts.some((item) => !promptAnswer(item))) {
+			return;
+		}
 		if (reject) {
 			void run({
 				repo,
@@ -1137,7 +1159,7 @@ export default function OpenCodeSession({
 				requestID: current.id,
 				reject: true,
 			}).then(() => {
-				setAnswers(clearCodeAnswers());
+				clearQuestionDraft();
 				setView((viewCurrent) => ({
 					...viewCurrent,
 					questions: viewCurrent.questions.filter(
@@ -1151,9 +1173,9 @@ export default function OpenCodeSession({
 			repo,
 			op: "question",
 			requestID: current.id,
-			answers: current.prompts.map((item) => [answers[item.question] ?? ""]),
+			answers: current.prompts.map((item) => [promptAnswer(item)]),
 		}).then(() => {
-			setAnswers(clearCodeAnswers());
+			clearQuestionDraft();
 			setView((viewCurrent) => ({
 				...viewCurrent,
 				questions: viewCurrent.questions.filter(
@@ -1540,40 +1562,100 @@ export default function OpenCodeSession({
 							) : null}
 							{!permission && question ? (
 								<div className="oc-decision">
-									{question.prompts.map((item) => (
-										<div key={item.question}>
-											<p>
-												{item.header ? `${item.header}: ` : ""}
-												{item.question}
-											</p>
-											<div className="oc-options">
-												{item.options.map((option) => (
-													<button
-														key={option}
-														type="button"
-														className={
-															answers[item.question] === option
-																? "is-on"
-																: undefined
+									{question.prompts.map((item) => {
+										const index = codeQuestionSlideIndex(
+											slides[item.question] ?? 0,
+											item.options.length,
+											0,
+										);
+										const choice = codeQuestionChoice(item.options, index);
+										const typed = custom[item.question] ?? "";
+										const selected = choice.length > 0 && !typed.trim();
+										return (
+											<div key={item.question}>
+												<p>
+													{item.header ? `${item.header}: ` : ""}
+													{item.question}
+												</p>
+												{item.options.length > 0 ? (
+													<div className="oc-option-slide">
+														{item.options.length > 1 ? (
+															<button
+																type="button"
+																className="oc-option-nav"
+																aria-label={t("code.previousOption")}
+																disabled={index === 0}
+																onClick={() =>
+																	moveSlide(
+																		item.question,
+																		item.options.length,
+																		-1,
+																	)
+																}
+															>
+																{"<"}
+															</button>
+														) : null}
+														<p
+															className={
+																selected
+																	? "oc-option-choice is-on"
+																	: "oc-option-choice"
+															}
+														>
+															{choice}
+														</p>
+														{item.options.length > 1 ? (
+															<button
+																type="button"
+																className="oc-option-nav"
+																aria-label={t("code.nextOption")}
+																disabled={index >= item.options.length - 1}
+																onClick={() =>
+																	moveSlide(
+																		item.question,
+																		item.options.length,
+																		1,
+																	)
+																}
+															>
+																{">"}
+															</button>
+														) : null}
+													</div>
+												) : null}
+												<input
+													className="oc-custom-response"
+													type="text"
+													value={typed}
+													placeholder={t("code.customResponse")}
+													aria-label={t("code.customResponse")}
+													autoComplete="off"
+													onChange={(event) =>
+														setCustom((current) => ({
+															...current,
+															[item.question]: event.target.value,
+														}))
+													}
+													onKeyDown={(event) => {
+														if (
+															event.key === "Enter" &&
+															!event.shiftKey &&
+															!event.nativeEvent.isComposing
+														) {
+															event.preventDefault();
+															answerQuestion(false);
 														}
-														onClick={() =>
-															setAnswers((current) => ({
-																...current,
-																[item.question]: option,
-															}))
-														}
-													>
-														{option}
-													</button>
-												))}
+													}}
+												/>
 											</div>
-										</div>
-									))}
+										);
+									})}
 									<div className="oc-decision-actions">
 										<button
 											type="button"
 											disabled={question.prompts.some(
-												(item) => !answers[item.question],
+												(item) => !promptAnswer(item),
 											)}
 											onClick={() => answerQuestion(false)}
 										>

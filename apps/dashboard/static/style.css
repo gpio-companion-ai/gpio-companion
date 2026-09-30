@@ -8869,6 +8869,48 @@ mark {
   background: rgb(var(--text-main));
   color: rgb(var(--bg-surface));
 }
+.oc-option-slide {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+.oc-option-nav {
+  flex: none;
+  min-width: 32px;
+  text-align: center;
+}
+.oc-option-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.oc-option-choice {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgba(var(--text-main), 0.08);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.oc-option-choice.is-on {
+  background: rgb(var(--text-main));
+  color: rgb(var(--bg-surface));
+}
+.oc-custom-response {
+  display: block;
+  width: 100%;
+  margin-top: 8px;
+  border: 1px solid rgba(var(--text-main), 0.16);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  outline: none;
+}
+.oc-custom-response:focus {
+  border-color: rgba(var(--text-primary), 0.45);
+}
 button.oc-chip, .oc-chip {
   display: inline-flex;
   width: fit-content;

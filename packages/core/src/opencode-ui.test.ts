@@ -6,6 +6,9 @@ import {
 	filterBoardNodes,
 } from "./board-files.ts";
 import {
+	codeQuestionAnswer,
+	codeQuestionChoice,
+	codeQuestionSlideIndex,
 	codeRepoLabel,
 	codeScrollKey,
 	filterCodeSessions,
@@ -57,9 +60,22 @@ describe("code project selection", () => {
 		).toBe(1 + 2 + 1 + 2);
 	});
 	test("prunes stale answers", () => {
-		expect(
-			pruneCodeAnswers({ a: "1", old: "x" }, [{ question: "a" }]),
-		).toEqual({ a: "1" });
+		expect(pruneCodeAnswers({ a: "1", old: "x" }, [{ question: "a" }])).toEqual(
+			{ a: "1" },
+		);
+	});
+	test("slides stop at the ends and custom text wins", () => {
+		expect(codeQuestionSlideIndex(0, 3, -1)).toBe(0);
+		expect(codeQuestionSlideIndex(0, 3, 1)).toBe(1);
+		expect(codeQuestionSlideIndex(2, 3, 1)).toBe(2);
+		expect(codeQuestionSlideIndex(0, 1, 1)).toBe(0);
+		expect(codeQuestionSlideIndex(0, 0, 1)).toBe(0);
+		expect(codeQuestionChoice(["7", "11"], 1)).toBe("11");
+		expect(codeQuestionChoice(["7"], 4)).toBe("7");
+		expect(codeQuestionChoice([], 0)).toBe("");
+		expect(codeQuestionAnswer("7", "  ")).toBe("7");
+		expect(codeQuestionAnswer("7", " 13 ")).toBe("13");
+		expect(codeQuestionAnswer(undefined, "")).toBe("");
 	});
 });
 
@@ -85,7 +101,12 @@ describe("board file ui", () => {
 				path: "firmware",
 				type: "dir",
 				children: [
-					{ name: "blink.c", path: "firmware/blink.c", type: "file", children: [] },
+					{
+						name: "blink.c",
+						path: "firmware/blink.c",
+						type: "file",
+						children: [],
+					},
 					{ name: "net.h", path: "firmware/net.h", type: "file", children: [] },
 				],
 			},

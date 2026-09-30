@@ -2,8 +2,10 @@ import { router } from "expo-router";
 import {
 	applyOpencodeEvent,
 	CODE_DEFAULT_MODEL,
-	clearCodeAnswers,
 	codeNavBack,
+	codeQuestionAnswer,
+	codeQuestionChoice,
+	codeQuestionSlideIndex,
 	codeRepoLabel,
 	codeRepoOwner,
 	codeScrollKey,
@@ -35,7 +37,7 @@ import {
 	parseOpencodeMarkdown,
 	pendingOpencodeFromMessages,
 	pendingOpencodeTurn,
-	pruneCodeAnswers,
+	pruneCodePromptState,
 	pushCodeNav,
 	type ReasoningEffort,
 	readCodeNav,
@@ -373,7 +375,8 @@ export default function Code() {
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [sessionsLoading, setSessionsLoading] = useState(false);
-	const [answers, setAnswers] = useState<Record<string, string>>({});
+	const [slides, setSlides] = useState<Record<string, number>>({});
+	const [custom, setCustom] = useState<Record<string, string>>({});
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
@@ -444,17 +447,33 @@ export default function Code() {
 	}, [mode, view.sessionID, view.questions, view.permissions]);
 
 	useEffect(() => {
-		setAnswers((current) =>
-			pruneCodeAnswers(
-				current,
-				view.questions.flatMap((item) => item.prompts),
-			),
-		);
+		const prompts = view.questions.flatMap((item) => item.prompts);
+		setSlides((current) => pruneCodePromptState(current, prompts));
+		setCustom((current) => pruneCodePromptState(current, prompts));
 	}, [view.questions]);
+
+	function clearQuestionDraft() {
+		setSlides({});
+		setCustom({});
+	}
+
+	function promptAnswer(item: { question: string; options: string[] }) {
+		return codeQuestionAnswer(
+			codeQuestionChoice(item.options, slides[item.question] ?? 0),
+			custom[item.question] ?? "",
+		);
+	}
+
+	function moveSlide(prompt: string, count: number, delta: number) {
+		setSlides((current) => ({
+			...current,
+			[prompt]: codeQuestionSlideIndex(current[prompt] ?? 0, count, delta),
+		}));
+	}
 
 	function openSession(sessionID: string) {
 		setQuery("");
-		setAnswers(clearCodeAnswers());
+		clearQuestionDraft();
 		setView((current) =>
 			seedOpencodePrompts(
 				{
@@ -499,7 +518,7 @@ export default function Code() {
 
 	function openDraft() {
 		setPrompt("");
-		setAnswers(clearCodeAnswers());
+		clearQuestionDraft();
 		setMode("draft");
 		pushCodeNav({ mode: "draft", sessionID: "" });
 	}
@@ -515,7 +534,7 @@ export default function Code() {
 	function selectRepo(name: string) {
 		setRepo(name);
 		setQuery("");
-		setAnswers(clearCodeAnswers());
+		clearQuestionDraft();
 		const match = repos.find((item) => item.name === name);
 		if (match) {
 			void storageSet(PROJECT_KEY, `${match.owner}/${match.name}`);
@@ -829,6 +848,9 @@ export default function Code() {
 		if (!current) {
 			return;
 		}
+		if (!reject && current.prompts.some((item) => !promptAnswer(item))) {
+			return;
+		}
 		if (reject) {
 			void run({
 				repo,
@@ -836,7 +858,7 @@ export default function Code() {
 				requestID: current.id,
 				reject: true,
 			}).then(() => {
-				setAnswers(clearCodeAnswers());
+				clearQuestionDraft();
 				setView((viewCurrent) => ({
 					...viewCurrent,
 					questions: viewCurrent.questions.filter(
@@ -850,9 +872,9 @@ export default function Code() {
 			repo,
 			op: "question",
 			requestID: current.id,
-			answers: current.prompts.map((item) => [answers[item.question] ?? ""]),
+			answers: current.prompts.map((item) => [promptAnswer(item)]),
 		}).then(() => {
-			setAnswers(clearCodeAnswers());
+			clearQuestionDraft();
 			setView((viewCurrent) => ({
 				...viewCurrent,
 				questions: viewCurrent.questions.filter(
@@ -1380,33 +1402,123 @@ export default function Code() {
 									backgroundColor: colors.chipBg,
 								}}
 							>
-								{question.prompts.map((item) => (
-									<View key={item.question}>
-										<Text style={ink}>{item.question}</Text>
-										{item.options.map((option) => (
-											<Pressable
-												key={option}
-												onPress={() =>
-													setAnswers((current) => ({
+								{question.prompts.map((item) => {
+									const index = codeQuestionSlideIndex(
+										slides[item.question] ?? 0,
+										item.options.length,
+										0,
+									);
+									const choice = codeQuestionChoice(item.options, index);
+									const typed = custom[item.question] ?? "";
+									const selected = choice.length > 0 && !typed.trim();
+									return (
+										<View key={item.question}>
+											<Text style={ink}>
+												{item.header ? `${item.header}: ` : ""}
+												{item.question}
+											</Text>
+											{item.options.length > 0 ? (
+												<View
+													style={{
+														flexDirection: "row",
+														alignItems: "center",
+														gap: 8,
+														marginTop: 8,
+													}}
+												>
+													{item.options.length > 1 ? (
+														<Pressable
+															accessibilityRole="button"
+															accessibilityLabel={t("code.previousOption")}
+															disabled={index === 0}
+															onPress={() =>
+																moveSlide(
+																	item.question,
+																	item.options.length,
+																	-1,
+																)
+															}
+															style={{
+																minWidth: 32,
+																alignItems: "center",
+																padding: 8,
+																borderRadius: 6,
+																backgroundColor: colors.surface,
+																opacity: index === 0 ? 0.35 : 1,
+															}}
+														>
+															<Text style={ink}>{"<"}</Text>
+														</Pressable>
+													) : null}
+													<Text
+														style={{
+															flex: 1,
+															textAlign: "center",
+															borderRadius: 6,
+															paddingVertical: 8,
+															paddingHorizontal: 10,
+															overflow: "hidden",
+															backgroundColor: selected
+																? colors.text
+																: colors.surface,
+															color: selected ? colors.surface : colors.text,
+														}}
+													>
+														{choice}
+													</Text>
+													{item.options.length > 1 ? (
+														<Pressable
+															accessibilityRole="button"
+															accessibilityLabel={t("code.nextOption")}
+															disabled={index >= item.options.length - 1}
+															onPress={() =>
+																moveSlide(item.question, item.options.length, 1)
+															}
+															style={{
+																minWidth: 32,
+																alignItems: "center",
+																padding: 8,
+																borderRadius: 6,
+																backgroundColor: colors.surface,
+																opacity:
+																	index >= item.options.length - 1 ? 0.35 : 1,
+															}}
+														>
+															<Text style={ink}>{">"}</Text>
+														</Pressable>
+													) : null}
+												</View>
+											) : null}
+											<TextInput
+												value={typed}
+												placeholder={t("code.customResponse")}
+												placeholderTextColor={colors.placeholder}
+												accessibilityLabel={t("code.customResponse")}
+												autoComplete="off"
+												enterKeyHint="send"
+												onChangeText={(text) =>
+													setCustom((current) => ({
 														...current,
-														[item.question]: option,
+														[item.question]: text,
 													}))
 												}
-											>
-												<Text
-													style={
-														answers[item.question] === option ? ink : muted
-													}
-												>
-													{option}
-												</Text>
-											</Pressable>
-										))}
-									</View>
-								))}
+												onSubmitEditing={() => answerQuestion(false)}
+												style={{
+													marginTop: 8,
+													borderWidth: 1,
+													borderColor: colors.border,
+													borderRadius: 6,
+													paddingHorizontal: 10,
+													paddingVertical: 8,
+													color: colors.text,
+												}}
+											/>
+										</View>
+									);
+								})}
 								<Pressable
 									disabled={question.prompts.some(
-										(item) => !answers[item.question],
+										(item) => !promptAnswer(item),
 									)}
 									onPress={() => answerQuestion(false)}
 								>

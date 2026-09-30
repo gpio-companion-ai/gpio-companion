@@ -1947,18 +1947,59 @@ export function codeScrollKey(
 	);
 }
 
-export function pruneCodeAnswers(
-	answers: Record<string, string>,
+export function pruneCodePromptState<T>(
+	state: Record<string, T>,
 	prompts: readonly { question: string }[],
-): Record<string, string> {
+): Record<string, T> {
 	const keep = new Set(prompts.map((item) => item.question));
-	const next: Record<string, string> = {};
-	for (const [key, value] of Object.entries(answers)) {
-		if (keep.has(key)) {
+	const next: Record<string, T> = {};
+	for (const [key, value] of Object.entries(state)) {
+		if (keep.has(key) && value !== undefined) {
 			next[key] = value;
 		}
 	}
 	return next;
+}
+
+export function pruneCodeAnswers(
+	answers: Record<string, string>,
+	prompts: readonly { question: string }[],
+): Record<string, string> {
+	return pruneCodePromptState(answers, prompts);
+}
+
+export function codeQuestionSlideIndex(
+	index: number,
+	count: number,
+	delta: number,
+): number {
+	if (!Number.isFinite(count) || count <= 1) {
+		return 0;
+	}
+	const base = Number.isFinite(index) ? Math.trunc(index) : 0;
+	const step = Number.isFinite(delta) ? Math.trunc(delta) : 0;
+	return Math.min(count - 1, Math.max(0, base + step));
+}
+
+export function codeQuestionChoice(
+	options: readonly string[],
+	index: number,
+): string {
+	if (options.length === 0) {
+		return "";
+	}
+	return options[codeQuestionSlideIndex(index, options.length, 0)] ?? "";
+}
+
+export function codeQuestionAnswer(
+	option: string | undefined,
+	custom: string,
+): string {
+	const typed = custom.trim();
+	if (typed) {
+		return typed;
+	}
+	return option?.trim() ?? "";
 }
 
 export function clearCodeAnswers(): Record<string, string> {
