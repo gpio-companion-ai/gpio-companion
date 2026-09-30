@@ -1,8 +1,8 @@
 import { router } from "expo-router";
 import {
 	applyOpencodeEvent,
-	clearCodeAnswers,
 	CODE_DEFAULT_MODEL,
+	clearCodeAnswers,
 	codeNavBack,
 	codeRepoLabel,
 	codeRepoOwner,
@@ -20,6 +20,7 @@ import {
 	type OpencodePermissionResponse,
 	type OpencodeTurn,
 	type OpencodeView,
+	opencodeEventResumeUrl,
 	opencodeModelChoices,
 	opencodePromptFields,
 	opencodeSessionBucket,
@@ -28,13 +29,13 @@ import {
 	opencodeStoredModel,
 	opencodeToolStacks,
 	opencodeTurns,
+	parseOpencodeEventFrame,
 	parseOpencodeMarkdown,
 	pendingOpencodeTurn,
 	pruneCodeAnswers,
 	pushCodeNav,
 	type ReasoningEffort,
 	readCodeNav,
-	readOpencodeEventStream,
 	replaceCodeNav,
 	settleOpencodeTurns,
 } from "gpio-companion-opencode";
@@ -59,7 +60,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ProjectFiles from "../components/ProjectFiles.tsx";
-import { listProjects, opencodeCall, openOpencodeEvents } from "../lib/api.ts";
+import { listProjects, opencodeCall, signOpencodeLive } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
@@ -577,49 +578,72 @@ export default function Code() {
 		if (!token || !selected || !repo) {
 			return;
 		}
-		const controller = new AbortController();
+		let socket: WebSocket | null = null;
 		let lastEventId = "";
 		let stopped = false;
 		async function loop() {
 			while (!stopped) {
+				let opened = false;
 				try {
-					const response = await openOpencodeEvents(
-						token,
-						selected,
-						repo,
-						lastEventId,
-						controller.signal,
-					);
-					setReconnecting(false);
-					await readOpencodeEventStream(
-						response,
-						(data, id) => {
-							if (id) {
-								lastEventId = id;
+					const signed = await signOpencodeLive(token, selected, repo);
+					if (stopped) {
+						return;
+					}
+					const url = opencodeEventResumeUrl(signed.wsUrl, lastEventId);
+					await new Promise<void>((resolve) => {
+						const next = new WebSocket(url);
+						socket = next;
+						next.addEventListener("open", () => {
+							opened = true;
+							if (!stopped) {
+								setReconnecting(false);
 							}
-							setView((current) => applyOpencodeEvent(current, data));
-						},
-						controller.signal,
-					);
+						});
+						next.addEventListener("message", (event) => {
+							if (socket !== next) {
+								return;
+							}
+							const frame = parseOpencodeEventFrame(String(event.data ?? ""));
+							if (!frame) {
+								return;
+							}
+							if (frame.id) {
+								lastEventId = frame.id;
+							}
+							setView((current) => applyOpencodeEvent(current, frame.data));
+						});
+						next.addEventListener("close", () => {
+							if (socket === next) {
+								resolve();
+							}
+						});
+						next.addEventListener("error", () => {
+							if (!opened) {
+								setError("opencode event stream unavailable");
+							}
+							next.close();
+						});
+					});
 				} catch (caught) {
-					if (stopped || controller.signal.aborted) {
+					if (stopped) {
 						return;
 					}
 					setReconnecting(true);
-					if (caught instanceof Error && caught.name !== "AbortError") {
+					if (caught instanceof Error) {
 						setError(caught.message);
 					}
 				}
 				if (stopped) {
 					return;
 				}
+				setReconnecting(true);
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 			}
 		}
 		void loop();
 		return () => {
 			stopped = true;
-			controller.abort();
+			socket?.close();
 		};
 	}, [token, selected, repo]);
 
@@ -768,7 +792,11 @@ export default function Code() {
 			),
 		}))
 		.filter((group) => group.sessions.length > 0);
-	const title = codeSessionTitle(view.sessions, view.sessionID, t("code.sessions"));
+	const title = codeSessionTitle(
+		view.sessions,
+		view.sessionID,
+		t("code.sessions"),
+	);
 	const owner = codeRepoOwner(repos, repo);
 	const permission = view.permissions.find(
 		(item) => item.sessionID === view.sessionID,
@@ -956,7 +984,10 @@ export default function Code() {
 												{item.name}
 											</Text>
 											{item.owner ? (
-												<Text style={[muted, { fontSize: 11 }]} numberOfLines={1}>
+												<Text
+													style={[muted, { fontSize: 11 }]}
+													numberOfLines={1}
+												>
 													{item.owner}
 												</Text>
 											) : null}
@@ -1006,7 +1037,9 @@ export default function Code() {
 						</View>
 						<Text style={[muted, { paddingHorizontal: 12, fontSize: 12 }]}>
 							{reconnecting ? t("code.reconnecting") : t("code.live")}
-							{needle ? `  ${t("code.resultCount", { n: visible.length })}` : ""}
+							{needle
+								? `  ${t("code.resultCount", { n: visible.length })}`
+								: ""}
 						</Text>
 						{error ? (
 							<Text style={{ color: colors.danger, padding: 12 }}>{error}</Text>

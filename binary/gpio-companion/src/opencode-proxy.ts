@@ -1,8 +1,12 @@
 import { chmod } from "node:fs/promises";
 import {
 	OPENCODE_SERVER_USERNAME,
+	opencodeEventFrame,
+	opencodeEventLastId,
+	opencodeProjectDirectory,
 	opencodeProxyTarget,
 	opencodeUpstreamUrl,
+	parseOpencodeSse,
 } from "gpio-companion";
 import {
 	dashboardOrigin,
@@ -164,6 +168,69 @@ export async function proxyOpencodeRequest(options: {
 		status: upstream.status,
 		headers: out,
 	});
+}
+
+export async function bridgeOpencodeEvents(options: {
+	repo: string;
+	projectsDir: string;
+	lastEventId?: string;
+	upstream?: string;
+	auth: OpencodeServerAuth;
+	fetchImpl?: FetchLike;
+	signal: AbortSignal;
+	send: (frame: string) => void;
+}): Promise<void> {
+	const directory = opencodeProjectDirectory(options.projectsDir, options.repo);
+	const search = `?${new URLSearchParams({ directory }).toString()}`;
+	const target = opencodeProxyTarget(
+		"/v1/opencode/event",
+		search,
+		options.upstream,
+	);
+	const headers = new Headers();
+	headers.set("authorization", opencodeBasicAuthorization(options.auth));
+	headers.set("accept", "text/event-stream");
+	headers.set("x-opencode-directory", directory);
+	const last = opencodeEventLastId(options.lastEventId);
+	if (last) {
+		headers.set("last-event-id", last);
+	}
+	const fetcher = options.fetchImpl ?? fetch;
+	let upstream: Response;
+	try {
+		upstream = await fetcher(target, {
+			method: "GET",
+			headers,
+			signal: options.signal,
+		});
+	} catch {
+		if (options.signal.aborted) {
+			return;
+		}
+		throw new Error("opencode server unavailable");
+	}
+	if (!upstream.ok || !upstream.body) {
+		throw new Error("opencode event stream unavailable");
+	}
+	const reader = upstream.body.getReader();
+	const decoder = new TextDecoder();
+	let buffer = "";
+	try {
+		while (!options.signal.aborted) {
+			const next = await reader.read();
+			if (next.done) {
+				break;
+			}
+			buffer += decoder.decode(next.value, { stream: true });
+			const parsed = parseOpencodeSse(buffer);
+			buffer = parsed.rest;
+			for (const event of parsed.events) {
+				options.send(opencodeEventFrame(event.id, event.data));
+			}
+		}
+	} finally {
+		await reader.cancel().catch(() => undefined);
+	}
 }
 
 export async function restartOpencodeUserService(

@@ -785,35 +785,11 @@ export function opencodeCall(body: {
 	return apiRequest<unknown>("POST", "/api/mobile/opencode", body);
 }
 
-export async function openOpencodeEvents(
-	uuid: string,
-	repo: string,
-	lastEventId: string,
-	signal: AbortSignal,
-) {
-	const token = await authToken();
-	if (!token) {
-		throw new Error("sign in first");
-	}
-	const params = new URLSearchParams({ uuid, repo });
-	const response = await fetch(
-		`${DASHBOARD_URL}/api/mobile/opencode/event?${params}`,
-		{
-			headers: {
-				accept: "text/event-stream",
-				authorization: `Bearer ${token}`,
-				...(lastEventId ? { "last-event-id": lastEventId } : {}),
-			},
-			signal,
-		},
-	);
-	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as {
-			error?: string;
-		} | null;
-		throw new Error(body?.error || "opencode event stream unavailable");
-	}
-	return response;
+export function signOpencodeLive(uuid: string, repo: string) {
+	return apiRequest<{ wsUrl: string }>("POST", "/api/mobile/opencode/live", {
+		uuid,
+		repo,
+	});
 }
 
 export function listNotifications() {

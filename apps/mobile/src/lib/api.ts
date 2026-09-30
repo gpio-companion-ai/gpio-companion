@@ -422,32 +422,11 @@ export function opencodeCall(
 	});
 }
 
-export async function openOpencodeEvents(
-	token: string,
-	uuid: string,
-	repo: string,
-	lastEventId: string,
-	signal: AbortSignal,
-) {
-	const params = new URLSearchParams({ uuid, repo });
-	const response = await fetch(
-		`${dashboardUrl}/api/mobile/opencode/event?${params}`,
-		{
-			headers: {
-				accept: "text/event-stream",
-				authorization: `Bearer ${token}`,
-				...(lastEventId ? { "last-event-id": lastEventId } : {}),
-			},
-			signal,
-		},
-	);
-	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as {
-			error?: string;
-		} | null;
-		throw new Error(body?.error || "opencode event stream unavailable");
-	}
-	return response;
+export function signOpencodeLive(token: string, uuid: string, repo: string) {
+	return request<{ wsUrl: string }>(token, "/api/mobile/opencode/live", {
+		method: "POST",
+		body: JSON.stringify({ uuid, repo }),
+	});
 }
 
 export function getCredits(token: string) {

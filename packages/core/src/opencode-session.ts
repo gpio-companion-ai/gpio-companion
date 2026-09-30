@@ -3,9 +3,12 @@ import {
 	opencodeProviderModels,
 	type ReasoningEffort,
 } from "./ai-pricing.ts";
+import { debugAuthQuery } from "./debug.ts";
+import type { DeviceAuthHeaders } from "./device-auth.ts";
 import { isOpencodeProxyPath, OPENCODE_PROXY_PATH } from "./opencode-server.ts";
 
 export const OPENCODE_REPO_HEADER = "x-gpio-opencode-repo";
+export const OPENCODE_EVENT_PREFIX = "/v1/opencode/event/";
 export const OPENCODE_PROVIDER_ID = "gpio-companion";
 export const OPENCODE_MODEL_KEY = "gpio-companion-code-model";
 export const OPENCODE_EFFORT_KEY = "gpio-companion-code-effort";
@@ -346,6 +349,93 @@ export function opencodeProjectDirectory(root: string, repo: string): string {
 		throw new Error("invalid project");
 	}
 	return `${base}/${name}`;
+}
+
+export function opencodeEventPath(repo: string): string {
+	return `${OPENCODE_EVENT_PREFIX}${encodeURIComponent(opencodeRepoName(repo))}`;
+}
+
+export function parseOpencodeEventPath(path: string): string | null {
+	const normalized = path.replace(/\/+$/, "") || "/";
+	if (!normalized.startsWith(OPENCODE_EVENT_PREFIX)) {
+		return null;
+	}
+	const raw = normalized.slice(OPENCODE_EVENT_PREFIX.length);
+	if (!raw || raw.includes("/")) {
+		return null;
+	}
+	try {
+		return opencodeRepoName(decodeURIComponent(raw));
+	} catch {
+		return null;
+	}
+}
+
+export function opencodeEventLastId(raw: string | null | undefined): string {
+	const id = (raw ?? "").trim();
+	if (!id || id.length > 200 || /[\r\n\0]/.test(id)) {
+		return "";
+	}
+	return id;
+}
+
+export function opencodeEventWsUrl(deviceUrl: string, repo: string): string {
+	const origin = deviceUrl.replace(/\/+$/, "");
+	const path = opencodeEventPath(repo);
+	if (origin.startsWith("https://")) {
+		return `wss://${origin.slice("https://".length)}${path}`;
+	}
+	if (origin.startsWith("http://")) {
+		return `ws://${origin.slice("http://".length)}${path}`;
+	}
+	return `wss://${origin}${path}`;
+}
+
+export function opencodeEventWsConnectUrl(
+	deviceUrl: string,
+	repo: string,
+	headers: DeviceAuthHeaders,
+): string {
+	return `${opencodeEventWsUrl(deviceUrl, repo)}?${debugAuthQuery(headers)}`;
+}
+
+export function opencodeEventResumeUrl(
+	wsUrl: string,
+	lastEventId: string,
+): string {
+	const last = opencodeEventLastId(lastEventId);
+	if (!last) {
+		return wsUrl;
+	}
+	const url = new URL(wsUrl);
+	url.searchParams.set("last", last);
+	return url.toString();
+}
+
+export function opencodeEventFrame(id: string, data: unknown): string {
+	return JSON.stringify({ id, data });
+}
+
+export function parseOpencodeEventFrame(
+	raw: string,
+): { id: string; data: unknown } | null {
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return null;
+	}
+	if (!("data" in parsed)) {
+		return null;
+	}
+	const record = parsed as { id?: unknown; data: unknown };
+	return {
+		id: typeof record.id === "string" ? record.id : "",
+		data: record.data,
+	};
 }
 
 function opencodeId(raw: string | undefined, label: string): string {
@@ -1258,9 +1348,7 @@ export function filterCodeSessions(
 	if (!needle) {
 		return [...sessions];
 	}
-	return sessions.filter((item) =>
-		item.title.toLowerCase().includes(needle),
-	);
+	return sessions.filter((item) => item.title.toLowerCase().includes(needle));
 }
 
 export function codeScrollKey(

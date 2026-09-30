@@ -78,6 +78,7 @@ The binary also reads `/etc/gpio-companion/device-auth.json` (`keyId`, `publicKe
 | `GET /v1/status`, `GET /v1/logs`, pairing, config, secrets, github, **wifi**, **opencode** | Ed25519 dashboard signature (60s skew once NTP/clock is trusted; nonce replay list while offline) |
 | `POST /v1/pairing/claim` | signature **and** pairing UUID + key |
 | `GET /v1/opencode/global/health` | signature |
+| `GET /v1/opencode/event/<repo>` websocket | signature query, Origin allowlist; bridges loopback SSE |
 
 Signature headers: `X-Gpio-Key-Id`, `X-Gpio-Timestamp`, `X-Gpio-Nonce`, `X-Gpio-Signature`. 60s skew. Canonical version `gpio-companion-device-v1`.
 

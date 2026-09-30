@@ -6,6 +6,11 @@ import {
 	codeNavHref,
 	emptyOpencodeView,
 	opencodeClientRequest,
+	opencodeEventFrame,
+	opencodeEventLastId,
+	opencodeEventPath,
+	opencodeEventResumeUrl,
+	opencodeEventWsConnectUrl,
 	opencodeModelChoices,
 	opencodeProjectDirectory,
 	opencodePromptFields,
@@ -17,6 +22,8 @@ import {
 	opencodeStoredModel,
 	opencodeToolStacks,
 	opencodeTurns,
+	parseOpencodeEventFrame,
+	parseOpencodeEventPath,
 	parseOpencodeMarkdown,
 	parseOpencodeSse,
 	pendingOpencodeTurn,
@@ -63,10 +70,47 @@ describe("opencode session client", () => {
 		);
 	});
 
+	test("signs the event socket path and keeps the resume cursor out of it", () => {
+		expect(opencodeEventPath("blink-led")).toBe("/v1/opencode/event/blink-led");
+		expect(parseOpencodeEventPath("/v1/opencode/event/blink-led")).toBe(
+			"blink-led",
+		);
+		expect(parseOpencodeEventPath("/v1/opencode/event")).toBeNull();
+		expect(parseOpencodeEventPath("/v1/opencode/event/../etc")).toBeNull();
+		expect(opencodeEventLastId("evt_1")).toBe("evt_1");
+		expect(opencodeEventLastId("bad\nid")).toBe("");
+		const headers = {
+			"X-Gpio-Key-Id": "k",
+			"X-Gpio-Timestamp": "1",
+			"X-Gpio-Nonce": "n",
+			"X-Gpio-Signature": "sig",
+		};
+		const wsUrl = opencodeEventWsConnectUrl(
+			"https://api-abc.gpio-companion.com",
+			"blink-led",
+			headers,
+		);
+		expect(
+			wsUrl.startsWith(
+				"wss://api-abc.gpio-companion.com/v1/opencode/event/blink-led?",
+			),
+		).toBe(true);
+		expect(wsUrl).not.toContain("last=");
+		expect(opencodeEventResumeUrl(wsUrl, "evt_9")).toContain("last=evt_9");
+		expect(opencodeEventResumeUrl(wsUrl, "bad\nid")).toBe(wsUrl);
+		const frame = opencodeEventFrame("evt_9", { type: "session.idle" });
+		expect(parseOpencodeEventFrame(frame)).toEqual({
+			id: "evt_9",
+			data: { type: "session.idle" },
+		});
+		expect(parseOpencodeEventFrame("nope")).toBeNull();
+	});
+
 	test("allowlists session, event, and permission routes only", () => {
 		expect(opencodeProxyAllows("/v1/opencode/session")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/session/ses_1")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/event")).toBe(true);
+		expect(opencodeProxyAllows("/v1/opencode/event/demo")).toBe(false);
 		expect(
 			opencodeProxyAllows("/v1/opencode/session/ses_1/permissions/per_1"),
 		).toBe(true);

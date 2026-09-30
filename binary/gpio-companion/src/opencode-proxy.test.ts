@@ -2,7 +2,12 @@ import { afterAll, describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { generateDeviceKeyPair, signDeviceRequest } from "gpio-companion";
+import {
+	debugAuthQuery,
+	generateDeviceKeyPair,
+	opencodeEventPath,
+	signDeviceRequest,
+} from "gpio-companion";
 import { memoryArduinoProxy } from "./arduino-proxy.ts";
 import { memoryFlash } from "./flash.ts";
 import { createGpioController, memoryGpioBackend } from "./gpio.ts";
@@ -21,7 +26,7 @@ const dir = await mkdtemp(join(tmpdir(), "gpio-oc-proxy-"));
 const envPath = join(dir, "opencode-server.env");
 const pairingPath = join(dir, "pairing.json");
 const keys = await generateDeviceKeyPair();
-const seen: { url: string; authorization: string }[] = [];
+const seen: { url: string; authorization: string; lastEventId: string }[] = [];
 const credentialHits: string[] = [];
 let credentialsOk = true;
 let revoked = 0;
@@ -83,8 +88,12 @@ const server = startDeviceApi({
 	},
 	opencodeFetch: async (input, init) => {
 		const url = String(input);
-		const authorization = new Headers(init?.headers).get("authorization") ?? "";
-		seen.push({ url, authorization });
+		const headers = new Headers(init?.headers);
+		seen.push({
+			url,
+			authorization: headers.get("authorization") ?? "",
+			lastEventId: headers.get("last-event-id") ?? "",
+		});
 		if (new URL(url).pathname.endsWith("/event")) {
 			return new Response("data: hi\n\n", {
 				headers: {
@@ -165,6 +174,70 @@ describe("signed opencode proxy", () => {
 		expect(seen[0]?.url).toBe(
 			"http://127.0.0.1:4096/event?directory=%2Fhome%2Fcompanion%2Fprojects%2Fdemo",
 		);
+	});
+
+	test("streams events over the companion websocket", async () => {
+		seen.length = 0;
+		const path = opencodeEventPath("demo");
+		const headers = await signDeviceRequest({
+			privateKeyPem: keys.privateKeyPem,
+			keyId: keys.keyId,
+			method: "GET",
+			path,
+		});
+		const frames: string[] = [];
+		const ws = new WebSocket(
+			`${String(server.url).replace(/^http/, "ws")}${path.slice(1)}?${debugAuthQuery(headers)}&last=evt_9`,
+		);
+		const got = new Promise<void>((resolve, reject) => {
+			const timer = setTimeout(() => reject(new Error("no frame")), 2000);
+			ws.addEventListener("message", (event) => {
+				frames.push(String(event.data));
+				clearTimeout(timer);
+				resolve();
+			});
+			ws.addEventListener("error", () => {
+				clearTimeout(timer);
+				reject(new Error("ws error"));
+			});
+		});
+		await got;
+		ws.close();
+		expect(JSON.parse(frames[0] ?? "")).toEqual({
+			id: "",
+			data: { type: "text", text: "hi" },
+		});
+		expect(seen[0]?.url).toBe(
+			"http://127.0.0.1:4096/event?directory=%2Fhome%2Fcompanion%2Fprojects%2Fdemo",
+		);
+		expect(seen[0]?.authorization.startsWith("Basic ")).toBe(true);
+		expect(seen[0]?.lastEventId).toBe("evt_9");
+	});
+
+	test("revoked event websocket does not upgrade", async () => {
+		credentialsOk = false;
+		const path = opencodeEventPath("demo");
+		const headers = await signDeviceRequest({
+			privateKeyPem: keys.privateKeyPem,
+			keyId: keys.keyId,
+			method: "GET",
+			path,
+		});
+		const denied = await fetch(
+			`${server.url}${path.slice(1)}?${debugAuthQuery(headers)}`,
+			{
+				headers: { upgrade: "websocket", origin: "https://gpio-companion.com" },
+			},
+		);
+		credentialsOk = true;
+		expect(denied.status).toBe(403);
+	});
+
+	test("unsigned event websocket is 401", async () => {
+		const missing = await fetch(`${server.url}v1/opencode/event/demo`, {
+			headers: { upgrade: "websocket" },
+		});
+		expect(missing.status).toBe(401);
 	});
 
 	test("does not proxy file or shell routes", async () => {

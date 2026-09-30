@@ -47,6 +47,7 @@ import {
 	mergeDeviceSecrets,
 	type NetworkStatus,
 	OPENCODE_REPO_HEADER,
+	opencodeEventLastId,
 	PROJECTS_PUSH_PATH,
 	PROJECTS_REMOVE_PATH,
 	PROJECTS_SYNC_PATH,
@@ -59,6 +60,7 @@ import {
 	parseDeviceSecrets,
 	parseFlashProxyPut,
 	parseGpioWsCommand,
+	parseOpencodeEventPath,
 	parsePairingClaim,
 	parsePairingUnpair,
 	parseProjectPushPut,
@@ -121,6 +123,7 @@ import { readJournalLogs } from "./logs.ts";
 import { readNetworkStatus } from "./network.ts";
 import {
 	assertOpencodeProxyGranted,
+	bridgeOpencodeEvents,
 	DEFAULT_OPENCODE_SERVER_ENV,
 	proxyOpencodeRequest,
 	readOpencodeServerAuth,
@@ -226,8 +229,15 @@ export type DeviceRequestExtras = {
 };
 
 type TunnelWsData = {
-	stream: "debug" | "gpio" | "console" | "files";
+	stream: "debug" | "gpio" | "console" | "files" | "opencode";
 	repo?: string;
+	lastEventId?: string;
+};
+
+type OpencodeSocket = {
+	send(data: string): void;
+	close(): void;
+	data: TunnelWsData;
 };
 
 export function startDeviceApi(options: ServeOptions) {
@@ -249,6 +259,50 @@ export function startDeviceApi(options: ServeOptions) {
 	});
 	const consoleHub = options.console ?? createConsoleHub();
 	const fileHub = createBoardFileHub(options.projectsDir ?? projectsRoot());
+	const opencodeStops = new WeakMap<object, AbortController>();
+	const opencodeEnvPath =
+		options.opencodeEnvPath ??
+		process.env.GPIO_COMPANION_OPENCODE_SERVER_ENV ??
+		DEFAULT_OPENCODE_SERVER_ENV;
+
+	function startOpencodeBridge(ws: OpencodeSocket) {
+		const controller = new AbortController();
+		opencodeStops.set(ws, controller);
+		const repo = ws.data.repo ?? "";
+		void (async () => {
+			try {
+				const auth = await readOpencodeServerAuth(opencodeEnvPath);
+				await bridgeOpencodeEvents({
+					repo,
+					projectsDir: options.projectsDir ?? projectsRoot(),
+					lastEventId: ws.data.lastEventId,
+					auth,
+					upstream:
+						options.opencodeUpstream ?? process.env.GPIO_COMPANION_OPENCODE_URL,
+					fetchImpl: options.opencodeFetch,
+					signal: controller.signal,
+					send: (frame) => {
+						ws.send(frame);
+					},
+				});
+			} catch {
+				// upstream ended or the socket closed
+			} finally {
+				if (!controller.signal.aborted) {
+					try {
+						ws.close();
+					} catch {
+						// already closed
+					}
+				}
+			}
+		})();
+	}
+
+	function stopOpencodeBridge(ws: object) {
+		opencodeStops.get(ws)?.abort();
+		opencodeStops.delete(ws);
+	}
 	const jobs: { run?: RunController; verify?: VerifyController } = {};
 	const run =
 		options.run ??
@@ -349,6 +403,50 @@ export function startDeviceApi(options: ServeOptions) {
 			const upgrade = request.headers.get("upgrade")?.toLowerCase() ?? "";
 			const watchRepo =
 				request.method === "GET" ? parseBoardFileWatchPath(path) : null;
+			const eventRepo =
+				request.method === "GET" ? parseOpencodeEventPath(path) : null;
+			if (eventRepo && upgrade === "websocket") {
+				return (
+					(await acceptSignedUpgrade(request, server, {
+						path,
+						stream: "opencode",
+						repo: eventRepo,
+						lastEventId: opencodeEventLastId(url.searchParams.get("last")),
+						label: "opencode",
+						allowOrigin: (origin) => isAllowedDebugOrigin(origin, dashboardUrl),
+						deviceAuth: options.deviceAuth,
+						clock,
+						nonces,
+						prepare: async () => {
+							const pairing = await options.pairing.read();
+							try {
+								await assertOpencodeProxyGranted({
+									claimed: pairing.claimed,
+									uuid: pairing.uuid,
+									key: pairing.key,
+									origin: dashboardUrl,
+									fetchImpl: options.fetchImpl,
+								});
+							} catch (error) {
+								const message =
+									error instanceof Error
+										? error.message
+										: "opencode proxy revoked";
+								return Response.json({ error: message }, { status: 403 });
+							}
+							try {
+								await readOpencodeServerAuth(opencodeEnvPath);
+							} catch (error) {
+								const message =
+									error instanceof Error
+										? error.message
+										: "opencode server password is not set";
+								return Response.json({ error: message }, { status: 503 });
+							}
+						},
+					})) ?? (undefined as never)
+				);
+			}
 			if (watchRepo && upgrade === "websocket") {
 				return (
 					(await acceptSignedUpgrade(request, server, {
@@ -368,7 +466,8 @@ export function startDeviceApi(options: ServeOptions) {
 				path !== DEBUG_PATH &&
 				path !== GPIO_PATH &&
 				path !== CONSOLE_PATH &&
-				!watchRepo
+				!watchRepo &&
+				!eventRepo
 			) {
 				console.error(`gpio-companion debug: websocket to ${path}`);
 			}
@@ -488,6 +587,10 @@ export function startDeviceApi(options: ServeOptions) {
 					}
 					return;
 				}
+				if (ws.data.stream === "opencode") {
+					startOpencodeBridge(ws);
+					return;
+				}
 				debug.add(ws);
 			},
 			message(ws, message) {
@@ -514,6 +617,10 @@ export function startDeviceApi(options: ServeOptions) {
 				}
 				if (ws.data.stream === "files") {
 					fileHub.remove(ws);
+					return;
+				}
+				if (ws.data.stream === "opencode") {
+					stopOpencodeBridge(ws);
 					return;
 				}
 				debug.remove(ws);
@@ -1005,11 +1112,13 @@ async function acceptSignedUpgrade(
 		path: string;
 		stream: TunnelWsData["stream"];
 		repo?: string;
+		lastEventId?: string;
 		label: string;
 		allowOrigin: (origin: string) => boolean;
 		deviceAuth: DeviceAuthConfig;
 		clock: ClockGate;
 		nonces: NonceGate;
+		prepare?: () => Promise<Response | undefined>;
 	},
 ): Promise<Response | undefined> {
 	const origin = request.headers.get("origin") ?? "";
@@ -1048,6 +1157,12 @@ async function acceptSignedUpgrade(
 		});
 		options.nonces.consume(verified.nonce);
 		await options.clock.sync(verified.issued, verified.clockBehind);
+		if (options.prepare) {
+			const blocked = await options.prepare();
+			if (blocked) {
+				return blocked;
+			}
+		}
 	} catch (error) {
 		if (error instanceof DeviceAuthError) {
 			console.error(`gpio-companion ${options.label}: ${error.message}`);
@@ -1057,7 +1172,11 @@ async function acceptSignedUpgrade(
 	}
 	if (
 		server.upgrade(request, {
-			data: { stream: options.stream, repo: options.repo },
+			data: {
+				stream: options.stream,
+				repo: options.repo,
+				lastEventId: options.lastEventId,
+			},
 		})
 	) {
 		return undefined;

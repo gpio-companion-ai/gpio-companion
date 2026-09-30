@@ -3,6 +3,8 @@ import {
 	OPENCODE_REPO_HEADER,
 	type OpencodeClientCall,
 	opencodeClientRequest,
+	opencodeEventPath,
+	opencodeEventWsConnectUrl,
 	opencodeProxyAllows,
 	opencodeRepoName,
 } from "gpio-companion";
@@ -10,6 +12,7 @@ import type { SignedInIdentity } from "./auth/identity.ts";
 import {
 	type DeviceSigningEnv,
 	readDeviceJson,
+	signDeviceHeaders,
 	signedDeviceFetch,
 } from "./device-api.ts";
 import { requireAccessibleDevice } from "./pairing-store.ts";
@@ -67,40 +70,15 @@ export async function callOpencode(
 	return readDeviceJson(response);
 }
 
-export async function openOpencodeEvents(options: {
-	env: DeviceSigningEnv;
-	deviceUrl: string;
-	repo: string;
-	lastEventId?: string;
-}): Promise<Response> {
-	const path = `${OPENCODE_PROXY_PATH}/event`;
-	const headers: Record<string, string> = {
-		accept: "text/event-stream",
-		[OPENCODE_REPO_HEADER]: opencodeRepoName(options.repo),
+export async function signOpencodeEventLive(
+	env: PagesEnv,
+	identity: SignedInIdentity,
+	input: { uuid: string; repo: string },
+): Promise<{ wsUrl: string }> {
+	const device = await ownedOpencodeDevice(env, identity, input.uuid);
+	const path = opencodeEventPath(input.repo);
+	const headers = await signDeviceHeaders(env, "GET", path);
+	return {
+		wsUrl: opencodeEventWsConnectUrl(device.deviceUrl, input.repo, headers),
 	};
-	if (options.lastEventId?.trim()) {
-		headers["last-event-id"] = options.lastEventId.trim();
-	}
-	const response = await signedDeviceFetch(
-		options.env,
-		options.deviceUrl,
-		"GET",
-		path,
-		undefined,
-		{ headers },
-	);
-	if (!response.ok) {
-		await readDeviceJson(response);
-	}
-	if (!response.body) {
-		throw new Error("opencode event stream unavailable");
-	}
-	return new Response(response.body, {
-		status: 200,
-		headers: {
-			"content-type": "text/event-stream",
-			"cache-control": "no-cache, no-transform",
-			"x-accel-buffering": "no",
-		},
-	});
 }
