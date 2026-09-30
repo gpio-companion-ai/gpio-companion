@@ -26,6 +26,8 @@ export const en = {
 		action: {
 			openNavigation: "Open navigation",
 			closeNavigation: "Close navigation",
+			collapseContext: "Collapse context",
+			expandContext: "Show context",
 		},
 		rail: {
 			label: "Primary navigation",

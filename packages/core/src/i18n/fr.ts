@@ -28,6 +28,8 @@ export const fr = {
 		action: {
 			openNavigation: "Ouvrir la navigation",
 			closeNavigation: "Fermer la navigation",
+			collapseContext: "Réduire le contexte",
+			expandContext: "Afficher le contexte",
 		},
 		rail: {
 			label: "Navigation principale",

@@ -38,9 +38,12 @@ import {
 	pushCodeNav,
 	type ReasoningEffort,
 	readCodeNav,
+	readStoredOpencodePrompts,
+	rememberOpencodePrompt,
 	replaceCodeNav,
 	restoreOpencodeViewPrompts,
 	settleOpencodeTurns,
+	storeOpencodePrompts,
 } from "gpio-companion-opencode";
 import {
 	Fragment,
@@ -500,9 +503,16 @@ export default function Code() {
 			const next = readCodeNav(window.location.search);
 			setMode(next.mode);
 			if (next.sessionID) {
+				const stored = readStoredOpencodePrompts(next.sessionID);
 				setView((current) => ({
 					...current,
 					sessionID: next.sessionID,
+					questions: current.questions.length
+						? current.questions
+						: stored.questions,
+					permissions: current.permissions.length
+						? current.permissions
+						: stored.permissions,
 					turns: current.sessionID === next.sessionID ? current.turns : [],
 				}));
 			}
@@ -530,12 +540,16 @@ export default function Code() {
 			return;
 		}
 		let cancelled = false;
+		const sessionID =
+			readCodeNav(window.location.search).mode === "session"
+				? readCodeNav(window.location.search).sessionID
+				: "";
+		const stored = readStoredOpencodePrompts(sessionID);
 		setView({
 			...emptyOpencodeView(),
-			sessionID:
-				readCodeNav(window.location.search).mode === "session"
-					? readCodeNav(window.location.search).sessionID
-					: "",
+			sessionID,
+			questions: stored.questions,
+			permissions: stored.permissions,
 		});
 		setSessionsLoading(true);
 		void opencodeCall(token, { uuid: selected, repo, op: "sessions" })
@@ -618,14 +632,18 @@ export default function Code() {
 			if (cancelled) {
 				return;
 			}
-			setView((current) =>
-				restoreOpencodeViewPrompts(current, sessionID, {
+			setView((current) => {
+				const next = restoreOpencodeViewPrompts(current, sessionID, {
 					questions,
 					permissions,
 					stale: prompts.current.epoch !== started,
 					dropped: prompts.current.dropped,
-				}),
-			);
+				});
+				if (questions !== undefined || permissions !== undefined) {
+					storeOpencodePrompts(sessionID, next.questions, next.permissions);
+				}
+				return next;
+			});
 		});
 		return () => {
 			cancelled = true;
@@ -669,6 +687,7 @@ export default function Code() {
 							if (frame.id) {
 								lastEventId = frame.id;
 							}
+							rememberOpencodePrompt(frame.data);
 							noteOpencodePrompt(frame.data, prompts.current);
 							setView((current) => applyOpencodeEvent(current, frame.data));
 						});

@@ -727,13 +727,17 @@ export {
 	pendingOpencodeTurn,
 	pruneCodeAnswers,
 	pushCodeNav,
+	questionStillPending,
 	readCodeNav,
 	readOpencodeEventStream,
+	readStoredOpencodePrompts,
+	rememberOpencodePrompt,
 	replaceCodeNav,
 	restoreOpencodePrompts,
 	restoreOpencodeViewPrompts,
 	scopeOpencodeSearch,
 	settleOpencodeTurns,
+	storeOpencodePrompts,
 } from "./opencode-session.ts";
 export {
 	emptyPairingState,

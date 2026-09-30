@@ -27,13 +27,19 @@ type FocusRegion = "primary" | "secondary";
 type DockTab = "console" | "gpio" | "flash" | "problems";
 type ProfileSection = "account" | "language" | "keys" | "credits" | "address";
 
-function DeckIcon({ name }: { name: RailPane | "menu" | "search" | "theme" }) {
+function DeckIcon({
+	name,
+}: {
+	name: RailPane | "menu" | "search" | "theme" | "collapse" | "expand";
+}) {
 	const paths = {
 		work: "M4 7h16v12H4zM9 7V4h6v3",
 		fleet: "M5 5h14v14H5zM8 9h8M8 13h5",
 		code: "M7 4h10v4h3v12H4V8h3zM9 12h6M9 16h4",
 		you: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0",
 		menu: "M4 7h16M4 12h16M4 17h16",
+		collapse: "M15 6 9 12l6 6",
+		expand: "M9 6l6 6-6 6",
 		search: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14zm5-2 4 4",
 		theme:
 			"M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M5.6 18.4 7 17M17 7l1.4-1.4M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z",
@@ -68,6 +74,10 @@ function readDockHeight() {
 	return Number.isFinite(stored) ? Math.min(480, Math.max(64, stored)) : 150;
 }
 
+function readContextOpen() {
+	return localStorage.getItem("b6-contextOpen") !== "0";
+}
+
 export default function DeckShell({
 	section,
 	deviceTab,
@@ -93,6 +103,7 @@ export default function DeckShell({
 	const { boards } = useUserBoards();
 	const tunnel = useConsoleTunnel(section === "profile" ? "" : uuid);
 	const [drawerOpen, setDrawerOpen] = useState(false);
+	const [contextOpen, setContextOpen] = useState(readContextOpen);
 	const [paletteOpen, setPaletteOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<FocusRegion>("primary");
@@ -246,8 +257,13 @@ export default function DeckShell({
 				: t("deck.context.fleet");
 	const selected = boards.find((board) => board.device.uuid === uuid);
 
+	function writeContextOpen(open: boolean) {
+		setContextOpen(open);
+		localStorage.setItem("b6-contextOpen", open ? "1" : "0");
+	}
+
 	return (
-		<div className="b6-shell">
+		<div className={`b6-shell${contextOpen ? "" : " is-context-collapsed"}`}>
 			<header className="b6-topbar">
 				<IconButton
 					className="b6-menu"
@@ -300,6 +316,14 @@ export default function DeckShell({
 						<span>{t(`deck.rail.${item}`)}</span>
 					</button>
 				))}
+				<button
+					type="button"
+					className="b6-rail-expand"
+					aria-label={t("deck.action.expandContext")}
+					onClick={() => writeContextOpen(true)}
+				>
+					<DeckIcon name="expand" />
+				</button>
 			</nav>
 			{drawerOpen ? (
 				<button
@@ -323,7 +347,17 @@ export default function DeckShell({
 						</button>
 					))}
 				</div>
-				<Typography variant="overline">{sidebarTitle}</Typography>
+				<div className="b6-sidebar-heading">
+					<Typography variant="overline">{sidebarTitle}</Typography>
+					<IconButton
+						className="b6-context-collapse"
+						size="small"
+						aria-label={t("deck.action.collapseContext")}
+						onClick={() => writeContextOpen(false)}
+					>
+						<DeckIcon name="collapse" />
+					</IconButton>
+				</div>
 				<div className="b6-sidebar-items">
 					{pane === "work" ? (
 						<button

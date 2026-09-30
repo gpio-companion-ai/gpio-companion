@@ -31,6 +31,8 @@ import {
 	parseOpencodeSse,
 	pendingOpencodeTurn,
 	readCodeNav,
+	readStoredOpencodePrompts,
+	rememberOpencodePrompt,
 	restoreOpencodePrompts,
 	restoreOpencodeViewPrompts,
 	scopeOpencodeSearch,
@@ -676,6 +678,33 @@ describe("opencode session client", () => {
 			},
 			epoch,
 		);
+		expect(opencodeQuestions({ nope: true })).toBeNull();
+		const store = new Map<string, string>();
+		const previous = globalThis.sessionStorage;
+		globalThis.sessionStorage = {
+			getItem: (key) => store.get(key) ?? null,
+			setItem: (key, value) => {
+				store.set(key, value);
+			},
+			removeItem: (key) => {
+				store.delete(key);
+			},
+			clear: () => {
+				store.clear();
+			},
+			key: () => null,
+			length: 0,
+		};
+		rememberOpencodePrompt({ type: "question.asked", properties: asked });
+		expect(
+			readStoredOpencodePrompts("ses_1").questions.map((item) => item.id),
+		).toEqual(["que_1"]);
+		rememberOpencodePrompt({
+			type: "question.replied",
+			properties: { sessionID: "ses_1", requestID: "que_1" },
+		});
+		expect(readStoredOpencodePrompts("ses_1").questions).toEqual([]);
+		globalThis.sessionStorage = previous;
 		expect(epoch.epoch).toBe(2);
 		expect(
 			restoreOpencodePrompts(

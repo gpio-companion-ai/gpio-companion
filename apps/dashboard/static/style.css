@@ -7327,6 +7327,22 @@ html, body {
   background: rgba(var(--text-primary), 0.1);
   color: rgb(var(--text-primary));
 }
+.b6-rail-expand {
+  display: none;
+  margin-top: auto;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: rgb(var(--text-secondary));
+  cursor: pointer;
+}
+.b6-rail-expand:hover {
+  background: rgba(var(--text-primary), 0.1);
+  color: rgb(var(--text-primary));
+}
 .b6-context {
   z-index: 23;
   min-width: 0;
@@ -7348,10 +7364,18 @@ html, body {
   justify-content: space-between;
   padding: 0 7px 12px;
 }
-.b6-context-heading > div {
+.b6-context-heading > div:first-child {
   display: flex;
   min-width: 0;
   flex-direction: column;
+}
+.b6-context-heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+}
+.b6-context-collapse {
+  display: inline-flex;
 }
 .b6-context-heading span {
   color: rgb(var(--text-secondary));
@@ -7830,6 +7854,17 @@ html, body {
     flex: 0 0 28px;
   }
 }
+@media (min-width: 641px) {
+  .b6-body.is-context-collapsed {
+    grid-template-columns: 58px minmax(0, 1fr);
+  }
+  .b6-body.is-context-collapsed .b6-context {
+    display: none;
+  }
+  .b6-body.is-context-collapsed .b6-rail-expand {
+    display: flex;
+  }
+}
 @media (max-width: 899px) {
   .b6-body {
     padding-bottom: calc(56px + env(safe-area-inset-bottom));
@@ -7850,6 +7885,9 @@ html, body {
   }
   .b6-topbar .b6-drawer-trigger,	.b6-context-heading .b6-drawer-close {
     display: inline-flex;
+  }
+  .b6-context-heading .b6-context-collapse {
+    display: none;
   }
   .b6-brand {
     min-width: 0;

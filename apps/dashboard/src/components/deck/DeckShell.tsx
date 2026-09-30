@@ -1,6 +1,8 @@
 import AccountCircleIcon from "@material-design-icons/svg/filled/account_circle.svg";
 import BoltIcon from "@material-design-icons/svg/filled/bolt.svg";
 import BuildIcon from "@material-design-icons/svg/filled/build.svg";
+import ChevronLeftIcon from "@material-design-icons/svg/filled/chevron_left.svg";
+import ChevronRightIcon from "@material-design-icons/svg/filled/chevron_right.svg";
 import CloseIcon from "@material-design-icons/svg/filled/close.svg";
 import DarkModeIcon from "@material-design-icons/svg/filled/dark_mode.svg";
 import FolderIcon from "@material-design-icons/svg/filled/folder.svg";
@@ -61,6 +63,7 @@ const DOCK_TABS: Array<[DockTab, ComponentType]> = [
 ];
 
 const DOCK_STORAGE_KEY = "b6-dockH";
+const CONTEXT_STORAGE_KEY = "b6-contextOpen";
 const DEFAULT_DOCK_HEIGHT = 150;
 
 function sectionFor(pathname: string): "/project" | "/devices" | "/profile" {
@@ -116,6 +119,11 @@ function readDockHeight(): number {
 		: DEFAULT_DOCK_HEIGHT;
 }
 
+function readContextOpen(): boolean {
+	if (typeof window === "undefined") return true;
+	return window.localStorage.getItem(CONTEXT_STORAGE_KEY) !== "0";
+}
+
 function deckLink(link: SectionTab): ContextLink {
 	return {
 		href: link.href,
@@ -136,6 +144,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	const { isDark, toggleMode: toggleTheme } = useColorMode();
 	const { mode, setMode } = useDashboardMode();
 	const [drawerOpen, setDrawerOpen] = useState(false);
+	const [contextOpen, setContextOpen] = useState(readContextOpen);
 	const [paletteOpen, setPaletteOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [activeIndex, setActiveIndex] = useState(0);
@@ -604,6 +613,11 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 		dragRef.current = { y: event.clientY, height: dockHeight };
 	}
 
+	function writeContextOpen(open: boolean) {
+		setContextOpen(open);
+		window.localStorage.setItem(CONTEXT_STORAGE_KEY, open ? "1" : "0");
+	}
+
 	return (
 		<div className="b6-deck">
 			<header className="b6-topbar">
@@ -657,7 +671,9 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				</IconButton>
 			</header>
 
-			<div className="b6-body">
+			<div
+				className={`b6-body${contextOpen ? "" : " is-context-collapsed"}`}
+			>
 				<nav className="b6-rail" aria-label={t("deck.rail.label")}>
 					{rail.map((item) => {
 						const active =
@@ -677,6 +693,14 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 							</a>
 						);
 					})}
+					<button
+						type="button"
+						className="b6-rail-expand"
+						aria-label={t("deck.action.expandContext")}
+						onClick={() => writeContextOpen(true)}
+					>
+						<ChevronRightIcon />
+					</button>
 				</nav>
 
 				{drawerOpen ? (
@@ -693,14 +717,24 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 							<span>{t("deck.context.eyebrow")}</span>
 							<strong>{contextTitle}</strong>
 						</div>
-						<IconButton
-							className="b6-drawer-close"
-							size="small"
-							aria-label={t("deck.action.closeNavigation")}
-							onClick={() => setDrawerOpen(false)}
-						>
-							<CloseIcon />
-						</IconButton>
+						<div className="b6-context-heading-actions">
+							<IconButton
+								className="b6-context-collapse"
+								size="small"
+								aria-label={t("deck.action.collapseContext")}
+								onClick={() => writeContextOpen(false)}
+							>
+								<ChevronLeftIcon />
+							</IconButton>
+							<IconButton
+								className="b6-drawer-close"
+								size="small"
+								aria-label={t("deck.action.closeNavigation")}
+								onClick={() => setDrawerOpen(false)}
+							>
+								<CloseIcon />
+							</IconButton>
+						</div>
 					</div>
 					<nav aria-label={t("deck.context.label")}>{renderContext()}</nav>
 					<div className="b6-focus-hint">{t("deck.focus.contextHint")}</div>

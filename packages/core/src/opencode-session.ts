@@ -1045,7 +1045,7 @@ function questionFrom(
 	return { id, sessionID, prompts };
 }
 
-function promptList(value: unknown): unknown[] {
+function promptList(value: unknown): unknown[] | null {
 	if (Array.isArray(value)) {
 		return value;
 	}
@@ -1053,31 +1053,45 @@ function promptList(value: unknown): unknown[] {
 	if (record && Array.isArray(record.data)) {
 		return record.data;
 	}
-	return [];
+	return null;
 }
 
-export function opencodeQuestions(value: unknown): OpencodeQuestion[] {
+export function opencodeQuestions(value: unknown): OpencodeQuestion[] | null {
+	const list = promptList(value);
+	if (!list) {
+		return null;
+	}
 	const questions: OpencodeQuestion[] = [];
-	for (const item of promptList(value)) {
+	let raw = 0;
+	for (const item of list) {
 		const record = asRecord(item);
 		if (!record) {
 			continue;
 		}
+		raw += 1;
 		const question = questionFrom(record);
 		if (question) {
 			questions.push(question);
 		}
 	}
-	return questions;
+	return raw > 0 && questions.length === 0 ? null : questions;
 }
 
-export function opencodePermissions(value: unknown): OpencodePermission[] {
+export function opencodePermissions(
+	value: unknown,
+): OpencodePermission[] | null {
+	const list = promptList(value);
+	if (!list) {
+		return null;
+	}
 	const permissions: OpencodePermission[] = [];
-	for (const item of promptList(value)) {
+	let raw = 0;
+	for (const item of list) {
 		const record = asRecord(item);
 		if (!record) {
 			continue;
 		}
+		raw += 1;
 		const version =
 			typeof record.action === "string" || Array.isArray(record.resources)
 				? "v2"
@@ -1087,7 +1101,15 @@ export function opencodePermissions(value: unknown): OpencodePermission[] {
 			permissions.push(permission);
 		}
 	}
-	return permissions;
+	return raw > 0 && permissions.length === 0 ? null : permissions;
+}
+
+export function questionStillPending(turns: readonly OpencodeTurn[]): boolean {
+	return turns.some((turn) =>
+		turn.parts.some(
+			(part) => part.tool === "question" && part.status === "running",
+		),
+	);
 }
 
 export type OpencodePromptEpoch = {
@@ -1139,6 +1161,25 @@ export function restoreOpencodePrompts<
 	return [...others, ...next];
 }
 
+function keepPending<T extends { id: string; sessionID: string }>(
+	current: readonly T[],
+	pending: readonly T[] | null,
+	sessionID: string,
+	turnsLoaded: boolean,
+	stillPending: boolean,
+): boolean {
+	if (!pending) {
+		return true;
+	}
+	if (pending.some((item) => item.sessionID === sessionID)) {
+		return false;
+	}
+	if (!current.some((item) => item.sessionID === sessionID)) {
+		return false;
+	}
+	return !turnsLoaded || stillPending;
+}
+
 export function restoreOpencodeViewPrompts(
 	view: OpencodeView,
 	sessionID: string,
@@ -1152,29 +1193,228 @@ export function restoreOpencodeViewPrompts(
 	if (view.sessionID !== sessionID) {
 		return view;
 	}
+	const questions =
+		snapshot.questions === undefined
+			? null
+			: opencodeQuestions(snapshot.questions);
+	const permissions =
+		snapshot.permissions === undefined
+			? null
+			: opencodePermissions(snapshot.permissions);
+	const turnsLoaded = view.turns.length > 0;
 	return {
 		...view,
-		questions:
-			snapshot.questions === undefined
-				? view.questions
-				: restoreOpencodePrompts(
-						view.questions,
-						opencodeQuestions(snapshot.questions),
-						sessionID,
-						snapshot.stale,
-						snapshot.dropped,
-					),
-		permissions:
-			snapshot.permissions === undefined
-				? view.permissions
-				: restoreOpencodePrompts(
-						view.permissions,
-						opencodePermissions(snapshot.permissions),
-						sessionID,
-						snapshot.stale,
-						snapshot.dropped,
-					),
+		questions: keepPending(
+			view.questions,
+			questions,
+			sessionID,
+			turnsLoaded,
+			questionStillPending(view.turns),
+		)
+			? view.questions
+			: restoreOpencodePrompts(
+					view.questions,
+					questions ?? [],
+					sessionID,
+					snapshot.stale,
+					snapshot.dropped,
+				),
+		permissions: keepPending(
+			view.permissions,
+			permissions,
+			sessionID,
+			turnsLoaded,
+			false,
+		)
+			? view.permissions
+			: restoreOpencodePrompts(
+					view.permissions,
+					permissions ?? [],
+					sessionID,
+					snapshot.stale,
+					snapshot.dropped,
+				),
 	};
+}
+
+const PROMPT_STORE_KEY = "gpio-companion-code-prompts";
+
+type StoredPromptBook = Record<
+	string,
+	{ questions: OpencodeQuestion[]; permissions: OpencodePermission[] }
+>;
+
+function promptStorage(): Storage | null {
+	try {
+		if (typeof sessionStorage === "undefined") {
+			return null;
+		}
+		return sessionStorage;
+	} catch {
+		return null;
+	}
+}
+
+function storedQuestion(value: unknown): OpencodeQuestion | null {
+	const record = asRecord(value);
+	if (
+		!record ||
+		typeof record.id !== "string" ||
+		typeof record.sessionID !== "string" ||
+		!Array.isArray(record.prompts)
+	) {
+		return null;
+	}
+	const prompts: OpencodeQuestionPrompt[] = [];
+	for (const item of record.prompts) {
+		const prompt = asRecord(item);
+		if (!prompt || typeof prompt.question !== "string") {
+			continue;
+		}
+		prompts.push({
+			header: typeof prompt.header === "string" ? prompt.header : "",
+			question: prompt.question,
+			options: strings(prompt.options, 8),
+		});
+	}
+	return prompts.length === 0
+		? null
+		: { id: record.id, sessionID: record.sessionID, prompts };
+}
+
+function storedPermission(value: unknown): OpencodePermission | null {
+	const record = asRecord(value);
+	if (
+		!record ||
+		typeof record.id !== "string" ||
+		typeof record.sessionID !== "string" ||
+		typeof record.title !== "string"
+	) {
+		return null;
+	}
+	return {
+		id: record.id,
+		sessionID: record.sessionID,
+		title: record.title,
+		detail: typeof record.detail === "string" ? record.detail : "",
+	};
+}
+
+function readPromptBook(): StoredPromptBook {
+	const storage = promptStorage();
+	if (!storage) {
+		return {};
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(storage.getItem(PROMPT_STORE_KEY) ?? "");
+	} catch {
+		return {};
+	}
+	const record = asRecord(parsed);
+	if (!record) {
+		return {};
+	}
+	const book: StoredPromptBook = {};
+	for (const [sessionID, value] of Object.entries(record)) {
+		const item = asRecord(value);
+		if (!item) {
+			continue;
+		}
+		const questions = Array.isArray(item.questions)
+			? item.questions.flatMap((entry) => {
+					const question = storedQuestion(entry);
+					return question ? [question] : [];
+				})
+			: [];
+		const permissions = Array.isArray(item.permissions)
+			? item.permissions.flatMap((entry) => {
+					const permission = storedPermission(entry);
+					return permission ? [permission] : [];
+				})
+			: [];
+		if (questions.length > 0 || permissions.length > 0) {
+			book[sessionID] = { questions, permissions };
+		}
+	}
+	return book;
+}
+
+function writePromptBook(book: StoredPromptBook): void {
+	const storage = promptStorage();
+	if (!storage) {
+		return;
+	}
+	if (Object.keys(book).length === 0) {
+		storage.removeItem(PROMPT_STORE_KEY);
+		return;
+	}
+	storage.setItem(PROMPT_STORE_KEY, JSON.stringify(book));
+}
+
+export function readStoredOpencodePrompts(sessionID: string): {
+	questions: OpencodeQuestion[];
+	permissions: OpencodePermission[];
+} {
+	if (!sessionID) {
+		return { questions: [], permissions: [] };
+	}
+	const stored = readPromptBook()[sessionID];
+	return stored ?? { questions: [], permissions: [] };
+}
+
+export function storeOpencodePrompts(
+	sessionID: string,
+	questions: readonly OpencodeQuestion[],
+	permissions: readonly OpencodePermission[],
+): void {
+	if (!sessionID) {
+		return;
+	}
+	const book = readPromptBook();
+	const nextQuestions = questions.filter(
+		(item) => item.sessionID === sessionID,
+	);
+	const nextPermissions = permissions.filter(
+		(item) => item.sessionID === sessionID,
+	);
+	if (nextQuestions.length === 0 && nextPermissions.length === 0) {
+		delete book[sessionID];
+	} else {
+		book[sessionID] = {
+			questions: nextQuestions,
+			permissions: nextPermissions,
+		};
+	}
+	writePromptBook(book);
+}
+
+export function rememberOpencodePrompt(event: unknown): void {
+	const body = eventBody(event);
+	if (
+		!body ||
+		(!body.type.startsWith("permission.") && !body.type.startsWith("question."))
+	) {
+		return;
+	}
+	const sessionID =
+		typeof body.properties.sessionID === "string"
+			? body.properties.sessionID
+			: "";
+	if (!sessionID) {
+		return;
+	}
+	const stored = readStoredOpencodePrompts(sessionID);
+	const next = applyOpencodeEvent(
+		{
+			...emptyOpencodeView(),
+			sessionID,
+			questions: stored.questions,
+			permissions: stored.permissions,
+		},
+		event,
+	);
+	storeOpencodePrompts(sessionID, next.questions, next.permissions);
 }
 
 export function applyOpencodeEvent(
