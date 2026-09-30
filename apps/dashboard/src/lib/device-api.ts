@@ -116,10 +116,16 @@ export async function readDeviceJson<T>(response: Response): Promise<T> {
 			? DEVICE_GATEWAY_ERROR
 			: `device ${response.status}`;
 		try {
-			const errorBody = (await response.json()) as { error?: string };
-			if (errorBody.error) {
-				detail = errorBody.error;
-			}
+			const errorBody = (await response.json()) as {
+				error?: string;
+				message?: string;
+				data?: { message?: string };
+			};
+			detail =
+				errorBody.error ||
+				errorBody.data?.message ||
+				errorBody.message ||
+				detail;
 		} catch {
 			// keep status text
 		}

@@ -1043,6 +1043,7 @@ export const en = {
 		allowAlways: "Always allow",
 		deny: "Deny",
 		question: "Question",
+		questionNotReady: "That question is not ready to answer yet.",
 		reply: "Reply",
 		reject: "Reject",
 		previousQuestion: "Previous question",
@@ -1096,7 +1097,8 @@ export const en = {
 		retry: "Retry",
 		loading: "Loading…",
 		sessionLoading: "Loading sessions…",
-		draftHint: "Pick a project, then describe the circuit. Enter sends, Shift+Enter adds a line.",
+		draftHint:
+			"Pick a project, then describe the circuit. Enter sends, Shift+Enter adds a line.",
 		resultCount: "{n} matches",
 		filesCount: "{n} files",
 		discardConfirm: "Discard unsaved changes and reload?",

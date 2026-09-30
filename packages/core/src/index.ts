@@ -663,6 +663,7 @@ export {
 	opencodeUpstreamUrl,
 } from "./opencode-server.ts";
 export {
+	activeOpencodeQuestion,
 	applyOpencodeEvent,
 	CODE_DEFAULT_MODEL,
 	CODE_NAV_STATE,
@@ -681,6 +682,8 @@ export {
 	emptyOpencodeView,
 	filterCodeSessions,
 	matchCodeRepo,
+	matchOpencodeQuestionID,
+	mergeOpencodeQuestions,
 	noteOpencodePrompt,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,

@@ -6,13 +6,18 @@ import {
 	filterBoardNodes,
 } from "./board-files.ts";
 import {
+	activeOpencodeQuestion,
+	applyOpencodeEvent,
 	codeQuestionAnswer,
 	codeQuestionChoice,
 	codeQuestionSlideIndex,
 	codeRepoLabel,
 	codeScrollKey,
+	emptyOpencodeView,
 	filterCodeSessions,
 	matchCodeRepo,
+	matchOpencodeQuestionID,
+	mergeOpencodeQuestions,
 	parseStoredCodeRepo,
 	pruneCodeAnswers,
 } from "./opencode-session.ts";
@@ -76,6 +81,48 @@ describe("code project selection", () => {
 		expect(codeQuestionAnswer("7", "  ")).toBe("7");
 		expect(codeQuestionAnswer("7", " 13 ")).toBe("13");
 		expect(codeQuestionAnswer(undefined, "")).toBe("");
+	});
+	test("replies with the que id, not the tool call id", () => {
+		const placeholder = {
+			id: "call_abc",
+			sessionID: "ses_1",
+			callID: "call_abc",
+			prompts: [{ header: "LED", question: "Which pin?", options: ["7"] }],
+		};
+		const real = {
+			id: "que_1",
+			sessionID: "ses_1",
+			callID: "call_abc",
+			prompts: [{ header: "LED", question: "Which pin?", options: ["7"] }],
+		};
+		expect(activeOpencodeQuestion([placeholder, real], "ses_1")?.id).toBe(
+			"que_1",
+		);
+		expect(matchOpencodeQuestionID(placeholder, [real])).toBe("que_1");
+		expect(
+			mergeOpencodeQuestions([real], [placeholder], "ses_1").map(
+				(item) => item.id,
+			),
+		).toEqual(["que_1"]);
+		const asked = applyOpencodeEvent(
+			{ ...emptyOpencodeView(), sessionID: "ses_1", questions: [placeholder] },
+			{
+				type: "question.asked",
+				properties: {
+					id: "que_1",
+					sessionID: "ses_1",
+					questions: [
+						{
+							header: "LED",
+							question: "Which pin?",
+							options: [{ label: "7" }],
+						},
+					],
+					tool: { callID: "call_abc" },
+				},
+			},
+		);
+		expect(asked.questions.map((item) => item.id)).toEqual(["que_1"]);
 	});
 });
 

@@ -1813,7 +1813,9 @@ export function applyOpencodeEvent(
 			return {
 				...view,
 				questions: [
-					...view.questions.filter((item) => item.id !== question.id),
+					...view.questions.filter(
+						(item) => !coversOpencodeQuestion(question, item),
+					),
 					question,
 				],
 			};
@@ -2000,6 +2002,79 @@ export function codeQuestionAnswer(
 		return typed;
 	}
 	return option?.trim() ?? "";
+}
+
+export function activeOpencodeQuestion(
+	questions: readonly OpencodeQuestion[],
+	sessionID: string,
+): OpencodeQuestion | undefined {
+	const mine = questions.filter((item) => item.sessionID === sessionID);
+	return mine.find((item) => item.id.startsWith("que")) ?? mine[0];
+}
+
+export function matchOpencodeQuestionID(
+	question: {
+		id: string;
+		sessionID: string;
+		callID?: string;
+		prompts: readonly { question: string }[];
+	},
+	pending: readonly OpencodeQuestion[],
+): string {
+	if (question.id.startsWith("que")) {
+		return question.id;
+	}
+	const text = question.prompts[0]?.question ?? "";
+	const hit = pending.find(
+		(item) =>
+			item.id.startsWith("que") &&
+			item.sessionID === question.sessionID &&
+			((question.callID && item.callID === question.callID) ||
+				(text !== "" && item.prompts[0]?.question === text)),
+	);
+	return hit?.id ?? "";
+}
+
+function coversOpencodeQuestion(
+	real: OpencodeQuestion,
+	other: OpencodeQuestion,
+): boolean {
+	if (real.id === other.id) {
+		return true;
+	}
+	if (real.sessionID !== other.sessionID) {
+		return false;
+	}
+	if (real.callID && other.callID && real.callID === other.callID) {
+		return true;
+	}
+	const text = real.prompts[0]?.question ?? "";
+	return text !== "" && other.prompts[0]?.question === text;
+}
+
+export function mergeOpencodeQuestions(
+	current: readonly OpencodeQuestion[],
+	incoming: readonly OpencodeQuestion[],
+	sessionID: string,
+): OpencodeQuestion[] {
+	const others = current.filter((item) => item.sessionID !== sessionID);
+	const kept = current.filter(
+		(item) => item.sessionID === sessionID && item.id.startsWith("que"),
+	);
+	const next = incoming.filter((item) => item.sessionID === sessionID);
+	const merged = [...kept];
+	for (const item of next) {
+		if (merged.some((have) => coversOpencodeQuestion(have, item))) {
+			continue;
+		}
+		if (item.id.startsWith("que")) {
+			merged.push(item);
+		}
+	}
+	if (merged.length > 0) {
+		return [...others, ...merged];
+	}
+	return [...others, ...next];
 }
 
 export function clearCodeAnswers(): Record<string, string> {

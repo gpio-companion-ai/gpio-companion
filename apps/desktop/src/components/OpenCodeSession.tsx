@@ -1,4 +1,5 @@
 import {
+	activeOpencodeQuestion,
 	applyOpencodeEvent,
 	CODE_DEFAULT_MODEL,
 	codeNavBack,
@@ -11,6 +12,8 @@ import {
 	emptyOpencodeView,
 	filterCodeSessions,
 	matchCodeRepo,
+	matchOpencodeQuestionID,
+	mergeOpencodeQuestions,
 	noteOpencodePrompt,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
@@ -25,6 +28,7 @@ import {
 	opencodeEventResumeUrl,
 	opencodeModelChoices,
 	opencodePromptFields,
+	opencodeQuestions,
 	opencodeSessionBucket,
 	opencodeSessions,
 	opencodeStoredEffort,
@@ -836,12 +840,11 @@ export default function OpenCodeSession({
 					return {
 						...current,
 						turns: settleOpencodeTurns(current.turns, opencodeTurns(data)),
-						questions: [
-							...current.questions.filter(
-								(item) => item.sessionID !== sessionID,
-							),
-							...pending.questions,
-						],
+						questions: mergeOpencodeQuestions(
+							current.questions,
+							pending.questions,
+							sessionID,
+						),
 						permissions: [
 							...current.permissions.filter(
 								(item) => item.sessionID !== sessionID,
@@ -1061,9 +1064,7 @@ export default function OpenCodeSession({
 	const permission = view.permissions.find(
 		(item) => item.sessionID === view.sessionID,
 	);
-	const question = view.questions.find(
-		(item) => item.sessionID === view.sessionID,
-	);
+	const question = activeOpencodeQuestion(view.questions, view.sessionID);
 	const lastTurn = view.turns.at(-1)?.id;
 
 	function effortLabel(value: ReasoningEffort) {
@@ -1169,6 +1170,29 @@ export default function OpenCodeSession({
 		);
 	}
 
+	async function questionRequestID(current: {
+		id: string;
+		sessionID: string;
+		callID?: string;
+		prompts: { question: string }[];
+	}) {
+		if (current.id.startsWith("que")) {
+			return current.id;
+		}
+		const listed = await run({ repo, op: "questions" });
+		if (!listed) {
+			return "";
+		}
+		const requestID = matchOpencodeQuestionID(
+			current,
+			opencodeQuestions(listed) ?? [],
+		);
+		if (!requestID) {
+			setError(t("code.questionNotReady"));
+		}
+		return requestID;
+	}
+
 	function answerQuestion(reject: boolean) {
 		if (!question) {
 			return;
@@ -1177,36 +1201,31 @@ export default function OpenCodeSession({
 		if (!reject && current.prompts.some((item) => !promptAnswer(item))) {
 			return;
 		}
-		if (reject) {
+		void questionRequestID(current).then((requestID) => {
+			if (!requestID) {
+				return;
+			}
 			void run({
 				repo,
 				op: "question",
-				requestID: current.id,
-				reject: true,
-			}).then(() => {
+				requestID,
+				...(reject
+					? { reject: true }
+					: {
+							answers: current.prompts.map((item) => [promptAnswer(item)]),
+						}),
+			}).then((sent) => {
+				if (!sent) {
+					return;
+				}
 				clearQuestionDraft();
 				setView((viewCurrent) => ({
 					...viewCurrent,
 					questions: viewCurrent.questions.filter(
-						(item) => item.id !== current.id,
+						(item) => item.id !== current.id && item.id !== requestID,
 					),
 				}));
 			});
-			return;
-		}
-		void run({
-			repo,
-			op: "question",
-			requestID: current.id,
-			answers: current.prompts.map((item) => [promptAnswer(item)]),
-		}).then(() => {
-			clearQuestionDraft();
-			setView((viewCurrent) => ({
-				...viewCurrent,
-				questions: viewCurrent.questions.filter(
-					(item) => item.id !== current.id,
-				),
-			}));
 		});
 	}
 
