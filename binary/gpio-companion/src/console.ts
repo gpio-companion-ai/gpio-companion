@@ -1,4 +1,3 @@
-import type { ReadStream } from "node:fs";
 import {
 	CONSOLE_DEFAULT_BAUD,
 	CONSOLE_FLUSH_MS,
@@ -252,7 +251,7 @@ function liveOpenUsb(
 	onClose: () => void,
 ): UsbHandle {
 	let closed = false;
-	let stream: ReadStream | null = null;
+	let stream: ReturnType<typeof openTtyReadStream> | null = null;
 	const decoder = new TextDecoder();
 	void (async () => {
 		const proc = Bun.spawn(
@@ -283,6 +282,11 @@ function liveOpenUsb(
 		}
 		try {
 			stream = openTtyReadStream(port);
+			if (closed) {
+				stream.destroy();
+				stream = null;
+				return;
+			}
 			stream.on("error", () => {
 				if (!closed) {
 					onClose();
@@ -292,12 +296,11 @@ function liveOpenUsb(
 			onClose();
 			return;
 		}
-		stream.on("data", (buf: string | Buffer) => {
+		stream.on("data", (buf) => {
 			if (closed) {
 				return;
 			}
-			const text =
-				typeof buf === "string" ? buf : decoder.decode(buf, { stream: true });
+			const text = decoder.decode(buf, { stream: true });
 			if (text) {
 				onChunk(text);
 			}

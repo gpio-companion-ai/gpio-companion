@@ -1,8 +1,10 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import {
 	constants,
+	existsSync,
 	lstatSync,
 	mkdirSync,
+	readFileSync,
 	unlinkSync,
 	utimesSync,
 	writeFileSync,
@@ -469,12 +471,82 @@ describe("live handshake", () => {
 describe("tty open flags", () => {
 	test("include O_NOCTTY so usb unplug cannot SIGHUP serve", () => {
 		expect(TTY_NOCTTY_FLAGS & constants.O_NOCTTY).toBe(constants.O_NOCTTY);
-		expect(TTY_NOCTTY_FLAGS & constants.O_NONBLOCK).toBe(0);
-		const path = join(tmpdir(), `tty-noctty-${Date.now()}`);
-		writeFileSync(path, "ok");
-		const stream = openTtyReadStream(path);
-		stream.destroy();
+		expect(TTY_NOCTTY_FLAGS & constants.O_NONBLOCK).toBe(constants.O_NONBLOCK);
 	});
+
+	test("usb serial reads do not consume the bun thread pool", async () => {
+		const root = await mkdtemp(join(tmpdir(), "tty-pool-"));
+		const listPath = join(root, "slaves");
+		const marker = join(root, "marker");
+		writeFileSync(marker, "pool-ok");
+		const proc = Bun.spawn(
+			[
+				"python3",
+				"-c",
+				[
+					"import os, pty, time",
+					"masters = []",
+					"slaves = []",
+					"for _ in range(5):",
+					"    master, slave = pty.openpty()",
+					"    masters.append(master)",
+					"    slaves.append(os.ttyname(slave))",
+					"os.write(masters[0], b'ready\\n')",
+					"open(os.environ['PTY_LIST'], 'w').write('\\n'.join(slaves))",
+					"time.sleep(30)",
+				].join("\n"),
+			],
+			{
+				env: { ...process.env, PTY_LIST: listPath },
+				stdout: "ignore",
+				stderr: "pipe",
+			},
+		);
+		const streams: ReturnType<typeof openTtyReadStream>[] = [];
+		try {
+			const started = Date.now();
+			while (!existsSync(listPath)) {
+				if (Date.now() - started > 2_000) {
+					throw new Error("pty helper timed out");
+				}
+				await Bun.sleep(20);
+			}
+			const paths = readFileSync(listPath, "utf8")
+				.split("\n")
+				.map((line) => line.trim())
+				.filter(Boolean);
+			expect(paths).toHaveLength(5);
+			let got = "";
+			for (const path of paths) {
+				const stream = openTtyReadStream(path);
+				streams.push(stream);
+				stream.on("data", (buf) => {
+					if (buf instanceof Buffer) {
+						got += buf.toString();
+					}
+				});
+			}
+			await Bun.sleep(40);
+			const read = await Promise.race([
+				Bun.file(marker)
+					.text()
+					.then(() => "ok" as const),
+				Bun.sleep(1_000).then(() => "timeout" as const),
+			]);
+			expect(read).toBe("ok");
+			const deadline = Date.now() + 500;
+			while (!got.includes("ready") && Date.now() < deadline) {
+				await Bun.sleep(20);
+			}
+			expect(got).toContain("ready");
+		} finally {
+			for (const stream of streams) {
+				stream.destroy();
+			}
+			proc.kill();
+			await proc.exited.catch(() => undefined);
+		}
+	}, 10_000);
 });
 
 describe("listUsbSerialPorts", () => {

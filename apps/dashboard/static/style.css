@@ -8900,6 +8900,117 @@ mark {
 .oc-custom-response:focus {
   border-color: rgba(var(--text-primary), 0.45);
 }
+.oc-question-wizard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.oc-stepper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: rgba(var(--text-main), 0.65);
+}
+.oc-stepper-count {
+  font-weight: 650;
+  white-space: nowrap;
+}
+.oc-stepper-bars {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+}
+.oc-stepper-bars i {
+  height: 4px;
+  flex: 1;
+  border-radius: 99px;
+  background: rgba(var(--text-main), 0.14);
+}
+.oc-stepper-bars i.is-done {
+  background: rgb(var(--text-main));
+}
+.oc-stepper-answered {
+  white-space: nowrap;
+}
+.oc-question-title {
+  margin: 0;
+  font-weight: 600;
+}
+.oc-options-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+@media (max-width: 520px) {
+  .oc-options-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.oc-options-grid button {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 48px;
+  border: 1px solid rgba(var(--text-main), 0.16);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgb(var(--bg-surface));
+  text-align: left;
+}
+.oc-options-grid button:hover {
+  border-color: rgb(var(--text-main));
+}
+.oc-options-grid button.is-on {
+  background: rgb(var(--text-main));
+  color: rgb(var(--bg-surface));
+  border-color: rgb(var(--text-main));
+}
+.oc-option-key {
+  display: inline-flex;
+  width: 24px;
+  height: 24px;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(var(--text-main), 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+.oc-options-grid button.is-on .oc-option-key {
+  background: rgba(var(--bg-surface), 0.22);
+}
+.oc-option-label {
+  min-width: 0;
+}
+.oc-custom-toggle {
+  align-self: flex-start;
+  border: 0;
+  background: none;
+  color: rgb(var(--text-primary));
+  padding: 2px 0;
+  cursor: pointer;
+}
+.oc-question-foot {
+  display: flex;
+  gap: 8px;
+}
+.oc-question-foot button {
+  flex: 1;
+  border-radius: 6px;
+  padding: 8px 6px;
+  background: rgba(var(--text-main), 0.08);
+  font-weight: 600;
+}
+.oc-question-foot button.is-primary {
+  background: rgb(var(--text-main));
+  color: rgb(var(--bg-surface));
+}
+.oc-question-foot button:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
 button.oc-chip, .oc-chip {
   display: inline-flex;
   width: fit-content;
@@ -8986,6 +9097,24 @@ button.oc-chip, .oc-chip {
   flex: none;
   color: rgba(var(--text-main), 0.55);
   font-size: 12px;
+}
+.oc-stage.is-split .oc-chips {
+  position: relative;
+  z-index: 6;
+}
+.oc-stage.is-split .oc-model.is-open {
+  position: static;
+}
+.oc-stage.is-split .oc-model-menu {
+  right: 0;
+  left: 0;
+  width: auto;
+}
+.oc-stage.is-split .oc-model-menu button > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .oc-composer {
   display: flex;
@@ -9253,6 +9382,56 @@ button.oc-chip, .oc-chip {
   padding: 8px 12px;
   border-bottom: 1px solid rgba(var(--text-main), 0.08);
   background: rgb(var(--bg-surface));
+}
+.oc-tree-filter {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid rgba(var(--text-main), 0.08);
+}
+.oc-tree-filter input {
+  min-width: 0;
+  flex: 1;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: rgba(var(--text-main), 0.05);
+  outline: 0;
+}
+.oc-tree-filter input:focus {
+  background: rgba(var(--text-main), 0.08);
+}
+.oc-tree-filter input::placeholder {
+  color: rgba(var(--text-main), 0.38);
+}
+.oc-success {
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(61, 214, 140, 0.14);
+}
+.oc-error-note {
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: rgba(var(--text-error, 180, 40, 40), 0.1);
+}
+.oc-blocked {
+  width: calc(100% - 32px);
+  max-width: 780px;
+  margin: 0 auto 8px;
+}
+.oc-tree-row {
+  height: 28px;
+}
+.oc-split {
+  position: relative;
+}
+.oc-split::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
 }
 @media (max-width: 800px) {
   .oc-work {

@@ -1,14 +1,13 @@
 import {
+	closeSync,
 	constants,
-	createReadStream,
-	createWriteStream,
 	existsSync,
 	lstatSync,
 	openSync,
-	type ReadStream,
 	readdirSync,
-	type WriteStream,
+	readSync,
 	watch,
+	writeSync,
 } from "node:fs";
 import { join } from "node:path";
 import {
@@ -80,16 +79,153 @@ const PROBE_MS = 3_500;
 const QUERY_EVERY_MS = 250;
 const RECONNECT_DELAYS_MS = [800, 2_000, 5_000];
 const SERIAL_OPEN_MS = 1_000;
-export const TTY_NOCTTY_FLAGS = constants.O_NOCTTY;
+const TTY_POLL_MS = 15;
+export const TTY_NOCTTY_FLAGS = constants.O_NOCTTY | constants.O_NONBLOCK;
 
-export function openTtyReadStream(port: string): ReadStream {
-	const fd = openSync(port, constants.O_RDONLY | TTY_NOCTTY_FLAGS);
-	return createReadStream(port, { fd });
+type TtyListener = (value?: Buffer | Error) => void;
+
+export type TtyByteStream = {
+	on(event: "data", listener: (buf: Buffer) => void): TtyByteStream;
+	on(event: "error", listener: (error: Error) => void): TtyByteStream;
+	on(event: "end", listener: () => void): TtyByteStream;
+	destroy(): void;
+	write(chunk: Buffer | Uint8Array): boolean;
+	end(): void;
+};
+
+export function openTtyReadStream(port: string): TtyByteStream {
+	return openTtyByteStream(port, constants.O_RDONLY | TTY_NOCTTY_FLAGS, true);
 }
 
-export function openTtyWriteStream(port: string): WriteStream {
-	const fd = openSync(port, constants.O_WRONLY | TTY_NOCTTY_FLAGS);
-	return createWriteStream(port, { fd });
+export function openTtyWriteStream(port: string): TtyByteStream {
+	return openTtyByteStream(port, constants.O_WRONLY | TTY_NOCTTY_FLAGS, false);
+}
+
+function openTtyByteStream(
+	port: string,
+	flags: number,
+	readable: boolean,
+): TtyByteStream {
+	const fd = openSync(port, flags);
+	const listeners: Record<"data" | "error" | "end", TtyListener[]> = {
+		data: [],
+		error: [],
+		end: [],
+	};
+	const pending: { buf: Buffer; offset: number }[] = [];
+	const buf = Buffer.alloc(4096);
+	let destroyed = false;
+	function emit(event: "data" | "error" | "end", value?: Buffer | Error) {
+		if (destroyed && event !== "end") {
+			return;
+		}
+		for (const listener of listeners[event]) {
+			listener(value);
+		}
+	}
+	function fail(error: unknown) {
+		if (destroyed) {
+			return;
+		}
+		emit(
+			"error",
+			error instanceof Error ? error : new Error("serial read failed"),
+		);
+		stream.destroy();
+	}
+	function flush() {
+		while (pending.length > 0) {
+			const next = pending[0];
+			if (!next) {
+				return;
+			}
+			try {
+				const wrote = writeSync(
+					fd,
+					next.buf,
+					next.offset,
+					next.buf.length - next.offset,
+				);
+				next.offset += wrote;
+				if (next.offset >= next.buf.length) {
+					pending.shift();
+				}
+			} catch (error) {
+				if (isAgain(error)) {
+					return;
+				}
+				fail(error);
+				return;
+			}
+		}
+	}
+	function readOnce() {
+		try {
+			const n = readSync(fd, buf, 0, buf.length, null);
+			if (n > 0) {
+				emit("data", Buffer.from(buf.subarray(0, n)));
+				return;
+			}
+			if (n === 0) {
+				emit("end");
+				stream.destroy();
+			}
+		} catch (error) {
+			if (isAgain(error)) {
+				return;
+			}
+			fail(error);
+		}
+	}
+	const timer = setInterval(() => {
+		if (destroyed) {
+			return;
+		}
+		flush();
+		if (readable) {
+			readOnce();
+		}
+	}, TTY_POLL_MS);
+	timer.unref?.();
+	const stream = {
+		on(event: "data" | "error" | "end", listener: TtyListener) {
+			listeners[event].push(listener);
+			return stream;
+		},
+		write(chunk: Buffer | Uint8Array) {
+			if (destroyed) {
+				return false;
+			}
+			pending.push({ buf: Buffer.from(chunk), offset: 0 });
+			flush();
+			return true;
+		},
+		end() {
+			stream.destroy();
+		},
+		destroy() {
+			if (destroyed) {
+				return;
+			}
+			destroyed = true;
+			clearInterval(timer);
+			pending.length = 0;
+			try {
+				closeSync(fd);
+			} catch {
+				undefined;
+			}
+		},
+	};
+	return stream as TtyByteStream;
+}
+
+function isAgain(error: unknown): boolean {
+	const code =
+		error && typeof error === "object" && "code" in error
+			? String(error.code)
+			: "";
+	return code === "EAGAIN" || code === "EWOULDBLOCK";
 }
 
 export function listUsbSerialPorts(devDir = "/dev"): string[] {
@@ -654,8 +790,8 @@ function liveOpenSerial(
 	onClose: () => void,
 ): ProxySerial {
 	let closed = false;
-	let reader: ReadStream | null = null;
-	let writer: WriteStream | null = null;
+	let reader: TtyByteStream | null = null;
+	let writer: TtyByteStream | null = null;
 	const pending: Uint8Array[] = [];
 	let resolveReady: () => void = () => undefined;
 	let rejectReady: (error: Error) => void = () => undefined;
@@ -699,6 +835,14 @@ function liveOpenSerial(
 		try {
 			reader = openTtyReadStream(port);
 			writer = openTtyWriteStream(port);
+			if (closed) {
+				reader.destroy();
+				writer.destroy();
+				reader = null;
+				writer = null;
+				rejectReady(new Error("serial open failed"));
+				return;
+			}
 			reader.on("error", () => {
 				if (!closed) {
 					onClose();
@@ -710,6 +854,10 @@ function liveOpenSerial(
 				}
 			});
 		} catch (error) {
+			reader?.destroy();
+			writer?.destroy();
+			reader = null;
+			writer = null;
 			rejectReady(
 				error instanceof Error ? error : new Error("serial open failed"),
 			);
@@ -721,13 +869,11 @@ function liveOpenSerial(
 		}
 		pending.length = 0;
 		resolveReady();
-		reader.on("data", (buf: string | Buffer) => {
+		reader.on("data", (buf) => {
 			if (closed) {
 				return;
 			}
-			const bytes =
-				typeof buf === "string" ? Buffer.from(buf) : new Uint8Array(buf);
-			onData(bytes);
+			onData(new Uint8Array(buf));
 		});
 		reader.on("end", () => {
 			if (!closed) {
@@ -746,8 +892,12 @@ function liveOpenSerial(
 		close() {
 			closed = true;
 			pending.length = 0;
-			reader?.destroy();
-			writer?.end();
+			const currentReader = reader;
+			const currentWriter = writer;
+			reader = null;
+			writer = null;
+			currentReader?.destroy();
+			currentWriter?.destroy();
 		},
 		ready,
 	};

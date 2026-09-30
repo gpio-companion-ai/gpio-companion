@@ -1889,6 +1889,28 @@ button.oc-chip,
 	font-size: 12px;
 }
 
+.oc-stage.is-split .oc-chips {
+	position: relative;
+	z-index: 6;
+}
+
+.oc-stage.is-split .oc-model.is-open {
+	position: static;
+}
+
+.oc-stage.is-split .oc-model-menu {
+	right: 0;
+	left: 0;
+	width: auto;
+}
+
+.oc-stage.is-split .oc-model-menu button > span:first-child {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .oc-composer {
 	display: flex;
 	width: calc(100% - 32px);
