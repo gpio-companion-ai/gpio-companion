@@ -5,7 +5,9 @@ import { join } from "node:path";
 import {
 	listBoardFiles,
 	readBoardFile,
+	renameBoardFile,
 	writeBoardFile,
+	writeBoardFileBytes,
 } from "./board-files.ts";
 
 const roots: string[] = [];
@@ -41,6 +43,41 @@ describe("board files", () => {
 		expect(written.written).toBe(true);
 		const again = await readBoardFile(root, "blink", "notes/todo.txt");
 		expect(again.text).toBe("later\n");
+	});
+
+	test("writes an uploaded image only under uploads", async () => {
+		const root = makeRoot();
+		mkdirSync(join(root, "blink"), { recursive: true });
+		const written = await writeBoardFileBytes(
+			root,
+			"blink",
+			"uploads/board.png",
+			"aGVsbG8=",
+		);
+		expect(written.path).toBe("uploads/board.png");
+		expect(
+			(await writeBoardFileBytes(root, "blink", "firmware/board.png", "aGVsbG8="))
+				.path,
+		).toBe("firmware/board.png");
+		await expect(
+			writeBoardFileBytes(root, "blink", "firmware/tool.exe", "aGVsbG8="),
+		).rejects.toThrow("file type is not allowed");
+	});
+
+	test("renames a file inside the project", async () => {
+		const root = makeRoot();
+		mkdirSync(join(root, "blink", "host"), { recursive: true });
+		writeFileSync(join(root, "blink", "host", "main.c"), "int x;\n");
+		const renamed = await renameBoardFile(
+			root,
+			"blink",
+			"host/main.c",
+			"host/led.c",
+		);
+		expect(renamed.path).toBe("host/led.c");
+		await expect(
+			renameBoardFile(root, "blink", "host/missing.c", "host/x.c"),
+		).rejects.toThrow("file is missing");
 	});
 
 	test("refuses paths outside the project", async () => {

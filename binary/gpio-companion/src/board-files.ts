@@ -17,14 +17,17 @@ import {
 	BOARD_FILE_MODEL_MAX,
 	BOARD_FILE_SKIP_DIRS,
 	BOARD_FILE_TEXT_MAX,
+	BOARD_UPLOAD_BINARY_MAX,
 	type BoardFileEntry,
 	type BoardFileEvent,
 	type BoardFileKind,
 	type BoardFileList,
 	type BoardFileRead,
 	type BoardFileWrite,
+	assertBoardUploadBinary,
 	boardFileKindFromName,
 	boardFileRelative,
+	decodeBase64,
 	isUtf8Text,
 	parseGithubRepoName,
 } from "gpio-companion";
@@ -110,6 +113,47 @@ export async function writeBoardFile(
 	writeFileSync(tmp, text);
 	renameSync(tmp, target);
 	return { written: true, path: rel };
+}
+
+export async function writeBoardFileBytes(
+	root: string,
+	name: string,
+	path: string,
+	base64: string,
+): Promise<BoardFileWrite> {
+	const rel = boardFileRelative(path);
+	assertBoardUploadBinary(rel, base64);
+	const bytes = decodeBase64(base64);
+	if (bytes.byteLength > BOARD_UPLOAD_BINARY_MAX) {
+		throw new Error("file is too large");
+	}
+	const target = confinedFile(root, name, rel);
+	mkdirSync(dirname(target), { recursive: true });
+	const tmp = `${target}.gpio-tmp`;
+	writeFileSync(tmp, bytes);
+	renameSync(tmp, target);
+	return { written: true, path: rel };
+}
+
+export async function renameBoardFile(
+	root: string,
+	name: string,
+	from: string,
+	to: string,
+): Promise<BoardFileWrite> {
+	const sourceRel = boardFileRelative(from);
+	const targetRel = boardFileRelative(to);
+	const source = confinedFile(root, name, sourceRel);
+	const target = confinedFile(root, name, targetRel);
+	if (!existsSync(source) || lstatSync(source).isSymbolicLink()) {
+		throw new Error("file is missing");
+	}
+	if (existsSync(target)) {
+		throw new Error("file already exists");
+	}
+	mkdirSync(dirname(target), { recursive: true });
+	renameSync(source, target);
+	return { written: true, path: targetRel };
 }
 
 export function createBoardFileHub(root: string): BoardFileHub {

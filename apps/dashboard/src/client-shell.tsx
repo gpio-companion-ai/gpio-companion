@@ -26,6 +26,7 @@ import {
 import {
 	attachAccessCookieSync,
 	installAuthAwareFetch,
+	redirectToLogin,
 	syncAccessCookie,
 } from "./lib/auth/refresh.ts";
 import { stashGithubAppCallbackFromLocation } from "./lib/github-app-callback.ts";
@@ -96,7 +97,14 @@ export default function ClientWrapper({ children }: { children: JSX.Element }) {
 }
 
 function AuthProvider({ children }: { children: JSX.Element }) {
-	const auth = useRef(createClient());
+	const auth = useRef(
+		createClient({
+			onLoginRequired(client) {
+				client.logout();
+				redirectToLogin();
+			},
+		}),
+	);
 	const [session, setSession] = useState<PublicSession | null>(null);
 
 	useEffect(() => {

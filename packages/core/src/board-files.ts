@@ -5,11 +5,14 @@ import { parseGithubRepoName } from "./project-files.ts";
 export const FILES_LIST_PATH = "/v1/files/list";
 export const FILES_READ_PATH = "/v1/files/read";
 export const FILES_WRITE_PATH = "/v1/files";
+export const FILES_RENAME_PATH = "/v1/files/rename";
 export const FILES_WATCH_PREFIX = "/v1/files/watch/";
 export const BOARD_FILE_LIST_MAX = 4000;
 export const BOARD_FILE_DEPTH_MAX = 12;
 export const BOARD_FILE_TEXT_MAX = 1024 * 1024;
 export const BOARD_FILE_MODEL_MAX = 8 * 1024 * 1024;
+export const BOARD_UPLOAD_DIR = "uploads";
+export const BOARD_UPLOAD_BINARY_MAX = 4 * 1024 * 1024;
 export const BOARD_FILE_SKIP_DIRS = [".git", "node_modules"] as const;
 
 export const EDITOR_EMBED_PATH = "/embed/editor";
@@ -130,10 +133,17 @@ export type BoardFileReadPut = {
 	path: string;
 };
 
+export type BoardFileRenamePut = {
+	name: string;
+	from: string;
+	to: string;
+};
+
 export type BoardFileWritePut = {
 	name: string;
 	path: string;
-	text: string;
+	text?: string;
+	base64?: string;
 };
 
 export type EditorEmbedPayload = {
@@ -338,6 +348,55 @@ export function isUtf8Text(bytes: Uint8Array): boolean {
 	}
 }
 
+const UPLOAD_BINARY = new Set(["png", "jpg", "jpeg", "webp", "gif", "pdf"]);
+
+export function decodeBase64(value: string): Uint8Array {
+	const clean = value.replace(/\s/g, "");
+	if (
+		clean.length === 0 ||
+		clean.length % 4 !== 0 ||
+		!/^[A-Za-z0-9+/]+={0,2}$/.test(clean)
+	) {
+		throw new Error("invalid file");
+	}
+	const binary = atob(clean);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) {
+		bytes[i] = binary.charCodeAt(i);
+	}
+	return bytes;
+}
+
+export function encodeBase64(bytes: Uint8Array): string {
+	let binary = "";
+	const step = 0x8000;
+	for (let i = 0; i < bytes.length; i += step) {
+		binary += String.fromCharCode(...bytes.subarray(i, i + step));
+	}
+	return btoa(binary);
+}
+
+export function isUploadBinaryPath(path: string): boolean {
+	const parts = path.split("/");
+	const name = parts[parts.length - 1] ?? "";
+	if (!name || parts.some((part) => !part || part === "." || part === "..")) {
+		return false;
+	}
+	const dot = name.lastIndexOf(".");
+	const ext = dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+	return UPLOAD_BINARY.has(ext);
+}
+
+export function assertBoardUploadBinary(path: string, base64: string): void {
+	if (!isUploadBinaryPath(path)) {
+		throw new Error("file type is not allowed");
+	}
+	const bytes = decodeBase64(base64);
+	if (bytes.byteLength > BOARD_UPLOAD_BINARY_MAX) {
+		throw new Error("file is too large");
+	}
+}
+
 export function assertBoardTextWrite(path: string, text: string): void {
 	if (typeof text !== "string") {
 		throw new Error("text is required");
@@ -373,22 +432,41 @@ export function parseBoardFileReadPut(input: unknown): BoardFileReadPut {
 	};
 }
 
-export function parseBoardFileWritePut(input: unknown): BoardFileWritePut {
+export function parseBoardFileRenamePut(input: unknown): BoardFileRenamePut {
 	const record = objectBody(input);
 	if (
 		typeof record.name !== "string" ||
-		typeof record.path !== "string" ||
-		typeof record.text !== "string"
+		typeof record.from !== "string" ||
+		typeof record.to !== "string"
 	) {
-		throw new Error("name, path, and text are required");
+		throw new Error("name, from, and to are required");
+	}
+	const from = boardFileRelative(record.from);
+	const to = boardFileRelative(record.to);
+	if (from === to) {
+		throw new Error("file already exists");
+	}
+	return { name: parseGithubRepoName(record.name), from, to };
+}
+
+export function parseBoardFileWritePut(input: unknown): BoardFileWritePut {
+	const record = objectBody(input);
+	if (typeof record.name !== "string" || typeof record.path !== "string") {
+		throw new Error("name and path are required");
 	}
 	const path = boardFileRelative(record.path);
-	assertBoardTextWrite(path, record.text);
-	return {
-		name: parseGithubRepoName(record.name),
-		path,
-		text: record.text,
-	};
+	const name = parseGithubRepoName(record.name);
+	const hasText = typeof record.text === "string";
+	const hasBinary = typeof record.base64 === "string" && record.base64 !== "";
+	if (hasText === hasBinary) {
+		throw new Error("text or base64 is required");
+	}
+	if (hasBinary) {
+		assertBoardUploadBinary(path, record.base64 as string);
+		return { name, path, base64: record.base64 as string };
+	}
+	assertBoardTextWrite(path, record.text as string);
+	return { name, path, text: record.text as string };
 }
 
 export function parseBoardFileEvent(input: unknown): BoardFileEvent | null {

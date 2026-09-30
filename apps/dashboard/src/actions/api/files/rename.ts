@@ -1,6 +1,6 @@
 import { getContext } from "frame-master-plugin-cloudflare-pages-functions-action/context";
 import { wrapAction } from "../../../lib/action.ts";
-import { writeSignedBoardFile } from "../../../lib/board-files-api.ts";
+import { renameSignedBoardFile } from "../../../lib/board-files-api.ts";
 import { requireIdentity } from "../../../lib/session.ts";
 
 type PagesEnv = {
@@ -9,17 +9,16 @@ type PagesEnv = {
 	GPIO_COMPANION_DEVICE_KEY_ID?: string;
 };
 
-export const PUT = wrapAction(async function PUT(input: {
+export const POST = wrapAction(async function POST(input: {
 	uuid: string;
 	name: string;
-	path: string;
-	text?: string;
-	base64?: string;
+	from: string;
+	to: string;
 }) {
 	const ctx = getContext<PagesEnv, never, never>(arguments);
 	const identity = await requireIdentity(ctx);
 	if (!identity.id) {
 		throw new Error("sign in first");
 	}
-	return writeSignedBoardFile(ctx.env, identity.id, input);
+	return renameSignedBoardFile(ctx.env, identity.id, input);
 });

@@ -3,7 +3,13 @@ import CssBaseline from "@shpaw415/mui-lite/CssBaseline";
 import { CircularProgress } from "@shpaw415/mui-lite/Progress";
 import Stack from "@shpaw415/mui-lite/Stack";
 import { useEffect, useState } from "react";
-import { authLogout, authSession, authToken, type Session } from "./api";
+import {
+	authLogout,
+	authSession,
+	authToken,
+	onAuthRequired,
+	type Session,
+} from "./api";
 import { useColorMode } from "./color-mode";
 import DeckShell, { type DeckSection } from "./components/DeckShell";
 import DevicesHub, { type DeviceTab } from "./components/DevicesHub";
@@ -26,6 +32,7 @@ export default function App() {
 		void authToken()
 			.then((token) => setSignedIn(Boolean(token)))
 			.finally(() => setReady(true));
+		return onAuthRequired(() => setSignedIn(false));
 	}, []);
 
 	useEffect(() => {

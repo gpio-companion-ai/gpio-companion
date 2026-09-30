@@ -4,6 +4,7 @@ import {
 	createAuthAwareFetch,
 	isLoginRequiredError,
 	loginRequiredFromActionBody,
+	requireLogin,
 	syncAccessCookie,
 } from "./refresh.ts";
 
@@ -18,11 +19,16 @@ function mockAuth(options: {
 	token?: string | null;
 	refresh?: boolean;
 	onRefresh?: () => void;
-}): AuthRefreshClient & { cookie: string | null; refreshes: number } {
+}): AuthRefreshClient & {
+	cookie: string | null;
+	refreshes: number;
+	logouts: number;
+} {
 	const state = {
 		token: options.token === undefined ? "access" : options.token,
 		cookie: null as string | null,
 		refreshes: 0,
+		logouts: 0,
 	};
 	return {
 		get cookie() {
@@ -31,11 +37,18 @@ function mockAuth(options: {
 		get refreshes() {
 			return state.refreshes;
 		},
+		get logouts() {
+			return state.logouts;
+		},
 		getToken() {
 			return state.token;
 		},
 		setTokenToCookie() {
 			state.cookie = state.token;
+		},
+		logout() {
+			state.token = null;
+			state.logouts += 1;
 		},
 		async triggerRefresh() {
 			state.refreshes += 1;
@@ -103,9 +116,10 @@ describe("createAuthAwareFetch", () => {
 		expect(await response.json()).toEqual({ ok: true, data: { id: "u1" } });
 	});
 
-	test("does not refresh twice when retry still returns login first", async () => {
+	test("redirects when the retry is still login first", async () => {
 		const auth = mockAuth({ refresh: true });
 		let calls = 0;
+		let redirects = 0;
 		const aware = createAuthAwareFetch(
 			async () => {
 				calls += 1;
@@ -113,21 +127,26 @@ describe("createAuthAwareFetch", () => {
 			},
 			auth,
 			"https://gpio-companion.com",
+			() => {
+				redirects += 1;
+			},
 		);
 		const response = await aware("https://gpio-companion.com/api/pair", {
 			headers: { "x-server-action": "true" },
 		});
 		expect(calls).toBe(2);
 		expect(auth.refreshes).toBe(1);
+		expect(redirects).toBe(1);
 		expect(await response.json()).toEqual({
 			ok: false,
 			error: "login first",
 		});
 	});
 
-	test("does not retry when refresh fails", async () => {
+	test("redirects when refresh cannot recover", async () => {
 		const auth = mockAuth({ refresh: false });
 		let calls = 0;
+		let redirects = 0;
 		const aware = createAuthAwareFetch(
 			async () => {
 				calls += 1;
@@ -135,12 +154,16 @@ describe("createAuthAwareFetch", () => {
 			},
 			auth,
 			"https://gpio-companion.com",
+			() => {
+				redirects += 1;
+			},
 		);
 		const response = await aware("https://gpio-companion.com/api/pair", {
 			headers: { "x-server-action": "true" },
 		});
 		expect(calls).toBe(1);
 		expect(auth.refreshes).toBe(1);
+		expect(redirects).toBe(1);
 		expect(await response.json()).toEqual({
 			ok: false,
 			error: "sign in first",
@@ -199,6 +222,15 @@ describe("createAuthAwareFetch", () => {
 		await aware("https://auth.example.com/session/public");
 		expect(calls).toBe(1);
 		expect(auth.refreshes).toBe(0);
+	});
+});
+
+describe("requireLogin", () => {
+	test("logs out before redirecting", () => {
+		const auth = mockAuth({ token: "abc" });
+		requireLogin(auth);
+		expect(auth.logouts).toBe(1);
+		expect(auth.getToken()).toBe(null);
 	});
 });
 

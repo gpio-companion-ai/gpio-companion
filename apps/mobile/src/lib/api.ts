@@ -25,9 +25,28 @@ export type TokenProvider = () => Promise<string | null>;
 const REQUEST_TIMEOUT_MS = 15_000;
 
 let tokenProvider: TokenProvider | null = null;
+let sessionLost: (() => void) | null = null;
 
 export function setTokenProvider(provider: TokenProvider | null): void {
 	tokenProvider = provider;
+}
+
+export function setSessionLostHandler(handler: (() => void) | null): void {
+	sessionLost = handler;
+}
+
+function loseSession(): void {
+	sessionLost?.();
+}
+
+function isLoginRequired(error: string): boolean {
+	const normalized = error.trim().toLowerCase();
+	return (
+		normalized === "sign in first" ||
+		normalized === "login first" ||
+		normalized.startsWith("sign in first") ||
+		normalized.startsWith("login first")
+	);
 }
 
 async function fetchOnce(
@@ -100,10 +119,7 @@ async function parseResponse<T>(response: Response): Promise<Parsed<T>> {
 		typeof result.error === "string" && result.error.trim().length > 0
 			? result.error
 			: `request failed (HTTP ${response.status})`;
-	const unauthorized =
-		response.status === 401 ||
-		error === "sign in first" ||
-		error === "login first";
+	const unauthorized = response.status === 401 || isLoginRequired(error);
 	return { ok: false, unauthorized, error };
 }
 
@@ -120,11 +136,16 @@ async function request<T>(
 	}
 	if (parsed.unauthorized && !retried) {
 		const next = tokenProvider ? await tokenProvider() : null;
-		if (next) {
+		if (next && next !== token) {
 			return request(next, path, init, true);
 		}
+		if (!next) {
+			loseSession();
+		}
+		throw new UnauthorizedError(parsed.error);
 	}
 	if (parsed.unauthorized) {
+		loseSession();
 		throw new UnauthorizedError(parsed.error);
 	}
 	throw new Error(parsed.error);
@@ -628,6 +649,23 @@ export function readBoardFile(
 	});
 }
 
+export function renameBoardFile(
+	token: string,
+	uuid: string,
+	name: string,
+	from: string,
+	to: string,
+) {
+	return request<{ written: boolean; path: string }>(
+		token,
+		"/api/mobile/files/rename",
+		{
+			method: "POST",
+			body: JSON.stringify({ uuid, name, from, to }),
+		},
+	);
+}
+
 export function writeBoardFile(
 	token: string,
 	uuid: string,
@@ -643,6 +681,30 @@ export function writeBoardFile(
 			body: JSON.stringify({ uuid, name, path, text }),
 		},
 	);
+}
+
+export function uploadBoardFile(
+	token: string,
+	uuid: string,
+	name: string,
+	path: string,
+	body: { text?: string; base64?: string },
+) {
+	return request<{ written: boolean; path: string }>(
+		token,
+		"/api/mobile/files/write",
+		{
+			method: "PUT",
+			body: JSON.stringify({ uuid, name, path, ...body }),
+		},
+	);
+}
+
+export function transcribeCode(token: string, audio: string, locale: string) {
+	return request<{ text: string }>(token, "/api/mobile/code/stt", {
+		method: "POST",
+		body: JSON.stringify({ audio, locale }),
+	});
 }
 
 export function signBoardFilesLive(token: string, uuid: string, name: string) {

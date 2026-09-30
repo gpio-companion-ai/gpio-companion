@@ -5,7 +5,9 @@ mock.module("expo-constants", () => ({
 	default: { expoConfig: { extra: {} } },
 }));
 
-const { getSession, setTokenProvider } = await import("./api.ts");
+const { getSession, setSessionLostHandler, setTokenProvider } = await import(
+	"./api.ts"
+);
 
 const originalFetch = globalThis.fetch;
 
@@ -26,6 +28,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 	setTokenProvider(null);
+	setSessionLostHandler(null);
 });
 
 describe("api", () => {
@@ -86,10 +89,44 @@ describe("api", () => {
 	});
 
 	test("surfaces unauthorized when no provider can refresh", async () => {
+		let lost = 0;
 		globalThis.fetch = mockFetch(async () =>
 			jsonResponse({ ok: false, error: "sign in first" }, 401),
 		);
 		setTokenProvider(async () => null);
+		setSessionLostHandler(() => {
+			lost += 1;
+		});
 		await expect(getSession("token-1")).rejects.toThrow("sign in first");
+		expect(lost).toBe(1);
+	});
+
+	test("signs out when a new token is still unauthorized", async () => {
+		let lost = 0;
+		globalThis.fetch = mockFetch(async () =>
+			jsonResponse({ ok: false, error: "sign in first" }, 401),
+		);
+		setTokenProvider(async () => "token-2");
+		setSessionLostHandler(() => {
+			lost += 1;
+		});
+		await expect(getSession("token-1")).rejects.toThrow("sign in first");
+		expect(lost).toBe(1);
+	});
+
+	test("keeps the session when refresh returns the same token", async () => {
+		let calls = 0;
+		let lost = 0;
+		globalThis.fetch = mockFetch(async () => {
+			calls += 1;
+			return jsonResponse({ ok: false, error: "sign in first" }, 401);
+		});
+		setTokenProvider(async () => "token-1");
+		setSessionLostHandler(() => {
+			lost += 1;
+		});
+		await expect(getSession("token-1")).rejects.toThrow("sign in first");
+		expect(calls).toBe(1);
+		expect(lost).toBe(0);
 	});
 });

@@ -1,6 +1,7 @@
 export type AuthRefreshClient = {
 	getToken(): string | null;
 	setTokenToCookie(): void;
+	logout(): void;
 	triggerRefresh(): Promise<boolean>;
 };
 
@@ -35,6 +36,41 @@ export function syncAccessCookie(auth: AuthRefreshClient): void {
 	auth.setTokenToCookie();
 }
 
+export function clearAccessCookie(): void {
+	if (typeof document === "undefined") {
+		return;
+	}
+	document.cookie = "access_token=; Max-Age=0; path=/";
+}
+
+let loginRedirectStarted = false;
+
+export function redirectToLogin(): void {
+	clearAccessCookie();
+	if (typeof window === "undefined") {
+		return;
+	}
+	const path = window.location.pathname;
+	if (
+		path === "/login" ||
+		path === "/callback" ||
+		path.startsWith("/callback/") ||
+		path.startsWith("/auth/")
+	) {
+		return;
+	}
+	if (loginRedirectStarted) {
+		return;
+	}
+	loginRedirectStarted = true;
+	window.location.assign("/login");
+}
+
+export function requireLogin(auth: AuthRefreshClient): void {
+	auth.logout();
+	redirectToLogin();
+}
+
 const cookieSynced = new WeakSet<object>();
 
 export function attachAccessCookieSync(auth: AuthRefreshClient): void {
@@ -56,6 +92,7 @@ export function createAuthAwareFetch(
 	baseFetch: typeof fetch,
 	auth: AuthRefreshClient,
 	origin = typeof window === "undefined" ? "" : window.location.origin,
+	onLoginRequired: () => void = () => requireLogin(auth),
 ): typeof fetch {
 	let refreshPromise: Promise<boolean> | null = null;
 
@@ -89,11 +126,16 @@ export function createAuthAwareFetch(
 			return response;
 		}
 		if (!(await refreshOnce())) {
+			onLoginRequired();
 			return response;
 		}
 		const headers = new Headers(retryable.headers);
 		headers.set(RETRY_HEADER, "1");
-		return baseFetch(new Request(retryable, { headers }));
+		const retried = await baseFetch(new Request(retryable, { headers }));
+		if (await responseNeedsRefresh(retried)) {
+			onLoginRequired();
+		}
+		return retried;
 	};
 }
 

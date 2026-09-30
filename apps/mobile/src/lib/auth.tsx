@@ -14,7 +14,12 @@ import {
 	useEffect,
 	useState,
 } from "react";
-import { getSession, type Session, setTokenProvider } from "./api.ts";
+import {
+	getSession,
+	type Session,
+	setSessionLostHandler,
+	setTokenProvider,
+} from "./api.ts";
 import { authClientId, authRedirectUri, issuerUrl } from "./config.ts";
 
 const authOptions = {
@@ -91,7 +96,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				return null;
 			}
 		});
-		return () => setTokenProvider(null);
+		setSessionLostHandler(() => {
+			setToken(null);
+			setSession(null);
+			void nativeLogout().catch(() => undefined);
+		});
+		return () => {
+			setTokenProvider(null);
+			setSessionLostHandler(null);
+		};
 	}, []);
 
 	useEffect(() => {

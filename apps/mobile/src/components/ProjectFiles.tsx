@@ -1,3 +1,11 @@
+import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
+import {
+	codeAttachFileName,
+	codeAttachKind,
+	codeComposerErrorKey,
+	stageExplorerFile,
+} from "gpio-companion-attach";
 import {
 	type BoardFileEntry,
 	type BoardFileNode,
@@ -6,12 +14,12 @@ import {
 	boardFileDirty,
 	boardFileTree,
 	countBoardFiles,
-	filterBoardNodes,
 	EDITOR_EMBED_MESSAGE_TYPE,
 	EDITOR_EMBED_READY_TYPE,
 	type EditorEmbedPayload,
 	editorEmbedInjectSource,
 	editorEmbedUrl,
+	filterBoardNodes,
 	isEditorEmbedSave,
 	parseBoardFileEvent,
 	parseEditorEmbedChange,
@@ -19,6 +27,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
 	Alert,
+	Modal,
 	Pressable,
 	ScrollView,
 	Text,
@@ -30,7 +39,9 @@ import {
 	listBoardFiles,
 	pushProject,
 	readBoardFile,
+	renameBoardFile,
 	signBoardFilesLive,
+	uploadBoardFile,
 	writeBoardFile,
 } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
@@ -46,6 +57,9 @@ type Props = {
 	owner: string;
 	name: string;
 	onFileStateChange?: (state: { dirty: boolean; stale: boolean }) => void;
+	onEntries?: (entries: BoardFileEntry[]) => void;
+	onAddContext?: (path: string, text: string) => void;
+	onContextRenamed?: (from: string, to: string) => void;
 };
 
 type OpenFile = {
@@ -61,6 +75,9 @@ export default function ProjectFiles({
 	owner,
 	name,
 	onFileStateChange,
+	onEntries,
+	onAddContext,
+	onContextRenamed,
 }: Props) {
 	const t = useT();
 	const colors = useColors();
@@ -81,6 +98,14 @@ export default function ProjectFiles({
 	const [saved, setSaved] = useState("");
 	const [busy, setBusy] = useState("");
 	const [fileFilter, setFileFilter] = useState("");
+	const [fileMenu, setFileMenu] = useState<{
+		path: string;
+		x: number;
+		y: number;
+	} | null>(null);
+	const [creating, setCreating] = useState<string | null>(null);
+	const [renaming, setRenaming] = useState("");
+	const [nameDraft, setNameDraft] = useState("");
 	const [fileLoading, setFileLoading] = useState(false);
 	const echo = useRef("");
 	const fileRef = useRef(file);
@@ -116,6 +141,10 @@ export default function ProjectFiles({
 		setDiagramView("board");
 		openedPath.current = "";
 	}, [uuid, name]);
+
+	useEffect(() => {
+		onEntries?.(entries);
+	}, [entries, onEntries]);
 
 	useEffect(() => {
 		if (!token || !uuid || !name) {
@@ -316,6 +345,179 @@ export default function ProjectFiles({
 		void doOpen(current.path);
 	}
 
+	function shownError(message: string): string {
+		const key = codeComposerErrorKey(message);
+		if (key === "fileTooLarge") {
+			return t("code.fileTooLarge");
+		}
+		if (key === "fileType") {
+			return t("code.fileType");
+		}
+		if (key === "updateCompanion" || message.includes("404")) {
+			return t("code.updateCompanion");
+		}
+		return message;
+	}
+
+	async function importBytes(
+		dir: string,
+		list: { name: string; bytes: Uint8Array }[],
+	) {
+		if (!token || !uuid || !name || list.length === 0) {
+			return;
+		}
+		setBusy("drop");
+		setNote("");
+		const taken = entries
+			.filter((item) => item.type === "file")
+			.map((item) => item.path);
+		try {
+			for (const file of list) {
+				const staged = stageExplorerFile({
+					dir,
+					filename: file.name,
+					bytes: file.bytes,
+					taken,
+				});
+				taken.push(staged.path);
+				await uploadBoardFile(token, uuid, name, staged.path, {
+					...(staged.base64
+						? { base64: staged.base64 }
+						: { text: staged.text ?? "" }),
+				});
+			}
+			const listed = await listBoardFiles(token, uuid, name);
+			setEntries(listed.entries);
+			setBranch(listed.branch);
+			if (dir) {
+				setOpenDirs((current) => new Set(current).add(dir));
+			}
+			setSaved(t("code.dropped", { n: list.length }));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function reloadFiles() {
+		if (!token || !uuid || !name) {
+			return;
+		}
+		const listed = await listBoardFiles(token, uuid, name);
+		setEntries(listed.entries);
+		setBranch(listed.branch);
+		setNote("");
+	}
+
+	function startCreate() {
+		const dir = file?.path ? parentDir(file.path) : "";
+		setRenaming("");
+		setCreating(dir);
+		setNameDraft("untitled.txt");
+		if (dir) {
+			setOpenDirs((current) => new Set(current).add(dir));
+		}
+	}
+
+	function startRename(path?: string) {
+		const target = path || file?.path || "";
+		if (!target) {
+			return;
+		}
+		setCreating(null);
+		setFileMenu(null);
+		setRenaming(target);
+		setNameDraft(target.split("/").pop() ?? target);
+	}
+
+	async function textFor(path: string) {
+		if (fileRef.current?.path === path && fileRef.current.kind === "text") {
+			return draftRef.current;
+		}
+		const data = await readBoardFile(token, uuid, name, path);
+		if (data.kind !== "text" || typeof data.text !== "string") {
+			throw new Error("context file must be text");
+		}
+		return data.text;
+	}
+
+	async function addToContext(path: string) {
+		setFileMenu(null);
+		try {
+			onAddContext?.(path, await textFor(path));
+		} catch (caught) {
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+			setSaved("");
+		}
+	}
+
+	async function commitName() {
+		if (!token || !uuid || !name) {
+			return;
+		}
+		const draft = nameDraft.trim();
+		if (!draft) {
+			setCreating(null);
+			setRenaming("");
+			return;
+		}
+		setBusy("file");
+		try {
+			const filename = codeAttachFileName(draft);
+			if (codeAttachKind(filename) !== "text") {
+				throw new Error("file type is not allowed");
+			}
+			if (renaming) {
+				const dir = parentDir(renaming);
+				const to = dir ? `${dir}/${filename}` : filename;
+				if (to !== renaming) {
+					const renamed = await renameBoardFile(
+						token,
+						uuid,
+						name,
+						renaming,
+						to,
+					);
+					if (file?.path === renaming) {
+						setFile({ ...file, path: renamed.path });
+					}
+					onContextRenamed?.(renaming, renamed.path);
+				}
+			} else if (creating !== null) {
+				const path = creating ? `${creating}/${filename}` : filename;
+				await writeBoardFile(token, uuid, name, path, "");
+				await openPath(path);
+			}
+			setCreating(null);
+			setRenaming("");
+			await reloadFiles();
+		} catch (caught) {
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function pickInto(dir: string) {
+		const picked = await DocumentPicker.getDocumentAsync({
+			multiple: true,
+			copyToCacheDirectory: true,
+		});
+		if (picked.canceled) {
+			return;
+		}
+		const list = [];
+		for (const asset of picked.assets) {
+			list.push({
+				name: asset.name,
+				bytes: new Uint8Array(await new File(asset.uri).arrayBuffer()),
+			});
+		}
+		await importBytes(dir, list);
+	}
+
 	async function saveBoard(text = draft) {
 		if (file?.kind !== "text" || !token || !uuid || !name || busy) {
 			return;
@@ -380,10 +582,40 @@ export default function ProjectFiles({
 				<Text style={{ flex: 1, color: colors.text, fontWeight: "600" }}>
 					{name || t("code.files")}
 					{branch ? `  ${branch}` : ""}
-					{fileCount > 0
-						? `  ${t("code.filesCount", { n: fileCount })}`
-						: ""}
+					{fileCount > 0 ? `  ${t("code.filesCount", { n: fileCount })}` : ""}
 				</Text>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={t("code.newFile")}
+					disabled={!token || !uuid || !name || busy === "file"}
+					onPress={startCreate}
+				>
+					<Text style={{ color: colors.text, fontSize: 16 }}>+</Text>
+				</Pressable>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={t("code.renameFile")}
+					disabled={!file?.path || busy === "file"}
+					onPress={startRename}
+				>
+					<Text style={{ color: colors.text, fontSize: 12 }}>A</Text>
+				</Pressable>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={t("code.refreshFiles")}
+					disabled={!token || !uuid || !name}
+					onPress={() => void reloadFiles()}
+				>
+					<Text style={{ color: colors.text, fontSize: 14 }}>↻</Text>
+				</Pressable>
+				<Pressable
+					accessibilityRole="button"
+					accessibilityLabel={t("code.dropRoot")}
+					disabled={!token || !uuid || !name || busy === "drop"}
+					onPress={() => void pickInto("")}
+				>
+					<Text style={{ color: colors.primary, fontWeight: "600" }}>+</Text>
+				</Pressable>
 				<Pressable
 					disabled={!token || !uuid || !owner || !name || busy === "github"}
 					onPress={() => void saveGithub()}
@@ -543,11 +775,19 @@ export default function ProjectFiles({
 				</View>
 			) : (
 				<ScrollView style={{ flex: 1 }}>
+					{creating === "" ? (
+						<TextInput
+							value={nameDraft}
+							autoFocus
+							accessibilityLabel={t("code.fileName")}
+							onChangeText={setNameDraft}
+							onSubmitEditing={() => void commitName()}
+							style={{ color: colors.text, padding: 8 }}
+						/>
+					) : null}
 					{visibleTree.length === 0 ? (
 						<Text style={{ color: colors.muted, padding: 12 }}>
-							{fileFilter.trim()
-								? t("code.searchEmpty")
-								: t("code.emptyTree")}
+							{fileFilter.trim() ? t("code.searchEmpty") : t("code.emptyTree")}
 						</Text>
 					) : (
 						visibleTree.map((node) => (
@@ -571,13 +811,79 @@ export default function ProjectFiles({
 									})
 								}
 								onOpen={(path) => void openPath(path)}
+								onAdd={(dir) => void pickInto(dir)}
+								creating={creating}
+								renaming={renaming}
+								nameDraft={nameDraft}
+								onName={setNameDraft}
+								onCommit={() => void commitName()}
+								onFileMenu={(path, x, y) => setFileMenu({ path, x, y })}
 							/>
 						))
 					)}
 				</ScrollView>
 			)}
+			<Modal
+				visible={fileMenu !== null}
+				transparent
+				animationType="fade"
+				onRequestClose={() => setFileMenu(null)}
+			>
+				<View style={{ flex: 1 }}>
+					<Pressable style={{ flex: 1 }} onPress={() => setFileMenu(null)} />
+					{fileMenu ? (
+						<View
+							style={{
+								position: "absolute",
+								left: Math.max(8, fileMenu.x),
+								top: Math.max(8, fileMenu.y),
+								minWidth: 180,
+								borderRadius: 10,
+								padding: 4,
+								backgroundColor: colors.surface,
+								borderWidth: 1,
+								borderColor: colors.border,
+							}}
+						>
+							<Pressable
+								accessibilityRole="button"
+								onPress={() => void addToContext(fileMenu.path)}
+								style={{ padding: 10 }}
+							>
+								<Text style={{ color: colors.text }}>
+									{t("code.addToContext")}
+								</Text>
+							</Pressable>
+							<Pressable
+								accessibilityRole="button"
+								onPress={() => startRename(fileMenu.path)}
+								style={{ padding: 10 }}
+							>
+								<Text style={{ color: colors.text }}>{t("code.renameFile")}</Text>
+							</Pressable>
+						</View>
+					) : null}
+				</View>
+							<Pressable
+								accessibilityRole="button"
+								onPress={() => startRename(fileMenu.path)}
+								style={{ padding: 10 }}
+							>
+								<Text style={{ color: colors.text }}>
+									{t("code.renameFile")}
+								</Text>
+							</Pressable>
+						</View>
+					) : null}
+				</Pressable>
+			</Modal>
 		</View>
 	);
+}
+
+function parentDir(path: string): string {
+	const index = path.lastIndexOf("/");
+	return index < 0 ? "" : path.slice(0, index);
 }
 
 function openAllDirs(nodes: readonly BoardFileNode[]): Set<string> {
@@ -601,6 +907,13 @@ function TreeRows({
 	color,
 	onToggle,
 	onOpen,
+	onAdd,
+	creating,
+	renaming,
+	nameDraft,
+	onName,
+	onCommit,
+	onFileMenu,
 }: {
 	node: BoardFileNode;
 	depth: number;
@@ -608,25 +921,78 @@ function TreeRows({
 	color: string;
 	onToggle: (path: string) => void;
 	onOpen: (path: string) => void;
+	onAdd: (dir: string) => void;
+	creating: string | null;
+	renaming: string;
+	nameDraft: string;
+	onName: (value: string) => void;
+	onCommit: () => void;
+	onFileMenu: (path: string, x: number, y: number) => void;
 }) {
+	const t = useT();
 	const open = node.type === "dir" && openDirs.has(node.path);
 	return (
 		<View>
-			<Pressable
-				onPress={() =>
-					node.type === "dir" ? onToggle(node.path) : onOpen(node.path)
-				}
+			<View
 				style={{
 					height: 28,
-					justifyContent: "center",
+					flexDirection: "row",
+					alignItems: "center",
 					paddingLeft: 8 + depth * 14,
 				}}
 			>
-				<Text style={{ color }} numberOfLines={1}>
-					{node.type === "dir" ? (open ? "▾ " : "▸ ") : "  "}
-					{node.name}
-				</Text>
-			</Pressable>
+				<Pressable
+					onPress={() =>
+						node.type === "dir" ? onToggle(node.path) : onOpen(node.path)
+					}
+					delayLongPress={500}
+					onLongPress={(event) => {
+						if (node.type === "dir") {
+							return;
+						}
+						onFileMenu(
+							node.path,
+							event.nativeEvent.pageX,
+							event.nativeEvent.pageY,
+						);
+					}}
+					style={{ flex: 1, justifyContent: "center" }}
+				>
+					{renaming === node.path ? (
+						<TextInput
+							value={nameDraft}
+							autoFocus
+							onChangeText={onName}
+							onSubmitEditing={onCommit}
+							style={{ color, padding: 0 }}
+						/>
+					) : (
+						<Text style={{ color }} numberOfLines={1}>
+							{node.type === "dir" ? (open ? "▾ " : "▸ ") : "  "}
+							{node.name}
+						</Text>
+					)}
+				</Pressable>
+				{node.type === "dir" ? (
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={t("code.dropFolder", { name: node.name })}
+						onPress={() => onAdd(node.path)}
+						style={{ paddingHorizontal: 10 }}
+					>
+						<Text style={{ color }}>+</Text>
+					</Pressable>
+				) : null}
+			</View>
+			{open && creating === node.path ? (
+				<TextInput
+					value={nameDraft}
+					autoFocus
+					onChangeText={onName}
+					onSubmitEditing={onCommit}
+					style={{ color, paddingLeft: 8 + (depth + 1) * 14 }}
+				/>
+			) : null}
 			{open
 				? node.children.map((child) => (
 						<TreeRows
@@ -637,6 +1003,13 @@ function TreeRows({
 							color={color}
 							onToggle={onToggle}
 							onOpen={onOpen}
+							onAdd={onAdd}
+							creating={creating}
+							renaming={renaming}
+							nameDraft={nameDraft}
+							onName={onName}
+							onCommit={onCommit}
+							onFileMenu={onFileMenu}
 						/>
 					))
 				: null}

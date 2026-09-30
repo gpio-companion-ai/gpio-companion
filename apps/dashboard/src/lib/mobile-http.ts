@@ -45,6 +45,12 @@ export function errorStatus(caught: unknown): number {
 	if (message === "support email is not configured") {
 		return 503;
 	}
+	if (message === "credits empty") {
+		return 402;
+	}
+	if (message === "workers ai is not bound") {
+		return 503;
+	}
 	if (message.includes("board did not respond in time")) {
 		return 502;
 	}

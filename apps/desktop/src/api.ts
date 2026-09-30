@@ -137,6 +137,25 @@ export function nearbyBoardLabel(
 	return t ? t("ble.nearbyRadio", { rssi }) : `Nearby radio${rssi}`;
 }
 
+const authRequired = new Set<() => void>();
+
+export function onAuthRequired(handler: () => void): () => void {
+	authRequired.add(handler);
+	return () => {
+		authRequired.delete(handler);
+	};
+}
+
+function notifyAuthRequired(message: string): void {
+	const normalized = message.trim().toLowerCase();
+	if (normalized !== "sign in first" && normalized !== "login first") {
+		return;
+	}
+	for (const handler of authRequired) {
+		handler();
+	}
+}
+
 async function call<T>(
 	cmd: string,
 	args?: Record<string, unknown>,
@@ -144,7 +163,9 @@ async function call<T>(
 	try {
 		return await invoke<T>(cmd, args);
 	} catch (caught) {
-		throw new Error(typeof caught === "string" ? caught : "request failed");
+		const message = typeof caught === "string" ? caught : "request failed";
+		notifyAuthRequired(message);
+		throw new Error(message);
 	}
 }
 
@@ -727,6 +748,19 @@ export function readBoardFile(uuid: string, name: string, path: string) {
 	});
 }
 
+export function renameBoardFile(
+	uuid: string,
+	name: string,
+	from: string,
+	to: string,
+) {
+	return apiRequest<{ written: boolean; path: string }>(
+		"POST",
+		"/api/mobile/files/rename",
+		{ uuid, name, from, to },
+	);
+}
+
 export function writeBoardFile(
 	uuid: string,
 	name: string,
@@ -738,6 +772,26 @@ export function writeBoardFile(
 		"/api/mobile/files/write",
 		{ uuid, name, path, text },
 	);
+}
+
+export function uploadBoardFile(
+	uuid: string,
+	name: string,
+	path: string,
+	body: { text?: string; base64?: string },
+) {
+	return apiRequest<{ written: boolean; path: string }>(
+		"PUT",
+		"/api/mobile/files/write",
+		{ uuid, name, path, ...body },
+	);
+}
+
+export function transcribeCode(audio: string, locale: string) {
+	return apiRequest<{ text: string }>("POST", "/api/mobile/code/stt", {
+		audio,
+		locale,
+	});
 }
 
 export function signBoardFilesLive(uuid: string, name: string) {

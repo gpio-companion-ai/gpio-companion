@@ -1,6 +1,7 @@
 import { POST as listFiles } from "@api/files/list";
 import { POST as signFilesLive } from "@api/files/live";
 import { POST as readFile } from "@api/files/read";
+import { POST as renameFile } from "@api/files/rename";
 import { PUT as writeFile } from "@api/files/write";
 import { POST as pushProject } from "@api/projects/push";
 import {
@@ -12,10 +13,14 @@ import {
 	boardFileLanguage,
 	boardFileTree,
 	clampSplitPercent,
+	codeAttachFileName,
+	codeAttachKind,
+	codeComposerErrorKey,
 	countBoardFiles,
 	filterBoardNodes,
 	OC_EDITOR_SPLIT_KEY,
 	parseBoardFileEvent,
+	stageExplorerFile,
 } from "gpio-companion";
 import {
 	type ReactNode,
@@ -24,6 +29,7 @@ import {
 	useRef,
 	useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useColorMode } from "../hooks/useColorMode.tsx";
 import { useT } from "../hooks/useLocale.tsx";
 import { useWorkbench } from "../hooks/useWorkbench.tsx";
@@ -31,11 +37,25 @@ import { unwrapAction } from "../lib/action.ts";
 import BreadboardViewer from "./BreadboardViewer.tsx";
 import ModelViewer from "./ModelViewer.tsx";
 
+export type CodeFilesBridge = {
+	textFor: (path: string) => Promise<string>;
+};
+
+type FileMenu = {
+	path: string;
+	x: number;
+	y: number;
+};
+
 type Props = {
 	uuid: string;
 	owner: string;
 	name: string;
 	children: ReactNode;
+	bridge?: { current: CodeFilesBridge };
+	onEntries?: (entries: BoardFileEntry[]) => void;
+	onAddContext?: (path: string, text: string) => void;
+	onContextRenamed?: (from: string, to: string) => void;
 };
 
 type OpenFile = {
@@ -45,7 +65,16 @@ type OpenFile = {
 	base64: string;
 };
 
-export default function ProjectFiles({ uuid, owner, name, children }: Props) {
+export default function ProjectFiles({
+	uuid,
+	owner,
+	name,
+	children,
+	bridge,
+	onEntries,
+	onAddContext,
+	onContextRenamed,
+}: Props) {
 	const t = useT();
 	const { mode } = useColorMode();
 	const { boards } = useWorkbench();
@@ -61,6 +90,12 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 	const [saved, setSaved] = useState("");
 	const [busy, setBusy] = useState("");
 	const [fileFilter, setFileFilter] = useState("");
+	const [fileMenu, setFileMenu] = useState<FileMenu | null>(null);
+	const fileMenuRef = useRef<HTMLDivElement | null>(null);
+	const [dropDir, setDropDir] = useState<string | null>(null);
+	const [creating, setCreating] = useState<string | null>(null);
+	const [renaming, setRenaming] = useState("");
+	const [nameDraft, setNameDraft] = useState("");
 	const [fileLoading, setFileLoading] = useState(false);
 	const echo = useRef("");
 	const fileRef = useRef(file);
@@ -99,6 +134,40 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 		setDiagramView("board");
 		openedPath.current = "";
 	}, [uuid, name]);
+
+	useEffect(() => {
+		onEntries?.(entries);
+	}, [entries, onEntries]);
+
+	useEffect(() => {
+		if (!fileMenu) {
+			return;
+		}
+		function onPointer(event: PointerEvent) {
+			if (
+				fileMenuRef.current &&
+				!fileMenuRef.current.contains(event.target as Node)
+			) {
+				setFileMenu(null);
+			}
+		}
+		function onKey(event: KeyboardEvent) {
+			if (event.key === "Escape") {
+				setFileMenu(null);
+			}
+		}
+		function onScroll() {
+			setFileMenu(null);
+		}
+		document.addEventListener("pointerdown", onPointer);
+		document.addEventListener("keydown", onKey);
+		document.addEventListener("scroll", onScroll, true);
+		return () => {
+			document.removeEventListener("pointerdown", onPointer);
+			document.removeEventListener("keydown", onKey);
+			document.removeEventListener("scroll", onScroll, true);
+		};
+	}, [fileMenu]);
 
 	useEffect(() => {
 		if (!uuid || !name) {
@@ -281,6 +350,184 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 	}
 	openPathRef.current = openPath;
 
+	function shownError(message: string): string {
+		const key = codeComposerErrorKey(message);
+		if (key === "fileTooLarge") {
+			return t("code.fileTooLarge");
+		}
+		if (key === "fileType") {
+			return t("code.fileType");
+		}
+		if (key === "updateCompanion" || message.includes("404")) {
+			return t("code.updateCompanion");
+		}
+		return message;
+	}
+
+	async function reloadFiles() {
+		if (!uuid || !name) {
+			return;
+		}
+		const listed = await listFiles({ uuid, name });
+		if (!listed.ok) {
+			setNote(listed.error);
+			return;
+		}
+		setEntries(listed.data.entries);
+		setBranch(listed.data.branch);
+		setNote("");
+	}
+
+	function startCreate() {
+		const dir = file?.path ? parentDir(file.path) : "";
+		setRenaming("");
+		setCreating(dir);
+		setNameDraft("untitled.txt");
+		if (dir) {
+			setOpenDirs((current) => new Set(current).add(dir));
+		}
+	}
+
+	function startRename(path?: string) {
+		const target = path || file?.path || "";
+		if (!target) {
+			return;
+		}
+		setCreating(null);
+		setFileMenu(null);
+		setRenaming(target);
+		setNameDraft(target.split("/").pop() ?? target);
+	}
+
+	function openFileMenu(path: string, x: number, y: number) {
+		const left = Math.max(8, Math.min(x, window.innerWidth - 228));
+		const top = Math.max(8, Math.min(y, window.innerHeight - 96));
+		setFileMenu({ path, x: left, y: top });
+	}
+
+	async function textFor(path: string) {
+		if (fileRef.current?.path === path && fileRef.current.kind === "text") {
+			return draftRef.current;
+		}
+		const result = await readFile({ uuid, name, path });
+		if (!result.ok) {
+			throw new Error(result.error);
+		}
+		if (result.data.kind !== "text" || typeof result.data.text !== "string") {
+			throw new Error("context file must be text");
+		}
+		return result.data.text;
+	}
+
+	if (bridge) {
+		bridge.current.textFor = textFor;
+	}
+
+	async function addToContext(path: string) {
+		setFileMenu(null);
+		try {
+			onAddContext?.(path, await textFor(path));
+		} catch (caught) {
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+			setSaved("");
+		}
+	}
+
+	async function commitName() {
+		if (!uuid || !name) {
+			return;
+		}
+		const draft = nameDraft.trim();
+		if (!draft) {
+			setCreating(null);
+			setRenaming("");
+			return;
+		}
+		setBusy("file");
+		try {
+			const filename = codeAttachFileName(draft);
+			if (codeAttachKind(filename) !== "text") {
+				throw new Error("file type is not allowed");
+			}
+			if (renaming) {
+				const dir = parentDir(renaming);
+				const to = dir ? `${dir}/${filename}` : filename;
+				if (to !== renaming) {
+					const renamed = await renameFile({ uuid, name, from: renaming, to });
+					if (!renamed.ok) {
+						throw new Error(renamed.error);
+					}
+					if (file?.path === renaming) {
+						setFile({ ...file, path: renamed.data.path });
+					}
+					onContextRenamed?.(renaming, renamed.data.path);
+				}
+			} else if (creating !== null) {
+				const path = creating ? `${creating}/${filename}` : filename;
+				const written = await writeFile({ uuid, name, path, text: "" });
+				if (!written.ok) {
+					throw new Error(written.error);
+				}
+				await openPath(written.data.path);
+			}
+			setCreating(null);
+			setRenaming("");
+			await reloadFiles();
+		} catch (caught) {
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function importFiles(dir: string, list: File[]) {
+		if (!uuid || !name || list.length === 0) {
+			return;
+		}
+		setBusy("drop");
+		setNote("");
+		const taken = entries
+			.filter((item) => item.type === "file")
+			.map((item) => item.path);
+		try {
+			for (const file of list) {
+				const staged = stageExplorerFile({
+					dir,
+					filename: file.name,
+					bytes: new Uint8Array(await file.arrayBuffer()),
+					taken,
+				});
+				taken.push(staged.path);
+				const written = await writeFile({
+					uuid,
+					name,
+					path: staged.path,
+					...(staged.base64
+						? { base64: staged.base64 }
+						: { text: staged.text ?? "" }),
+				});
+				if (!written.ok) {
+					throw new Error(written.error);
+				}
+			}
+			const listed = await listFiles({ uuid, name });
+			if (listed.ok) {
+				setEntries(listed.data.entries);
+				setBranch(listed.data.branch);
+			}
+			if (dir) {
+				setOpenDirs((current) => new Set(current).add(dir));
+			}
+			setSaved(t("code.dropped", { n: list.length }));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+			setDropDir(null);
+		}
+	}
+
 	async function saveBoard() {
 		if (file?.kind !== "text" || !uuid || !name) {
 			return;
@@ -390,6 +637,38 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 							{t("code.filesCount", { n: fileCount })}
 						</span>
 					) : null}
+					<span className="oc-tree-actions">
+						<button
+							type="button"
+							className="oc-tree-action"
+							aria-label={t("code.newFile")}
+							title={t("code.newFile")}
+							disabled={!uuid || !name || busy === "file"}
+							onClick={startCreate}
+						>
+							<NewFileIcon />
+						</button>
+						<button
+							type="button"
+							className="oc-tree-action"
+							aria-label={t("code.renameFile")}
+							title={t("code.renameFile")}
+							disabled={!file?.path || busy === "file"}
+							onClick={startRename}
+						>
+							<RenameIcon />
+						</button>
+						<button
+							type="button"
+							className="oc-tree-action"
+							aria-label={t("code.refreshFiles")}
+							title={t("code.refreshFiles")}
+							disabled={!uuid || !name}
+							onClick={() => void reloadFiles()}
+						>
+							<RefreshIcon />
+						</button>
+					</span>
 					<button
 						type="button"
 						className="oc-mini"
@@ -435,7 +714,37 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 				</div>
 				{note ? <p className="oc-editor-note oc-error-note">{note}</p> : null}
 				{saved ? <p className="oc-editor-note oc-success">{saved}</p> : null}
-				<div className="oc-tree-scroll" role="tree" aria-label={t("code.files")}>
+				<div
+					className={`oc-tree-scroll${dropDir === "" ? " is-drop" : ""}`}
+					role="tree"
+					aria-label={t("code.files")}
+					onDragOver={(event) => {
+						if (!event.dataTransfer.types.includes("Files")) {
+							return;
+						}
+						event.preventDefault();
+						setDropDir("");
+					}}
+					onDragLeave={(event) => {
+						if (event.currentTarget.contains(event.relatedTarget as Node)) {
+							return;
+						}
+						setDropDir(null);
+					}}
+					onDrop={(event) => {
+						event.preventDefault();
+						void importFiles("", [...event.dataTransfer.files]);
+					}}
+				>
+					{creating === "" ? (
+						<NameRow
+							value={nameDraft}
+							label={t("code.fileName")}
+							onChange={setNameDraft}
+							onCommit={() => void commitName()}
+							onCancel={() => setCreating(null)}
+						/>
+					) : null}
 					{visibleTree.length === 0 ? (
 						<p className="oc-editor-note">
 							{fileFilter.trim() ? t("code.searchEmpty") : t("code.emptyTree")}
@@ -446,7 +755,9 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 								key={node.path}
 								node={node}
 								depth={0}
-								openDirs={fileFilter.trim() ? openAllDirs(visibleTree) : openDirs}
+								openDirs={
+									fileFilter.trim() ? openAllDirs(visibleTree) : openDirs
+								}
 								active={file?.path ?? ""}
 								onToggle={(path) =>
 									setOpenDirs((current) => {
@@ -460,15 +771,25 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 									})
 								}
 								onOpen={(path) => void openPath(path)}
+								dropDir={dropDir}
+								onDragFolder={setDropDir}
+								onDropFiles={(dir, list) => void importFiles(dir, list)}
+								creating={creating}
+								renaming={renaming}
+								nameDraft={nameDraft}
+								onName={setNameDraft}
+								onCommit={() => void commitName()}
+								onCancelName={() => {
+									setCreating(null);
+									setRenaming("");
+								}}
+								onFileMenu={openFileMenu}
 							/>
 						))
 					)}
 				</div>
 			</aside>
-			<div
-				className={`oc-stage${file ? " is-split" : ""}`}
-				ref={stageRef}
-			>
+			<div className={`oc-stage${file ? " is-split" : ""}`} ref={stageRef}>
 				{file ? (
 					<section className="oc-editor" aria-label={file.path}>
 						<div className="oc-editor-bar">
@@ -484,10 +805,7 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 									className="oc-mini"
 									title={t("code.discardConfirm")}
 									onClick={() => {
-										if (
-											dirty &&
-											!window.confirm(t("code.discardConfirm"))
-										) {
+										if (dirty && !window.confirm(t("code.discardConfirm"))) {
 											return;
 										}
 										void openPath(file.path);
@@ -557,8 +875,112 @@ export default function ProjectFiles({ uuid, owner, name, children }: Props) {
 				{file ? <div className="oc-split" onPointerDown={onSplitDown} /> : null}
 				<div className="oc-chat">{children}</div>
 			</div>
+			{fileMenu
+				? createPortal(
+						<div
+							ref={fileMenuRef}
+							className="oc-context-menu"
+							role="menu"
+							aria-label={t("code.fileActions")}
+							style={{ left: fileMenu.x, top: fileMenu.y }}
+						>
+							<button
+								type="button"
+								role="menuitem"
+								onClick={() => void addToContext(fileMenu.path)}
+							>
+								{t("code.addToContext")}
+							</button>
+							<button
+								type="button"
+								role="menuitem"
+								onClick={() => startRename(fileMenu.path)}
+							>
+								{t("code.renameFile")}
+							</button>
+						</div>,
+						document.body,
+					)
+				: null}
 		</div>
 	);
+}
+
+function NameRow({
+	value,
+	label,
+	onChange,
+	onCommit,
+	onCancel,
+}: {
+	value: string;
+	label: string;
+	onChange: (value: string) => void;
+	onCommit: () => void;
+	onCancel: () => void;
+}) {
+	const skip = useRef(false);
+	return (
+		<div className="oc-tree-row" style={{ paddingLeft: 8 }}>
+			<span className="oc-tree-chevron" />
+			<FileIcon />
+			<input
+				className="oc-tree-name-input"
+				value={value}
+				aria-label={label}
+				autoFocus
+				onChange={(event) => onChange(event.target.value)}
+				onKeyDown={(event) => {
+					if (event.key === "Enter") {
+						event.preventDefault();
+						skip.current = true;
+						onCommit();
+					}
+					if (event.key === "Escape") {
+						event.preventDefault();
+						skip.current = true;
+						onCancel();
+					}
+				}}
+				onBlur={() => {
+					if (skip.current) {
+						skip.current = false;
+						return;
+					}
+					onCommit();
+				}}
+			/>
+		</div>
+	);
+}
+
+function NewFileIcon() {
+	return (
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path d="M4 2.5h5l3 3V13.5H4zM9 2.5V6h3.2M8 8.5v4M6 10.5h4" />
+		</svg>
+	);
+}
+
+function RenameIcon() {
+	return (
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path d="M9 3.5l3.5 3.5L6 13.5H2.5V10z" />
+		</svg>
+	);
+}
+
+function RefreshIcon() {
+	return (
+		<svg viewBox="0 0 16 16" aria-hidden="true">
+			<path d="M13 8a5 5 0 11-1.2-3.2M13 2.5V5.5H10" />
+		</svg>
+	);
+}
+
+function parentDir(path: string): string {
+	const index = path.lastIndexOf("/");
+	return index < 0 ? "" : path.slice(0, index);
 }
 
 function openAllDirs(nodes: readonly BoardFileNode[]): Set<string> {
@@ -582,6 +1004,16 @@ function TreeRows({
 	active,
 	onToggle,
 	onOpen,
+	dropDir,
+	onDragFolder,
+	onDropFiles,
+	creating,
+	renaming,
+	nameDraft,
+	onName,
+	onCommit,
+	onCancelName,
+	onFileMenu,
 }: {
 	node: BoardFileNode;
 	depth: number;
@@ -589,31 +1021,116 @@ function TreeRows({
 	active: string;
 	onToggle: (path: string) => void;
 	onOpen: (path: string) => void;
+	dropDir: string | null;
+	onDragFolder: (dir: string) => void;
+	onDropFiles: (dir: string, list: File[]) => void;
+	creating: string | null;
+	renaming: string;
+	nameDraft: string;
+	onName: (value: string) => void;
+	onCommit: () => void;
+	onCancelName: () => void;
+	onFileMenu: (path: string, x: number, y: number) => void;
 }) {
+	const hold = useRef(0);
+	const holdAt = useRef({ x: 0, y: 0 });
+	const held = useRef(false);
 	const open = node.type === "dir" && openDirs.has(node.path);
+	const target = node.type === "dir" ? node.path : parentDir(node.path);
 	return (
 		<>
-			<button
-				type="button"
-				role="treeitem"
-				aria-level={depth + 1}
-				aria-expanded={node.type === "dir" ? open : undefined}
-				aria-current={node.path === active ? "true" : undefined}
-				title={node.path}
-				className={`oc-tree-row${node.path === active ? " is-active" : ""}`}
-				style={{ paddingLeft: 8 + depth * 12 }}
-				onClick={() =>
-					node.type === "dir" ? onToggle(node.path) : onOpen(node.path)
-				}
-			>
-				{node.type === "dir" ? (
-					<Chevron open={open} />
-				) : (
-					<span className="oc-tree-chevron" />
-				)}
-				{node.type === "dir" ? <FolderIcon /> : <FileIcon />}
-				<span className="oc-tree-name">{node.name}</span>
-			</button>
+			{renaming === node.path ? (
+				<NameRow
+					value={nameDraft}
+					label={node.name}
+					onChange={onName}
+					onCommit={onCommit}
+					onCancel={onCancelName}
+				/>
+			) : (
+				<button
+					type="button"
+					role="treeitem"
+					aria-level={depth + 1}
+					aria-expanded={node.type === "dir" ? open : undefined}
+					aria-current={node.path === active ? "true" : undefined}
+					title={node.type === "dir" ? target : node.path}
+					className={`oc-tree-row${node.path === active ? " is-active" : ""}${dropDir === target && node.type === "dir" ? " is-drop" : ""}`}
+					style={{ paddingLeft: 8 + depth * 12 }}
+					onClick={() => {
+						if (held.current) {
+							held.current = false;
+							return;
+						}
+						if (node.type === "dir") {
+							onToggle(node.path);
+							return;
+						}
+						onOpen(node.path);
+					}}
+					onContextMenu={(event) => {
+						if (node.type === "dir") {
+							return;
+						}
+						event.preventDefault();
+						onFileMenu(node.path, event.clientX, event.clientY);
+					}}
+					onPointerDown={(event) => {
+						if (node.type === "dir" || event.button !== 0) {
+							return;
+						}
+						held.current = false;
+						holdAt.current = { x: event.clientX, y: event.clientY };
+						window.clearTimeout(hold.current);
+						hold.current = window.setTimeout(() => {
+							held.current = true;
+							onFileMenu(node.path, holdAt.current.x, holdAt.current.y);
+						}, 500);
+					}}
+					onPointerMove={(event) => {
+						if (
+							Math.hypot(
+								event.clientX - holdAt.current.x,
+								event.clientY - holdAt.current.y,
+							) > 8
+						) {
+							window.clearTimeout(hold.current);
+						}
+					}}
+					onPointerUp={() => window.clearTimeout(hold.current)}
+					onPointerCancel={() => window.clearTimeout(hold.current)}
+					onDragOver={(event) => {
+						if (!event.dataTransfer.types.includes("Files")) {
+							return;
+						}
+						event.preventDefault();
+						event.stopPropagation();
+						onDragFolder(target);
+					}}
+					onDrop={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						onDropFiles(target, [...event.dataTransfer.files]);
+					}}
+				>
+					{node.type === "dir" ? (
+						<Chevron open={open} />
+					) : (
+						<span className="oc-tree-chevron" />
+					)}
+					{node.type === "dir" ? <FolderIcon /> : <FileIcon />}
+					<span className="oc-tree-name">{node.name}</span>
+				</button>
+			)}
+			{open && creating === node.path ? (
+				<NameRow
+					value={nameDraft}
+					label={node.name}
+					onChange={onName}
+					onCommit={onCommit}
+					onCancel={onCancelName}
+				/>
+			) : null}
 			{open
 				? node.children.map((child) => (
 						<TreeRows
@@ -624,6 +1141,16 @@ function TreeRows({
 							active={active}
 							onToggle={onToggle}
 							onOpen={onOpen}
+							dropDir={dropDir}
+							onDragFolder={onDragFolder}
+							onDropFiles={onDropFiles}
+							creating={creating}
+							renaming={renaming}
+							nameDraft={nameDraft}
+							onName={onName}
+							onCommit={onCommit}
+							onCancelName={onCancelName}
+							onFileMenu={onFileMenu}
 						/>
 					))
 				: null}

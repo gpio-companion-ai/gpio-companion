@@ -35,6 +35,10 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/board-files.ts",
 			),
+			"gpio-companion-attach": path.resolve(
+				repoRoot,
+				"packages/core/src/code-attach.ts",
+			),
 			"gpio-companion-jlcpcb": path.resolve(
 				repoRoot,
 				"packages/core/src/jlcpcb-parts.ts",

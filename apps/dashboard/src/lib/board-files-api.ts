@@ -9,6 +9,7 @@ import {
 	filesWsConnectUrl,
 	parseBoardFileListPut,
 	parseBoardFileReadPut,
+	parseBoardFileRenamePut,
 	parseBoardFileWritePut,
 	parseGithubRepoName,
 } from "gpio-companion";
@@ -86,7 +87,13 @@ export async function readSignedBoardFile(
 export async function writeSignedBoardFile(
 	env: SigningEnv,
 	userId: string,
-	input: { uuid: string; name: string; path: string; text: string },
+	input: {
+		uuid: string;
+		name: string;
+		path: string;
+		text?: string;
+		base64?: string;
+	},
 ): Promise<BoardFileWrite> {
 	const device = await boardFileDevice(env, userId, input.uuid);
 	const put = parseBoardFileWritePut(input);
@@ -95,11 +102,31 @@ export async function writeSignedBoardFile(
 			env,
 			device.deviceUrl,
 			"PUT",
-			FILES_WRITE_PATH,
+	FILES_RENAME_PATH,
+	FILES_WRITE_PATH,
 			put,
 			{
 				timeoutMs: 15_000,
 			},
+		),
+	);
+}
+
+export async function renameSignedBoardFile(
+	env: SigningEnv,
+	userId: string,
+	input: { uuid: string; name: string; from: string; to: string },
+): Promise<BoardFileWrite> {
+	const device = await boardFileDevice(env, userId, input.uuid);
+	const put = parseBoardFileRenamePut(input);
+	return readDeviceJson<BoardFileWrite>(
+		await signedDeviceFetch(
+			env,
+			device.deviceUrl,
+			"POST",
+			FILES_RENAME_PATH,
+			put,
+			{ timeoutMs: 15_000 },
 		),
 	);
 }

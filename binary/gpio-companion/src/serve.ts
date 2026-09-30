@@ -20,6 +20,7 @@ import {
 	debugAuthHeadersFromRequest,
 	FILES_LIST_PATH,
 	FILES_READ_PATH,
+	FILES_RENAME_PATH,
 	FILES_WRITE_PATH,
 	FLASH_PATH,
 	FLASH_PORTS_PATH,
@@ -56,6 +57,7 @@ import {
 	parseBoardFileListPut,
 	parseBoardFileReadPut,
 	parseBoardFileWatchPath,
+	parseBoardFileRenamePut,
 	parseBoardFileWritePut,
 	parseDebugEventInput,
 	parseDeviceSecrets,
@@ -104,7 +106,9 @@ import {
 	createBoardFileHub,
 	listBoardFiles,
 	readBoardFile,
+	renameBoardFile,
 	writeBoardFile,
+	writeBoardFileBytes,
 } from "./board-files.ts";
 import { readBoardModel } from "./board-model.ts";
 import { type ConsoleHub, createConsoleHub } from "./console.ts";
@@ -1030,14 +1034,36 @@ export async function handleDeviceRequest(
 		);
 	}
 
+	if (method === "POST" && path === FILES_RENAME_PATH) {
+		const put = parseBoardFileRenamePut(parseJson(bodyText));
+		return json(
+			await renameBoardFile(
+				extras?.projectsDir ?? projectsRoot(),
+				put.name,
+				put.from,
+				put.to,
+			),
+		);
+	}
+
 	if (method === "PUT" && path === FILES_WRITE_PATH) {
 		const put = parseBoardFileWritePut(parseJson(bodyText));
+		if (put.base64) {
+			return json(
+				await writeBoardFileBytes(
+					extras?.projectsDir ?? projectsRoot(),
+					put.name,
+					put.path,
+					put.base64,
+				),
+			);
+		}
 		return json(
 			await writeBoardFile(
 				extras?.projectsDir ?? projectsRoot(),
 				put.name,
 				put.path,
-				put.text,
+				put.text ?? "",
 			),
 		);
 	}

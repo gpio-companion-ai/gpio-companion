@@ -1183,7 +1183,9 @@ body {
 
 .oc-search svg,
 .oc-send svg,
-.oc-back svg {
+.oc-back svg,
+.oc-tool svg,
+.oc-file-chip svg {
 	flex: none;
 	width: 16px;
 	height: 16px;
@@ -1911,6 +1913,137 @@ button.oc-chip,
 	white-space: nowrap;
 }
 
+.oc-compose {
+	position: relative;
+	display: flex;
+	width: calc(100% - 32px);
+	max-width: 780px;
+	flex: none;
+	flex-direction: column;
+	gap: 8px;
+	margin: 0 auto 16px;
+}
+
+.oc-mention,
+.oc-context-menu {
+	z-index: 50;
+	display: flex;
+	flex-direction: column;
+	overflow: auto;
+	border: 1px solid rgba(var(--text-main), 0.12);
+	border-radius: 10px;
+	background: rgb(var(--bg-surface));
+	padding: 4px;
+	box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+}
+
+.oc-mention {
+	position: absolute;
+	right: 0;
+	bottom: calc(100% + 6px);
+	left: 0;
+	max-height: 240px;
+}
+
+.oc-context-menu {
+	position: fixed;
+	min-width: 180px;
+	max-width: 280px;
+}
+
+.oc-mention button,
+.oc-context-menu button {
+	display: flex;
+	width: 100%;
+	align-items: center;
+	justify-content: space-between;
+	gap: 12px;
+	border: 0;
+	border-radius: 6px;
+	background: transparent;
+	padding: 8px;
+	text-align: left;
+	color: rgb(var(--text-main));
+	cursor: pointer;
+}
+
+.oc-mention button span:first-child,
+.oc-context-menu button span:first-child {
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.oc-mention button:hover,
+.oc-mention button:focus-visible,
+.oc-mention button.is-on,
+.oc-context-menu button:hover,
+.oc-context-menu button:focus-visible {
+	background: rgba(var(--text-main), 0.08);
+}
+
+.oc-compose .oc-composer {
+	width: auto;
+	max-width: none;
+	margin: 0;
+}
+
+.oc-file-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 6px;
+}
+
+.oc-file-chip {
+	display: inline-flex;
+	max-width: 220px;
+	align-items: center;
+	gap: 4px;
+	border-radius: 999px;
+	padding: 2px 4px 2px 8px;
+	background: rgba(var(--text-main), 0.08);
+	font-size: 12px;
+}
+
+.oc-file-chip span {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.oc-file-chip button.oc-file-use {
+	width: auto;
+	height: auto;
+	padding: 0 6px;
+	font-size: 11px;
+	color: rgb(var(--text-primary));
+}
+
+.oc-file-chip button,
+.oc-tool {
+	display: flex;
+	width: 28px;
+	height: 28px;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	border: 0;
+	border-radius: 8px;
+	background: transparent;
+	color: rgb(var(--text-main));
+}
+
+.oc-tool.is-on {
+	background: rgba(var(--text-primary), 0.16);
+	color: rgb(var(--text-primary));
+}
+
+.oc-tool:disabled,
+.oc-file-chip button:disabled {
+	opacity: 0.35;
+}
+
 .oc-composer {
 	display: flex;
 	width: calc(100% - 32px);
@@ -2041,6 +2174,57 @@ button.oc-chip,
 	flex: none;
 }
 
+.oc-tree-actions {
+	display: flex;
+	margin-left: auto;
+	align-items: center;
+	gap: 2px;
+}
+
+.oc-tree-action {
+	display: flex;
+	width: 22px;
+	height: 22px;
+	flex: none;
+	align-items: center;
+	justify-content: center;
+	border: 0;
+	border-radius: 4px;
+	background: transparent;
+	color: rgb(var(--text-main));
+}
+
+.oc-tree-action:hover:not(:disabled) {
+	background: rgba(var(--text-main), 0.08);
+}
+
+.oc-tree-action:disabled {
+	opacity: 0.35;
+}
+
+.oc-tree-action svg {
+	width: 16px;
+	height: 16px;
+	fill: none;
+	stroke: currentColor;
+	stroke-width: 1.4;
+	stroke-linecap: round;
+	stroke-linejoin: round;
+}
+
+.oc-tree-name-input {
+	min-width: 0;
+	height: 18px;
+	flex: 1;
+	border: 1px solid rgba(var(--text-primary), 0.7);
+	border-radius: 2px;
+	background: rgb(var(--bg-surface));
+	color: rgb(var(--text-main));
+	padding: 0 4px;
+	font: inherit;
+	font-size: 13px;
+}
+
 .oc-tree-title {
 	min-width: 0;
 	flex: 1;
@@ -2078,6 +2262,11 @@ button.oc-chip,
 
 .oc-tree-row:hover {
 	background: rgba(var(--text-main), 0.06);
+}
+
+.oc-tree-row.is-drop,
+.oc-tree-scroll.is-drop {
+	background: rgba(var(--text-primary), 0.14);
 }
 
 .oc-tree-row.is-active {

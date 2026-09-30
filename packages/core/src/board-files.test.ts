@@ -9,6 +9,7 @@ import {
 	boardFileWatchPath,
 	parseBoardFileEvent,
 	parseBoardFileWatchPath,
+	parseBoardFileRenamePut,
 	parseBoardFileWritePut,
 } from "./board-files.ts";
 
@@ -52,6 +53,54 @@ describe("board file kinds", () => {
 				text: "int main(){}",
 			}),
 		).toThrow("invalid path");
+	});
+
+	test("renames inside the project", () => {
+		expect(
+			parseBoardFileRenamePut({
+				name: "blink",
+				from: "host/main.c",
+				to: "host/led.c",
+			}),
+		).toEqual({ name: "blink", from: "host/main.c", to: "host/led.c" });
+		expect(() =>
+			parseBoardFileRenamePut({
+				name: "blink",
+				from: "host/../x.c",
+				to: "host/y.c",
+			}),
+		).toThrow("invalid path");
+	});
+
+	test("accepts an uploads image and refuses a binary elsewhere", () => {
+		const put = parseBoardFileWritePut({
+			name: "blink",
+			path: "uploads/board.png",
+			base64: "aGVsbG8=",
+		});
+		expect(put.base64).toBe("aGVsbG8=");
+		expect(put.text).toBeUndefined();
+		expect(
+			parseBoardFileWritePut({
+				name: "blink",
+				path: "firmware/board.png",
+				base64: "aGVsbG8=",
+			}).path,
+		).toBe("firmware/board.png");
+		expect(() =>
+			parseBoardFileWritePut({
+				name: "blink",
+				path: "firmware/tool.exe",
+				base64: "aGVsbG8=",
+			}),
+		).toThrow("file type is not allowed");
+		expect(() =>
+			parseBoardFileWritePut({
+				name: "blink",
+				path: "uploads/note.txt",
+				text: "hi",
+			}),
+		).not.toThrow();
 	});
 });
 

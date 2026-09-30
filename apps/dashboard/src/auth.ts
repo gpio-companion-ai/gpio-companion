@@ -25,7 +25,10 @@ function truncateKey(key: string) {
 }
 
 export function createClient(
-	props: { ctx?: EventContext<Env, never, Record<string, never>> } = {},
+	props: {
+		ctx?: EventContext<Env, never, Record<string, never>>;
+		onLoginRequired?: (client: { logout(): void }) => void;
+	} = {},
 ) {
 	return createOpenAuthsterClient<PublicSession, PrivateSession, UserRole>({
 		issuerURI: process.env.PUBLIC_AUTH_ISSUER as string,
@@ -34,6 +37,9 @@ export function createClient(
 			(process.env.PUBLIC_AUTH_REDIRECT_URI as string | undefined) ??
 			"http://localhost:3000/callback",
 		secret: process.env.AUTH_SECRET as string,
+		authFlowCallbacks: props.onLoginRequired
+			? { onLoginRequired: props.onLoginRequired }
+			: undefined,
 		cache_provider: {
 			async get(key) {
 				if (!props.ctx) {

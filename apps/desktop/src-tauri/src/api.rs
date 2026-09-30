@@ -53,6 +53,41 @@ struct ActionResult<T> {
 struct RequestFailure {
 	status: u16,
 	message: String,
+	login_required: bool,
+}
+
+fn is_login_required(message: &str) -> bool {
+	let normalized = message.trim().to_ascii_lowercase();
+	normalized == "sign in first"
+		|| normalized == "login first"
+		|| normalized.starts_with("sign in first")
+		|| normalized.starts_with("login first")
+}
+
+fn needs_auth_refresh(fail: &RequestFailure) -> bool {
+	fail.status == 401 || fail.login_required
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum RefreshRecovery {
+	Retry,
+	SignOut,
+	Keep,
+}
+
+fn refresh_recovery(result: &Result<bool, auth::RefreshError>) -> RefreshRecovery {
+	match result {
+		Ok(true) => RefreshRecovery::Retry,
+		Ok(false) | Err(auth::RefreshError::Rejected(_)) => RefreshRecovery::SignOut,
+		Err(auth::RefreshError::Transient(_)) => RefreshRecovery::Keep,
+	}
+}
+
+fn force_login() -> String {
+	log::line("auth required, clearing session");
+	tokens::clear();
+	crate::offline_keys::clear();
+	"sign in first".to_string()
 }
 
 fn refresh_lock() -> &'static Mutex<()> {
@@ -67,7 +102,7 @@ fn has_refresh_token() -> bool {
 		.is_some()
 }
 
-async fn try_refresh_for_retry() -> Result<bool, String> {
+async fn try_refresh_for_retry() -> Result<bool, auth::RefreshError> {
 	let before = tokens::access_token().ok();
 	if !has_refresh_token() {
 		log::line("http 401, refresh skipped (no refresh token)");
@@ -84,9 +119,7 @@ async fn try_refresh_for_retry() -> Result<bool, String> {
 		return Ok(false);
 	}
 	log::line("http 401, refreshing");
-	auth::refresh_access()
-		.await
-		.map_err(|err| err.to_string())?;
+	auth::refresh_access().await?;
 	Ok(true)
 }
 
@@ -120,24 +153,41 @@ pub async fn request<T: DeserializeOwned>(
 	body: Option<&impl Serialize>,
 ) -> Result<T, String> {
 	refresh_if_expiring().await;
-	let token = tokens::access_token()?;
+	let token = match tokens::access_token() {
+		Ok(token) => token,
+		Err(_) => return Err(force_login()),
+	};
 	match request_with_token(token, method.clone(), path, body).await {
 		Ok(data) => Ok(data),
-		Err(fail) if fail.status == 401 => match try_refresh_for_retry().await {
-			Ok(true) => {
-				let token = tokens::access_token()?;
-				log::line(&format!("http {method} {path} retry after refresh"));
-				request_with_token(token, method, path, body)
-					.await
-					.map_err(|retry| retry.message)
+		Err(fail) if needs_auth_refresh(&fail) => {
+			let refreshed = try_refresh_for_retry().await;
+			match refresh_recovery(&refreshed) {
+				RefreshRecovery::Retry => {
+					let token = match tokens::access_token() {
+						Ok(token) => token,
+						Err(_) => return Err(force_login()),
+					};
+					log::line(&format!("http {method} {path} retry after refresh"));
+					match request_with_token(token, method, path, body).await {
+						Ok(data) => Ok(data),
+						Err(retry) if needs_auth_refresh(&retry) => Err(force_login()),
+						Err(retry) => Err(retry.message),
+					}
+				}
+				RefreshRecovery::SignOut => {
+					if let Err(err) = &refreshed {
+						log::line(&format!("{}; refresh: {err}", fail.message));
+					}
+					Err(force_login())
+				}
+				RefreshRecovery::Keep => {
+					if let Err(err) = &refreshed {
+						log::line(&format!("{}; refresh: {err}", fail.message));
+					}
+					Err(fail.message)
+				}
 			}
-			Ok(false) => Err(fail.message),
-			Err(refresh_err) => {
-				let message = format!("{}; refresh: {refresh_err}", fail.message);
-				log::line(&message);
-				Err(message)
-			}
-		},
+		}
 		Err(fail) => Err(fail.message),
 	}
 }
@@ -150,10 +200,7 @@ async fn request_with_token<T: DeserializeOwned>(
 ) -> Result<T, RequestFailure> {
 	let client = http_client();
 	let url = format!("{DASHBOARD_URL}{path}");
-	log::line(&format!(
-		"http {method} {path} tokenBytes={}",
-		token.len()
-	));
+	log::line(&format!("http {method} {path} tokenBytes={}", token.len()));
 	let mut builder = client
 		.request(method.clone(), &url)
 		.header("accept", "application/json")
@@ -169,6 +216,7 @@ async fn request_with_token<T: DeserializeOwned>(
 		RequestFailure {
 			status: 0,
 			message,
+			login_required: false,
 		}
 	})?;
 	let status = response.status();
@@ -184,6 +232,7 @@ async fn request_with_token<T: DeserializeOwned>(
 		RequestFailure {
 			status: 0,
 			message,
+			login_required: false,
 		}
 	})?;
 	log::line(&format!(
@@ -198,6 +247,7 @@ async fn request_with_token<T: DeserializeOwned>(
 			RequestFailure {
 				status: status_code,
 				message,
+				login_required: false,
 			}
 		}),
 		Ok(payload) => {
@@ -209,6 +259,7 @@ async fn request_with_token<T: DeserializeOwned>(
 			Err(RequestFailure {
 				status: status_code,
 				message,
+				login_required: is_login_required(&error),
 			})
 		}
 		Err(err) => {
@@ -220,6 +271,7 @@ async fn request_with_token<T: DeserializeOwned>(
 			Err(RequestFailure {
 				status: status_code,
 				message,
+				login_required: status_code == 401 && is_login_required(&text),
 			})
 		}
 	}
@@ -236,6 +288,32 @@ pub async fn request_value(
 #[cfg(test)]
 mod tests {
 	use super::*;
+
+	#[test]
+	fn login_required_matches_sign_in_and_login_first() {
+		assert!(is_login_required("sign in first"));
+		assert!(is_login_required("login first"));
+		assert!(is_login_required(" Login first "));
+		assert!(is_login_required("sign in first: expired"));
+		assert!(!is_login_required("admin only"));
+		assert!(!is_login_required(
+			"http GET /api/mobile/session 401: sign in first"
+		));
+	}
+
+	#[test]
+	fn rejected_refresh_signs_out_and_transient_keeps_the_session() {
+		assert_eq!(refresh_recovery(&Ok(true)), RefreshRecovery::Retry);
+		assert_eq!(refresh_recovery(&Ok(false)), RefreshRecovery::SignOut);
+		assert_eq!(
+			refresh_recovery(&Err(auth::RefreshError::Rejected("no".to_string()))),
+			RefreshRecovery::SignOut
+		);
+		assert_eq!(
+			refresh_recovery(&Err(auth::RefreshError::Transient("offline".to_string()))),
+			RefreshRecovery::Keep
+		);
+	}
 
 	#[test]
 	fn refreshes_only_inside_the_expiry_window() {

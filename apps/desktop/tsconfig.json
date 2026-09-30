@@ -22,6 +22,7 @@
 			"gpio-companion-pairing": ["../../packages/core/src/pairing.ts"],
 			"gpio-companion-opencode": ["../../packages/core/src/opencode-session.ts"],
 			"gpio-companion-files": ["../../packages/core/src/board-files.ts"],
+			"gpio-companion-attach": ["../../packages/core/src/code-attach.ts"],
 			"gpio-companion-jlcpcb": ["../../packages/core/src/jlcpcb-parts.ts"]
 		}
 	},

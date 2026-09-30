@@ -1,4 +1,25 @@
+import {
+	RecordingPresets,
+	requestRecordingPermissionsAsync,
+	setAudioModeAsync,
+	useAudioRecorder,
+} from "expo-audio";
+import * as DocumentPicker from "expo-document-picker";
+import { File } from "expo-file-system";
 import { router } from "expo-router";
+import {
+	applyCodeMention,
+	CODE_STT_MAX_MS,
+	type CodeAttachDraft,
+	codeAttachPrompt,
+	codeComposerErrorKey,
+	codeMentionAt,
+	encodeBase64,
+	filterCodeMentions,
+	renameContextDrafts,
+	stageBoardContext,
+	stageCodeAttach,
+} from "gpio-companion-attach";
 import {
 	activeOpencodeQuestion,
 	applyOpencodeEvent,
@@ -76,13 +97,21 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ProjectFiles from "../components/ProjectFiles.tsx";
-import { listProjects, opencodeCall, signOpencodeLive } from "../lib/api.ts";
+import {
+	listBoardFiles,
+	listProjects,
+	opencodeCall,
+	readBoardFile,
+	signOpencodeLive,
+	transcribeCode,
+	uploadBoardFile,
+} from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
 import { useColors } from "../lib/color-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
-import { useT } from "../lib/locale.tsx";
+import { useLocale, useT } from "../lib/locale.tsx";
 import { storageGet, storageSet } from "../lib/storage.ts";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
@@ -353,6 +382,9 @@ function MdBlock({
 
 export default function Code() {
 	const t = useT();
+	const { locale } = useLocale();
+	const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+	const heardUri = useRef("");
 	const colors = useColors();
 	const insets = useSafeAreaInsets();
 	const auth = useAuth();
@@ -378,6 +410,12 @@ export default function Code() {
 			: readCodeNav(window.location.search).mode,
 	);
 	const [prompt, setPrompt] = useState("");
+	const [files, setFiles] = useState<CodeAttachDraft[]>([]);
+	const [boardPaths, setBoardPaths] = useState<string[]>([]);
+	const [caret, setCaret] = useState(0);
+	const [mentionOff, setMentionOff] = useState("");
+	const [recording, setRecording] = useState(false);
+	const [uploading, setUploading] = useState(false);
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
@@ -673,6 +711,33 @@ export default function Code() {
 	}, [token, selected, repo]);
 
 	useEffect(() => {
+		if (!token || !selected || !repo) {
+			setBoardPaths([]);
+			return;
+		}
+		let closed = false;
+		void listBoardFiles(token, selected, repo)
+			.then((data) => {
+				if (closed) {
+					return;
+				}
+				setBoardPaths(
+					data.entries
+						.filter((item) => item.type === "file")
+						.map((item) => item.path),
+				);
+			})
+			.catch(() => {
+				if (!closed) {
+					setBoardPaths([]);
+				}
+			});
+		return () => {
+			closed = true;
+		};
+	}, [token, selected, repo]);
+
+	useEffect(() => {
 		if (!token || !selected || !repo || mode !== "session" || !view.sessionID) {
 			return;
 		}
@@ -813,12 +878,188 @@ export default function Code() {
 		}
 	}
 
-	async function send() {
-		const text = prompt.trim();
-		if (!text || !repo || view.busy) {
+	function shownError(message: string): string {
+		const key = codeComposerErrorKey(message);
+		if (key === "fileTooLarge") {
+			return t("code.fileTooLarge");
+		}
+		if (key === "fileType") {
+			return t("code.fileType");
+		}
+		if (key === "updateCompanion") {
+			return t("code.updateCompanion");
+		}
+		if (key === "creditsEmpty") {
+			return t("code.creditsEmpty");
+		}
+		if (key === "contextText") {
+			return t("code.contextText");
+		}
+		return message;
+	}
+
+	function addBoardContext(path: string, text: string) {
+		const staged = stageBoardContext({ path, text });
+		setFiles((current) =>
+			current.some(
+				(item) => item.source === "board" && item.path === staged.path,
+			)
+				? current
+				: [...current, staged],
+		);
+		setError("");
+	}
+
+	async function pickMention(path: string) {
+		const current = codeMentionAt(prompt, caret);
+		if (current) {
+			setPrompt(applyCodeMention(prompt, current));
+			setCaret(current.start);
+		}
+		setMentionOff("picked");
+		try {
+			const data = await readBoardFile(token, selected, repo, path);
+			if (data.kind !== "text" || typeof data.text !== "string") {
+				throw new Error("context file must be text");
+			}
+			addBoardContext(path, data.text);
+		} catch (caught) {
+			if (current) {
+				setPrompt(prompt);
+				setCaret(caret);
+			}
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	async function addPicked() {
+		const picked = await DocumentPicker.getDocumentAsync({
+			multiple: true,
+			copyToCacheDirectory: true,
+		});
+		if (picked.canceled) {
 			return;
 		}
+		const next = [...files];
+		const taken = next.map((item) => item.path);
+		for (const asset of picked.assets) {
+			try {
+				const staged = stageCodeAttach({
+					filename: asset.name,
+					bytes: new Uint8Array(await new File(asset.uri).arrayBuffer()),
+					taken,
+				});
+				taken.push(staged.path);
+				next.push(staged);
+			} catch (caught) {
+				setError(
+					shownError(caught instanceof Error ? caught.message : "file type"),
+				);
+				break;
+			}
+		}
+		setFiles(next);
+	}
+
+	async function finishDictation(uri: string) {
+		try {
+			const heard = (
+				await transcribeCode(
+					token,
+					encodeBase64(new Uint8Array(await new File(uri).arrayBuffer())),
+					locale,
+				)
+			).text.trim();
+			if (!heard) {
+				return;
+			}
+			setPrompt((current) =>
+				current.trim() ? `${current.trim()} ${heard}` : heard,
+			);
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	async function dictate() {
+		if (recording) {
+			setRecording(false);
+			await recorder.stop();
+			const uri = recorder.uri;
+			if (uri && heardUri.current !== uri) {
+				heardUri.current = uri;
+				await finishDictation(uri);
+			}
+			return;
+		}
+		const perm = await requestRecordingPermissionsAsync();
+		if (!perm.granted) {
+			setError(t("code.micDenied"));
+			return;
+		}
+		await setAudioModeAsync({
+			allowsRecording: true,
+			playsInSilentMode: true,
+		});
+		await recorder.prepareToRecordAsync();
+		recorder.record({ forDuration: CODE_STT_MAX_MS / 1000 });
+		setRecording(true);
+	}
+
+	useEffect(() => {
+		if (!recording) {
+			return;
+		}
+		const timer = setInterval(() => {
+			if (recorder.isRecording) {
+				return;
+			}
+			const uri = recorder.uri;
+			if (!uri || heardUri.current === uri) {
+				return;
+			}
+			heardUri.current = uri;
+			setRecording(false);
+			void finishDictation(uri);
+		}, 400);
+		return () => clearInterval(timer);
+	}, [recording, recorder]);
+
+	async function send() {
+		const typed = prompt.trim();
+		const staged = files;
+		if ((!typed && staged.length === 0) || !repo || view.busy || uploading) {
+			return;
+		}
+		setUploading(true);
 		setPrompt("");
+		setFiles([]);
+		let text = "";
+		try {
+			text = codeAttachPrompt(typed, staged);
+		} catch (caught) {
+			setPrompt(typed);
+			setFiles(staged);
+			setUploading(false);
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+			return;
+		}
+		try {
+			for (const file of staged.filter((item) => item.use !== "context")) {
+				await uploadBoardFile(token, selected, repo, file.path, {
+					...(file.base64
+						? { base64: file.base64 }
+						: { text: file.text ?? "" }),
+				});
+			}
+		} catch (caught) {
+			setPrompt(typed);
+			setFiles(staged);
+			setUploading(false);
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+			return;
+		}
+		setUploading(false);
 		let sessionID = mode === "session" ? view.sessionID : "";
 		if (!sessionID) {
 			const data = await run({ repo, op: "create" });
@@ -1064,58 +1305,229 @@ export default function Code() {
 
 	function composer(disabled: boolean, composerBlocked = false) {
 		const sendDisabled =
-			!view.busy && (!prompt.trim() || disabled || composerBlocked);
+			!view.busy &&
+			((!prompt.trim() && files.length === 0) ||
+				disabled ||
+				composerBlocked ||
+				uploading);
+		const toolsDisabled = disabled || composerBlocked || uploading;
+		const mention = codeMentionAt(prompt, caret);
+		const mentionKey = mention ? `${mention.start}:${mention.query}` : "";
+		const mentionLive =
+			Boolean(mention) && mentionOff !== mentionKey && !toolsDisabled;
+		const matches =
+			mentionLive && mention
+				? filterCodeMentions(boardPaths, mention.query)
+				: [];
 		return (
-			<View
-				style={{
-					flexDirection: "row",
-					alignItems: "flex-end",
-					gap: 8,
-					margin: 12,
-					borderRadius: 12,
-					padding: 8,
-					backgroundColor: colors.chipBg,
-					borderWidth: 1,
-					borderColor: composerFocused ? colors.text : colors.border,
-				}}
-			>
-				<TextInput
-					value={prompt}
-					placeholder={t("code.placeholder")}
-					placeholderTextColor={colors.placeholder}
-					editable={!disabled}
-					multiline
-					onChangeText={setPrompt}
-					onFocus={() => setComposerFocused(true)}
-					onBlur={() => setComposerFocused(false)}
-					style={{ flex: 1, color: colors.text, maxHeight: 120, fontSize: 13 }}
-				/>
-				<Pressable
-					accessibilityRole="button"
-					accessibilityLabel={view.busy ? t("code.stop") : t("code.send")}
-					disabled={sendDisabled}
-					onPress={() => void (view.busy ? abort() : send())}
-					style={{
-						width: 28,
-						height: 28,
-						borderRadius: 8,
-						alignItems: "center",
-						justifyContent: "center",
-						backgroundColor: view.busy ? "transparent" : colors.text,
-						borderWidth: view.busy ? 1.5 : 0,
-						borderColor: colors.text,
-						opacity: sendDisabled ? 0.35 : 1,
-					}}
-				>
-					<Text
+			<View style={{ margin: 12, gap: 8 }}>
+				{mentionLive ? (
+					<View
 						style={{
-							color: view.busy ? colors.text : colors.surface,
-							fontSize: 12,
+							maxHeight: 180,
+							borderRadius: 10,
+							borderWidth: 1,
+							borderColor: colors.border,
+							backgroundColor: colors.surface,
+							overflow: "hidden",
 						}}
 					>
-						{view.busy ? "■" : "↑"}
-					</Text>
-				</Pressable>
+						{matches.length === 0 ? (
+							<Text style={{ color: colors.muted, padding: 10 }}>
+								{t("code.mentionEmpty")}
+							</Text>
+						) : (
+							matches.map((path) => (
+								<Pressable
+									key={path}
+									accessibilityRole="button"
+									onPress={() => void pickMention(path)}
+									style={{ paddingHorizontal: 10, paddingVertical: 8 }}
+								>
+									<Text style={{ color: colors.text }} numberOfLines={1}>
+										{path.split("/").pop()}
+									</Text>
+									<Text
+										style={{ color: colors.muted, fontSize: 11 }}
+										numberOfLines={1}
+									>
+										{path}
+									</Text>
+								</Pressable>
+							))
+						)}
+					</View>
+				) : null}
+				{files.length > 0 ? (
+					<View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+						{files.map((file) => (
+							<View
+								key={file.id}
+								style={{
+									flexDirection: "row",
+									alignItems: "center",
+									maxWidth: 220,
+									borderRadius: 999,
+									paddingLeft: 8,
+									backgroundColor: colors.chipBg,
+								}}
+							>
+								<Text
+									numberOfLines={1}
+									style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
+								>
+									{file.source === "board" ? file.path : file.name}
+								</Text>
+								{file.source === "board" ? null : (
+									<Pressable
+										accessibilityRole="button"
+										accessibilityLabel={
+											file.use === "context"
+												? t("code.attachUseBoard", { name: file.name })
+												: t("code.attachUseContext", { name: file.name })
+										}
+										disabled={uploading}
+										onPress={() =>
+											setFiles((current) =>
+												current.map((item) =>
+													item.id === file.id
+														? {
+																...item,
+																use:
+																	item.use === "context" ? "project" : "context",
+															}
+														: item,
+												),
+											)
+										}
+										style={{ paddingHorizontal: 6, paddingVertical: 4 }}
+									>
+										<Text style={{ color: colors.primary, fontSize: 11 }}>
+											{file.use === "context"
+												? t("code.attachContext")
+												: t("code.attachBoard")}
+										</Text>
+									</Pressable>
+								)}
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={t("code.removeFile", { name: file.name })}
+									disabled={uploading}
+									onPress={() =>
+										setFiles((current) =>
+											current.filter((item) => item.id !== file.id),
+										)
+									}
+									style={{ padding: 6 }}
+								>
+									<Text style={{ color: colors.text, fontSize: 12 }}>×</Text>
+								</Pressable>
+							</View>
+						))}
+					</View>
+				) : null}
+				<View
+					style={{
+						flexDirection: "row",
+						alignItems: "flex-end",
+						gap: 8,
+						borderRadius: 12,
+						padding: 8,
+						backgroundColor: colors.chipBg,
+						borderWidth: 1,
+						borderColor: composerFocused ? colors.text : colors.border,
+					}}
+				>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={t("code.attach")}
+						disabled={toolsDisabled}
+						onPress={() => void addPicked()}
+						style={{
+							width: 28,
+							height: 28,
+							alignItems: "center",
+							justifyContent: "center",
+							opacity: toolsDisabled ? 0.35 : 1,
+						}}
+					>
+						<Text style={{ color: colors.text, fontSize: 16 }}>+</Text>
+					</Pressable>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={
+							recording ? t("code.dictating") : t("code.dictate")
+						}
+						disabled={toolsDisabled}
+						onPress={() => void dictate()}
+						style={{
+							width: 28,
+							height: 28,
+							alignItems: "center",
+							justifyContent: "center",
+							borderRadius: 8,
+							backgroundColor: recording ? colors.text : "transparent",
+							opacity: toolsDisabled ? 0.35 : 1,
+						}}
+					>
+						<Text
+							style={{
+								color: recording ? colors.surface : colors.text,
+								fontSize: 11,
+							}}
+						>
+							{recording ? "●" : "M"}
+						</Text>
+					</Pressable>
+					<TextInput
+						value={prompt}
+						placeholder={t("code.placeholder")}
+						placeholderTextColor={colors.placeholder}
+						editable={!disabled}
+						multiline
+						onChangeText={(value) => {
+							setPrompt(value);
+							setCaret(value.length);
+						}}
+						onSelectionChange={(event) =>
+							setCaret(event.nativeEvent.selection.start)
+						}
+						onFocus={() => setComposerFocused(true)}
+						onBlur={() => setComposerFocused(false)}
+						style={{
+							flex: 1,
+							color: colors.text,
+							maxHeight: 120,
+							fontSize: 13,
+						}}
+					/>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={view.busy ? t("code.stop") : t("code.send")}
+						disabled={sendDisabled}
+						onPress={() => void (view.busy ? abort() : send())}
+						style={{
+							width: 28,
+							height: 28,
+							borderRadius: 8,
+							alignItems: "center",
+							justifyContent: "center",
+							backgroundColor: view.busy ? "transparent" : colors.text,
+							borderWidth: view.busy ? 1.5 : 0,
+							borderColor: colors.text,
+							opacity: sendDisabled ? 0.35 : 1,
+						}}
+					>
+						<Text
+							style={{
+								color: view.busy ? colors.text : colors.surface,
+								fontSize: 12,
+							}}
+						>
+							{view.busy ? "■" : "↑"}
+						</Text>
+					</Pressable>
+				</View>
 			</View>
 		);
 	}
@@ -1236,6 +1648,17 @@ export default function Code() {
 							setFilesDirty(dirty);
 							setFilesStale(stale);
 						}}
+						onEntries={(entries) =>
+							setBoardPaths(
+								entries
+									.filter((item) => item.type === "file")
+									.map((item) => item.path),
+							)
+						}
+						onAddContext={addBoardContext}
+						onContextRenamed={(from, to) =>
+							setFiles((current) => renameContextDrafts(current, from, to))
+						}
 					/>
 				) : mode === "home" ? (
 					<ScrollView contentContainerStyle={{ paddingBottom: 16 }}>

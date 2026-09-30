@@ -1,4 +1,18 @@
 import {
+	applyCodeMention,
+	CODE_ATTACH_ACCEPT,
+	CODE_STT_MAX_MS,
+	type CodeAttachDraft,
+	codeAttachPrompt,
+	codeComposerErrorKey,
+	codeMentionAt,
+	encodeBase64,
+	filterCodeMentions,
+	renameContextDrafts,
+	stageBoardContext,
+	stageCodeAttach,
+} from "gpio-companion-attach";
+import {
 	activeOpencodeQuestion,
 	applyOpencodeEvent,
 	CODE_DEFAULT_MODEL,
@@ -68,11 +82,13 @@ import {
 	opencodeCall,
 	openExternal,
 	signOpencodeLive,
+	transcribeCode,
+	uploadBoardFile,
 } from "../api";
 import { useUserBoards } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
-import { useT } from "../locale";
-import ProjectFiles from "./ProjectFiles";
+import { useLocale, useT } from "../locale";
+import ProjectFiles, { type CodeFilesBridge } from "./ProjectFiles";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
@@ -167,6 +183,23 @@ function SearchIcon() {
 		<svg viewBox="0 0 24 24" aria-hidden="true">
 			<circle cx="11" cy="11" r="6" />
 			<path d="M16 16l4 4" />
+		</svg>
+	);
+}
+
+function AttachIcon() {
+	return (
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			<path d="M8 12.5l6.2-6.2a3 3 0 114.2 4.2l-7.4 7.4a4.5 4.5 0 11-6.4-6.4l7-7" />
+		</svg>
+	);
+}
+
+function MicIcon() {
+	return (
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			<rect x="9" y="3" width="6" height="11" rx="3" />
+			<path d="M6 11a6 6 0 0012 0M12 17v4" />
 		</svg>
 	);
 }
@@ -478,6 +511,7 @@ export default function OpenCodeSession({
 	onOpenProject?: () => void;
 }) {
 	const t = useT();
+	const { locale } = useLocale();
 	const { uuid, setUuid } = useBoardSelection();
 	const { devices, boards } = useUserBoards();
 	const selected = uuid || devices[0]?.uuid || "";
@@ -498,6 +532,26 @@ export default function OpenCodeSession({
 			: readCodeNav(window.location.search).mode,
 	);
 	const [prompt, setPrompt] = useState("");
+	const [files, setFiles] = useState<CodeAttachDraft[]>([]);
+	const [boardPaths, setBoardPaths] = useState<string[]>([]);
+	const [caret, setCaret] = useState(0);
+	const [mentionOff, setMentionOff] = useState("");
+	const [mentionIndex, setMentionIndex] = useState(0);
+	const filesBridge = useRef<CodeFilesBridge>({
+		textFor: async () => {
+			throw new Error("file is missing");
+		},
+	});
+	const rememberEntries = useCallback(
+		(entries: { type: string; path: string }[]) => {
+			setBoardPaths(
+				entries.filter((item) => item.type === "file").map((item) => item.path),
+			);
+		},
+		[],
+	);
+	const [recording, setRecording] = useState(false);
+	const [uploading, setUploading] = useState(false);
 	const [query, setQuery] = useState("");
 	const [searching, setSearching] = useState(false);
 	const [error, setError] = useState("");
@@ -513,6 +567,9 @@ export default function OpenCodeSession({
 	const [replyBusy, setReplyBusy] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
+	const picker = useRef<HTMLInputElement>(null);
+	const recorder = useRef<MediaRecorder | null>(null);
+	const recordTimer = useRef(0);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const askedId = useRef("");
 	const prompts = useRef<OpencodePromptEpoch>({
@@ -1014,15 +1071,173 @@ export default function OpenCodeSession({
 		}
 	}
 
-	async function send() {
-		const text = prompt.trim();
-		if (!text || !repo || view.busy) {
+	function shownError(message: string): string {
+		const key = codeComposerErrorKey(message);
+		if (key === "fileTooLarge") {
+			return t("code.fileTooLarge");
+		}
+		if (key === "fileType") {
+			return t("code.fileType");
+		}
+		if (key === "updateCompanion") {
+			return t("code.updateCompanion");
+		}
+		if (key === "creditsEmpty") {
+			return t("code.creditsEmpty");
+		}
+		if (key === "contextText") {
+			return t("code.contextText");
+		}
+		return message;
+	}
+
+	function addBoardContext(path: string, text: string) {
+		const staged = stageBoardContext({ path, text });
+		setFiles((current) =>
+			current.some(
+				(item) => item.source === "board" && item.path === staged.path,
+			)
+				? current
+				: [...current, staged],
+		);
+		setError("");
+	}
+
+	async function pickMention(path: string) {
+		const node = field.current;
+		const value = node?.value ?? prompt;
+		const cursor = node?.selectionStart ?? caret;
+		const current = codeMentionAt(value, cursor);
+		if (current) {
+			setPrompt(applyCodeMention(value, current));
+			setCaret(current.start);
+		}
+		setMentionOff("picked");
+		try {
+			addBoardContext(path, await filesBridge.current.textFor(path));
+		} catch (caught) {
+			if (current) {
+				setPrompt(value);
+				setCaret(cursor);
+			}
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	async function addFiles(list: File[]) {
+		const next = [...files];
+		const taken = next.map((item) => item.path);
+		for (const file of list) {
+			try {
+				const staged = stageCodeAttach({
+					filename: file.name,
+					bytes: new Uint8Array(await file.arrayBuffer()),
+					taken,
+				});
+				taken.push(staged.path);
+				next.push(staged);
+			} catch (caught) {
+				setError(
+					shownError(caught instanceof Error ? caught.message : "file type"),
+				);
+				break;
+			}
+		}
+		setFiles(next);
+	}
+
+	async function finishDictation(blob: Blob) {
+		try {
+			const heard = (
+				await transcribeCode(
+					encodeBase64(new Uint8Array(await blob.arrayBuffer())),
+					locale,
+				)
+			).text.trim();
+			if (!heard) {
+				return;
+			}
+			setPrompt((current) =>
+				current.trim() ? `${current.trim()} ${heard}` : heard,
+			);
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	async function dictate() {
+		if (recorder.current && recorder.current.state === "recording") {
+			recorder.current.stop();
 			return;
 		}
+		try {
+			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			const rec = new MediaRecorder(stream);
+			const chunks: Blob[] = [];
+			rec.ondataavailable = (event) => {
+				if (event.data.size > 0) {
+					chunks.push(event.data);
+				}
+			};
+			rec.onstop = () => {
+				window.clearTimeout(recordTimer.current);
+				for (const track of stream.getTracks()) {
+					track.stop();
+				}
+				recorder.current = null;
+				setRecording(false);
+				void finishDictation(new Blob(chunks, { type: rec.mimeType }));
+			};
+			recorder.current = rec;
+			rec.start();
+			setRecording(true);
+			recordTimer.current = window.setTimeout(
+				() => rec.stop(),
+				CODE_STT_MAX_MS,
+			);
+		} catch {
+			setError(t("code.micDenied"));
+		}
+	}
+
+	async function send() {
+		const typed = prompt.trim();
+		const staged = files;
+		if ((!typed && staged.length === 0) || !repo || view.busy || uploading) {
+			return;
+		}
+		setUploading(true);
 		setPrompt("");
+		setFiles([]);
 		if (field.current) {
 			field.current.style.height = "24px";
 		}
+		let text = "";
+		try {
+			text = codeAttachPrompt(typed, staged);
+		} catch (caught) {
+			setPrompt(typed);
+			setFiles(staged);
+			setUploading(false);
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+			return;
+		}
+		try {
+			for (const file of staged.filter((item) => item.use !== "context")) {
+				await uploadBoardFile(selected, repo, file.path, {
+					...(file.base64
+						? { base64: file.base64 }
+						: { text: file.text ?? "" }),
+				});
+			}
+		} catch (caught) {
+			setPrompt(typed);
+			setFiles(staged);
+			setUploading(false);
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+			return;
+		}
+		setUploading(false);
 		let sessionID = mode === "session" ? view.sessionID : "";
 		if (!sessionID) {
 			const data = await run({ repo, op: "create" });
@@ -1245,48 +1460,224 @@ export default function OpenCodeSession({
 	}
 
 	function composer(disabled: boolean, blocked = false) {
-		const sendDisabled = !view.busy && (!prompt.trim() || disabled || blocked);
+		const sendDisabled =
+			!view.busy &&
+			((!prompt.trim() && files.length === 0) ||
+				disabled ||
+				blocked ||
+				uploading);
+		const toolsDisabled = disabled || blocked || uploading;
+		const mention = codeMentionAt(prompt, caret);
+		const mentionKey = mention ? `${mention.start}:${mention.query}` : "";
+		const mentionLive =
+			Boolean(mention) && mentionOff !== mentionKey && !toolsDisabled;
+		const matches =
+			mentionLive && mention
+				? filterCodeMentions(boardPaths, mention.query)
+				: [];
+		const active = matches.length === 0 ? 0 : mentionIndex % matches.length;
 		return (
-			<div className="oc-composer">
-				<textarea
-					ref={field}
-					rows={1}
-					value={prompt}
-					placeholder={t("code.placeholder")}
-					disabled={disabled}
-					aria-label={t("code.prompt")}
-					onChange={(event) => {
-						setPrompt(event.target.value);
-						event.target.style.height = "0px";
-						event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
-					}}
-					onKeyDown={(event) => {
-						if (event.key === "Escape" && blocked) {
-							event.currentTarget.blur();
-							return;
+			<div
+				className="oc-compose"
+				onDragOver={(event) => {
+					event.preventDefault();
+				}}
+				onDrop={(event) => {
+					event.preventDefault();
+					if (toolsDisabled) {
+						return;
+					}
+					void addFiles([...event.dataTransfer.files]);
+				}}
+			>
+				{mentionLive ? (
+					<div
+						className="oc-mention"
+						role="listbox"
+						aria-label={t("code.files")}
+					>
+						{matches.length === 0 ? (
+							<p className="oc-editor-note">{t("code.mentionEmpty")}</p>
+						) : (
+							matches.map((path, index) => (
+								<button
+									key={path}
+									type="button"
+									role="option"
+									aria-selected={index === active}
+									className={index === active ? "is-on" : undefined}
+									onMouseDown={(event) => {
+										event.preventDefault();
+										void pickMention(path);
+									}}
+								>
+									<span>{path.split("/").pop()}</span>
+									<span className="oc-model-provider">{path}</span>
+								</button>
+							))
+						)}
+					</div>
+				) : null}
+				{files.length > 0 ? (
+					<div className="oc-file-row">
+						{files.map((file) => (
+							<span key={file.id} className="oc-file-chip">
+								<span title={file.path}>
+									{file.source === "board" ? file.path : file.name}
+								</span>
+								{file.source === "board" ? null : (
+									<button
+										type="button"
+										className="oc-file-use"
+										aria-label={
+											file.use === "context"
+												? t("code.attachUseBoard", { name: file.name })
+												: t("code.attachUseContext", { name: file.name })
+										}
+										disabled={uploading}
+										onClick={() =>
+											setFiles((current) =>
+												current.map((item) =>
+													item.id === file.id
+														? {
+																...item,
+																use:
+																	item.use === "context" ? "project" : "context",
+															}
+														: item,
+												),
+											)
+										}
+									>
+										{file.use === "context"
+											? t("code.attachContext")
+											: t("code.attachBoard")}
+									</button>
+								)}
+								<button
+									type="button"
+									aria-label={t("code.removeFile", { name: file.name })}
+									disabled={uploading}
+									onClick={() =>
+										setFiles((current) =>
+											current.filter((item) => item.id !== file.id),
+										)
+									}
+								>
+									×
+								</button>
+							</span>
+						))}
+					</div>
+				) : null}
+				<div className="oc-composer">
+					<input
+						ref={picker}
+						type="file"
+						multiple
+						hidden
+						accept={CODE_ATTACH_ACCEPT}
+						onChange={(event) => {
+							const picked = [...(event.target.files ?? [])];
+							event.target.value = "";
+							void addFiles(picked);
+						}}
+					/>
+					<button
+						type="button"
+						className="oc-tool"
+						aria-label={t("code.attach")}
+						disabled={toolsDisabled}
+						onClick={() => picker.current?.click()}
+					>
+						<AttachIcon />
+					</button>
+					<button
+						type="button"
+						className={`oc-tool${recording ? " is-on" : ""}`}
+						aria-label={recording ? t("code.dictating") : t("code.dictate")}
+						disabled={toolsDisabled}
+						onClick={() => void dictate()}
+					>
+						<MicIcon />
+					</button>
+					<textarea
+						ref={field}
+						rows={1}
+						value={prompt}
+						placeholder={t("code.placeholder")}
+						disabled={disabled}
+						aria-label={t("code.prompt")}
+						onChange={(event) => {
+							setPrompt(event.target.value);
+							setCaret(
+								event.target.selectionStart ?? event.target.value.length,
+							);
+							event.target.style.height = "0px";
+							event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
+						}}
+						onSelect={(event) =>
+							setCaret(event.currentTarget.selectionStart ?? 0)
 						}
-						if (
-							event.key === "Enter" &&
-							!event.shiftKey &&
-							!event.nativeEvent.isComposing
-						) {
-							event.preventDefault();
-							if (!view.busy && !blocked) {
-								void send();
+						onKeyDown={(event) => {
+							if (mentionLive && event.key === "Escape") {
+								event.preventDefault();
+								setMentionOff(mentionKey);
+								return;
 							}
-						}
-					}}
-				/>
-				<button
-					type="button"
-					className={`oc-send${view.busy ? " is-stop" : ""}`}
-					aria-label={view.busy ? t("code.stop") : t("code.send")}
-					disabled={sendDisabled}
-					title={blocked ? t("code.blockedComposer") : undefined}
-					onClick={() => void (view.busy ? abort() : send())}
-				>
-					{view.busy ? <StopIcon /> : <SendIcon />}
-				</button>
+							if (
+								mentionLive &&
+								matches.length > 0 &&
+								(event.key === "ArrowDown" || event.key === "ArrowUp")
+							) {
+								event.preventDefault();
+								setMentionIndex((index) => {
+									const next =
+										event.key === "ArrowDown" ? index + 1 : index - 1;
+									return (next + matches.length) % matches.length;
+								});
+								return;
+							}
+							if (
+								mentionLive &&
+								matches.length > 0 &&
+								(event.key === "Enter" || event.key === "Tab") &&
+								!event.shiftKey
+							) {
+								event.preventDefault();
+								const picked = matches[active];
+								if (picked) {
+									void pickMention(picked);
+								}
+								return;
+							}
+							if (event.key === "Escape" && blocked) {
+								event.currentTarget.blur();
+								return;
+							}
+							if (
+								event.key === "Enter" &&
+								!event.shiftKey &&
+								!event.nativeEvent.isComposing
+							) {
+								event.preventDefault();
+								if (!view.busy && !blocked) {
+									void send();
+								}
+							}
+						}}
+					/>
+					<button
+						type="button"
+						className={`oc-send${view.busy ? " is-stop" : ""}`}
+						aria-label={view.busy ? t("code.stop") : t("code.send")}
+						disabled={sendDisabled}
+						title={blocked ? t("code.blockedComposer") : undefined}
+						onClick={() => void (view.busy ? abort() : send())}
+					>
+						{view.busy ? <StopIcon /> : <SendIcon />}
+					</button>
+				</div>
 			</div>
 		);
 	}
@@ -1413,7 +1804,17 @@ export default function OpenCodeSession({
 				</div>
 			) : null}
 			<div className="oc-card">
-				<ProjectFiles uuid={selected} owner={owner} name={repo}>
+				<ProjectFiles
+					uuid={selected}
+					owner={owner}
+					name={repo}
+					bridge={filesBridge}
+					onEntries={rememberEntries}
+					onAddContext={addBoardContext}
+					onContextRenamed={(from, to) =>
+						setFiles((current) => renameContextDrafts(current, from, to))
+					}
+				>
 					{error && mode === "home" ? (
 						<p className="oc-error">
 							<span>{error}</span>
