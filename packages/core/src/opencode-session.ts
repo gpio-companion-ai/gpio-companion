@@ -129,7 +129,9 @@ export type OpencodeClientCall = {
 		| "abort"
 		| "delete"
 		| "permission"
-		| "question";
+		| "permissions"
+		| "question"
+		| "questions";
 	sessionID?: string;
 	permissionID?: string;
 	requestID?: string;
@@ -463,7 +465,9 @@ function opencodeSuffixAllowed(suffix: string): boolean {
 	if (
 		suffix === "/global/health" ||
 		suffix === "/session" ||
-		suffix === "/event"
+		suffix === "/event" ||
+		suffix === "/question" ||
+		suffix === "/permission"
 	) {
 		return true;
 	}
@@ -542,6 +546,10 @@ export function opencodeClientRequest(
 				body: { response },
 			};
 		}
+		case "questions":
+			return { method: "GET", path: "/question" };
+		case "permissions":
+			return { method: "GET", path: "/permission" };
 		case "question": {
 			const requestID = opencodeId(call.requestID, "question");
 			if (call.reject) {
@@ -1035,6 +1043,138 @@ function questionFrom(
 		return null;
 	}
 	return { id, sessionID, prompts };
+}
+
+function promptList(value: unknown): unknown[] {
+	if (Array.isArray(value)) {
+		return value;
+	}
+	const record = asRecord(value);
+	if (record && Array.isArray(record.data)) {
+		return record.data;
+	}
+	return [];
+}
+
+export function opencodeQuestions(value: unknown): OpencodeQuestion[] {
+	const questions: OpencodeQuestion[] = [];
+	for (const item of promptList(value)) {
+		const record = asRecord(item);
+		if (!record) {
+			continue;
+		}
+		const question = questionFrom(record);
+		if (question) {
+			questions.push(question);
+		}
+	}
+	return questions;
+}
+
+export function opencodePermissions(value: unknown): OpencodePermission[] {
+	const permissions: OpencodePermission[] = [];
+	for (const item of promptList(value)) {
+		const record = asRecord(item);
+		if (!record) {
+			continue;
+		}
+		const version =
+			typeof record.action === "string" || Array.isArray(record.resources)
+				? "v2"
+				: "v1";
+		const permission = permissionFrom(record, version);
+		if (permission) {
+			permissions.push(permission);
+		}
+	}
+	return permissions;
+}
+
+export type OpencodePromptEpoch = {
+	epoch: number;
+	dropped: Set<string>;
+};
+
+export function noteOpencodePrompt(
+	event: unknown,
+	state: OpencodePromptEpoch,
+): void {
+	const body = eventBody(event);
+	if (
+		!body ||
+		(!body.type.startsWith("permission.") && !body.type.startsWith("question."))
+	) {
+		return;
+	}
+	state.epoch += 1;
+	if (body.type.endsWith(".replied") || body.type.endsWith(".rejected")) {
+		const id =
+			typeof body.properties.requestID === "string"
+				? body.properties.requestID
+				: "";
+		if (id) {
+			state.dropped.add(id);
+		}
+	}
+}
+
+export function restoreOpencodePrompts<
+	T extends { id: string; sessionID: string },
+>(
+	current: readonly T[],
+	pending: readonly T[],
+	sessionID: string,
+	stale: boolean,
+	dropped: ReadonlySet<string> = new Set(),
+): T[] {
+	const next = pending.filter(
+		(item) => item.sessionID === sessionID && !dropped.has(item.id),
+	);
+	const others = current.filter((item) => item.sessionID !== sessionID);
+	const mine = current.filter((item) => item.sessionID === sessionID);
+	if (stale) {
+		const ids = new Set(mine.map((item) => item.id));
+		return [...others, ...mine, ...next.filter((item) => !ids.has(item.id))];
+	}
+	return [...others, ...next];
+}
+
+export function restoreOpencodeViewPrompts(
+	view: OpencodeView,
+	sessionID: string,
+	snapshot: {
+		questions?: unknown;
+		permissions?: unknown;
+		stale: boolean;
+		dropped: ReadonlySet<string>;
+	},
+): OpencodeView {
+	if (view.sessionID !== sessionID) {
+		return view;
+	}
+	return {
+		...view,
+		questions:
+			snapshot.questions === undefined
+				? view.questions
+				: restoreOpencodePrompts(
+						view.questions,
+						opencodeQuestions(snapshot.questions),
+						sessionID,
+						snapshot.stale,
+						snapshot.dropped,
+					),
+		permissions:
+			snapshot.permissions === undefined
+				? view.permissions
+				: restoreOpencodePrompts(
+						view.permissions,
+						opencodePermissions(snapshot.permissions),
+						sessionID,
+						snapshot.stale,
+						snapshot.dropped,
+					),
+	};
 }
 
 export function applyOpencodeEvent(

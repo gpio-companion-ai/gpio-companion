@@ -70,10 +70,14 @@ export default function ClientWrapper({ children }: { children: JSX.Element }) {
 									<BoardSelectionProvider>
 										<RouterHost
 											onRouteChange={async (match) => {
+												const samePath = match.pathname === pathname;
 												matched.current = match;
 												setPathname(match.pathname);
 												if (process.env.NODE_ENV === "development") {
 													setDevKey((prev) => prev + 1);
+												}
+												if (samePath) {
+													return;
 												}
 												await routeChangePromiseRef.current.promise;
 											}}

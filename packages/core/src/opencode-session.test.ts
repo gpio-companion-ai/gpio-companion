@@ -5,6 +5,7 @@ import {
 	CODE_DEFAULT_MODEL,
 	codeNavHref,
 	emptyOpencodeView,
+	noteOpencodePrompt,
 	opencodeClientRequest,
 	opencodeEventFrame,
 	opencodeEventLastId,
@@ -12,9 +13,11 @@ import {
 	opencodeEventResumeUrl,
 	opencodeEventWsConnectUrl,
 	opencodeModelChoices,
+	opencodePermissions,
 	opencodeProjectDirectory,
 	opencodePromptFields,
 	opencodeProxyAllows,
+	opencodeQuestions,
 	opencodeRepoNameFromSelection,
 	opencodeSessionBucket,
 	opencodeSessions,
@@ -28,6 +31,8 @@ import {
 	parseOpencodeSse,
 	pendingOpencodeTurn,
 	readCodeNav,
+	restoreOpencodePrompts,
+	restoreOpencodeViewPrompts,
 	scopeOpencodeSearch,
 	settleOpencodeTurns,
 } from "./opencode-session.ts";
@@ -114,6 +119,10 @@ describe("opencode session client", () => {
 		expect(
 			opencodeProxyAllows("/v1/opencode/session/ses_1/permissions/per_1"),
 		).toBe(true);
+		expect(opencodeProxyAllows("/v1/opencode/question")).toBe(true);
+		expect(opencodeProxyAllows("/v1/opencode/permission")).toBe(true);
+		expect(opencodeProxyAllows("/v1/opencode/question/req_1")).toBe(false);
+		expect(opencodeProxyAllows("/v1/opencode/permission/per_1")).toBe(false);
 		expect(opencodeProxyAllows("/v1/opencode/question/req_1/reply")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/file")).toBe(false);
 		expect(opencodeProxyAllows("/v1/opencode/session/ses_1/shell")).toBe(false);
@@ -238,6 +247,20 @@ describe("opencode session client", () => {
 				response: "once",
 			}).path,
 		).toBe("/session/ses_1/permissions/per_1");
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "questions",
+			}),
+		).toEqual({ method: "GET", path: "/question" });
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "permissions",
+			}),
+		).toEqual({ method: "GET", path: "/permission" });
 		expect(
 			opencodeClientRequest({
 				uuid: "board",
@@ -569,6 +592,105 @@ describe("opencode session client", () => {
 				inlines: [{ type: "text", text: "wait **for" }],
 			},
 		]);
+	});
+
+	test("restores pending questions and permissions after reload", () => {
+		const asked = {
+			id: "que_1",
+			sessionID: "ses_1",
+			questions: [
+				{
+					header: "LED",
+					question: "Which pin?",
+					options: [{ label: "7" }, { label: "11" }],
+				},
+			],
+		};
+		expect(opencodeQuestions([asked])[0]).toEqual({
+			id: "que_1",
+			sessionID: "ses_1",
+			prompts: [
+				{ header: "LED", question: "Which pin?", options: ["7", "11"] },
+			],
+		});
+		expect(opencodeQuestions({ data: [asked] }).map((item) => item.id)).toEqual(
+			["que_1"],
+		);
+		expect(
+			opencodePermissions([
+				{
+					id: "per_1",
+					sessionID: "ses_1",
+					permission: "bash",
+					patterns: ["git push"],
+				},
+			])[0],
+		).toEqual({
+			id: "per_1",
+			sessionID: "ses_1",
+			title: "bash",
+			detail: "git push",
+		});
+		expect(
+			opencodePermissions([
+				{
+					id: "per_2",
+					sessionID: "ses_1",
+					action: "edit",
+					resources: ["src/main.c"],
+				},
+			])[0]?.title,
+		).toBe("edit");
+		const current = {
+			...emptyOpencodeView(),
+			sessionID: "ses_1",
+			questions: [
+				{
+					id: "que_live",
+					sessionID: "ses_1",
+					prompts: [{ header: "", question: "live", options: [] }],
+				},
+			],
+		};
+		const restored = restoreOpencodeViewPrompts(current, "ses_1", {
+			questions: [asked],
+			permissions: [
+				{
+					id: "per_1",
+					sessionID: "ses_1",
+					permission: "bash",
+					patterns: ["git push"],
+				},
+			],
+			stale: false,
+			dropped: new Set(),
+		});
+		expect(restored.questions.map((item) => item.id)).toEqual(["que_1"]);
+		expect(restored.permissions.map((item) => item.id)).toEqual(["per_1"]);
+		const epoch = { epoch: 0, dropped: new Set<string>() };
+		noteOpencodePrompt({ type: "question.asked", properties: asked }, epoch);
+		noteOpencodePrompt(
+			{
+				type: "question.replied",
+				properties: { sessionID: "ses_1", requestID: "que_1" },
+			},
+			epoch,
+		);
+		expect(epoch.epoch).toBe(2);
+		expect(
+			restoreOpencodePrompts(
+				current.questions,
+				opencodeQuestions([asked]),
+				"ses_1",
+				true,
+				epoch.dropped,
+			).map((item) => item.id),
+		).toEqual(["que_live"]);
+		expect(
+			restoreOpencodePrompts(current.questions, [], "ses_1", true).map(
+				(item) => item.id,
+			),
+		).toEqual(["que_live"]);
 	});
 
 	test("buckets sessions by local day", () => {

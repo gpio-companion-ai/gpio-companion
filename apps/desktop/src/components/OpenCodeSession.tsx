@@ -10,6 +10,7 @@ import {
 	emptyOpencodeView,
 	filterCodeSessions,
 	matchCodeRepo,
+	noteOpencodePrompt,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
 	type OpencodeClientCall,
@@ -17,6 +18,7 @@ import {
 	type OpencodeMarkdown,
 	type OpencodePart,
 	type OpencodePermissionResponse,
+	type OpencodePromptEpoch,
 	type OpencodeTurn,
 	type OpencodeView,
 	opencodeEventResumeUrl,
@@ -36,6 +38,7 @@ import {
 	type ReasoningEffort,
 	readCodeNav,
 	replaceCodeNav,
+	restoreOpencodeViewPrompts,
 	settleOpencodeTurns,
 } from "gpio-companion-opencode";
 import {
@@ -61,6 +64,68 @@ const PROJECT_KEY = "gpio-companion-selected-project";
 
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
+type ChipMenuId = "model" | "effort" | "project";
+
+function ChipMenu({
+	open,
+	label,
+	value,
+	hint,
+	selected,
+	options,
+	menuRef,
+	onOpen,
+	onPick,
+}: {
+	open: boolean;
+	label: string;
+	value: string;
+	hint?: string;
+	selected: string;
+	options: Array<{ id: string; name: string; hint?: string }>;
+	menuRef: { current: HTMLDivElement | null };
+	onOpen: () => void;
+	onPick: (id: string) => void;
+}) {
+	return (
+		<div
+			className={`oc-model${open ? " is-open" : ""}`}
+			ref={open ? menuRef : undefined}
+		>
+			<button
+				type="button"
+				className="oc-chip"
+				aria-label={label}
+				aria-expanded={open}
+				aria-haspopup="listbox"
+				onClick={onOpen}
+			>
+				<span>{label}</span>
+				<span>{value}</span>
+				{hint ? <span className="oc-model-provider">{hint}</span> : null}
+			</button>
+			{open ? (
+				<div className="oc-model-menu" role="listbox" aria-label={label}>
+					{options.map((item) => (
+						<button
+							key={item.id}
+							type="button"
+							role="option"
+							aria-selected={item.id === selected}
+							className={item.id === selected ? "is-on" : undefined}
+							onClick={() => onPick(item.id)}
+						>
+							<span>{item.name}</span>
+							{item.hint ? (
+								<span className="oc-model-provider">{item.hint}</span>
+							) : null}
+						</button>
+					))}
+				</div>
+			) : null}
+		</div>
+	);
+}
 
 function SearchIcon() {
 	return (
@@ -394,10 +459,16 @@ export default function OpenCodeSession({
 	const [answers, setAnswers] = useState<Record<string, string>>({});
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
-	const [modelMenu, setModelMenu] = useState(false);
+	const [menu, setMenu] = useState<ChipMenuId | "">("");
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
-	const modelMenuRef = useRef<HTMLDivElement>(null);
+	const menuRef = useRef<HTMLDivElement>(null);
+	const prompts = useRef<OpencodePromptEpoch>({
+		epoch: 0,
+		dropped: new Set(),
+	});
+	const promptSession = useRef("");
+	const [promptReload, setPromptReload] = useState(0);
 
 	useEffect(() => {
 		void listProjects()
@@ -524,21 +595,33 @@ export default function OpenCodeSession({
 		}
 	}
 
+	function toggleMenu(id: ChipMenuId) {
+		setMenu((current) => (current === id ? "" : id));
+	}
+
 	useEffect(() => {
-		if (!modelMenu) {
+		if (!menu) {
+			return;
+		}
+		if (menu === "project" && mode !== "draft") {
+			setMenu("");
+			return;
+		}
+		if (
+			menu === "effort" &&
+			!opencodeModelChoices().find((item) => item.id === model)?.reasoning
+		) {
+			setMenu("");
 			return;
 		}
 		function onPointer(event: PointerEvent) {
-			if (
-				modelMenuRef.current &&
-				!modelMenuRef.current.contains(event.target as Node)
-			) {
-				setModelMenu(false);
+			if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+				setMenu("");
 			}
 		}
 		function onKey(event: KeyboardEvent) {
 			if (event.key === "Escape") {
-				setModelMenu(false);
+				setMenu("");
 			}
 		}
 		document.addEventListener("pointerdown", onPointer);
@@ -547,7 +630,7 @@ export default function OpenCodeSession({
 			document.removeEventListener("pointerdown", onPointer);
 			document.removeEventListener("keydown", onKey);
 		};
-	}, [modelMenu]);
+	}, [menu, mode, model]);
 
 	useEffect(() => {
 		setAnswers((current) =>
@@ -592,7 +675,13 @@ export default function OpenCodeSession({
 			return;
 		}
 		let cancelled = false;
-		setView(emptyOpencodeView());
+		setView({
+			...emptyOpencodeView(),
+			sessionID:
+				readCodeNav(window.location.search).mode === "session"
+					? readCodeNav(window.location.search).sessionID
+					: "",
+		});
 		setSessionsLoading(true);
 		void opencodeCall({ uuid: selected, repo, op: "sessions" })
 			.then((data) => {
@@ -641,6 +730,48 @@ export default function OpenCodeSession({
 	}, [selected, repo, mode, view.sessionID]);
 
 	useEffect(() => {
+		if (
+			!selected ||
+			!repo ||
+			mode !== "session" ||
+			!view.sessionID ||
+			promptReload < 0
+		) {
+			return;
+		}
+		let cancelled = false;
+		const sessionID = view.sessionID;
+		if (promptSession.current !== sessionID) {
+			promptSession.current = sessionID;
+			prompts.current.dropped.clear();
+		}
+		const started = prompts.current.epoch;
+		void Promise.all([
+			opencodeCall({ uuid: selected, repo, op: "questions" }).catch(
+				() => undefined,
+			),
+			opencodeCall({ uuid: selected, repo, op: "permissions" }).catch(
+				() => undefined,
+			),
+		]).then(([questions, permissions]) => {
+			if (cancelled) {
+				return;
+			}
+			setView((current) =>
+				restoreOpencodeViewPrompts(current, sessionID, {
+					questions,
+					permissions,
+					stale: prompts.current.epoch !== started,
+					dropped: prompts.current.dropped,
+				}),
+			);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [selected, repo, mode, view.sessionID, promptReload]);
+
+	useEffect(() => {
 		if (!selected || !repo) {
 			return;
 		}
@@ -663,6 +794,7 @@ export default function OpenCodeSession({
 							opened = true;
 							if (!stopped) {
 								setReconnecting(false);
+								setPromptReload((value) => value + 1);
 							}
 						});
 						next.addEventListener("message", (event) => {
@@ -676,6 +808,7 @@ export default function OpenCodeSession({
 							if (frame.id) {
 								lastEventId = frame.id;
 							}
+							noteOpencodePrompt(frame.data, prompts.current);
 							setView((current) => applyOpencodeEvent(current, frame.data));
 						});
 						next.addEventListener("close", () => {
@@ -847,66 +980,57 @@ export default function OpenCodeSession({
 	);
 	const lastTurn = view.turns.at(-1)?.id;
 
+	function effortLabel(value: ReasoningEffort) {
+		if (value === "low") {
+			return t("code.effortLow");
+		}
+		if (value === "high") {
+			return t("code.effortHigh");
+		}
+		return t("code.effortMedium");
+	}
+
 	function modelSelects() {
 		const choices = opencodeModelChoices();
 		const chosen = choices.find((item) => item.id === model);
 		const reasoning = chosen?.reasoning === true;
 		return (
 			<>
-				<div
-					className={`oc-model${modelMenu ? " is-open" : ""}`}
-					ref={modelMenuRef}
-				>
-					<button
-						type="button"
-						className="oc-chip"
-						aria-label={t("code.model")}
-						aria-expanded={modelMenu}
-						aria-haspopup="listbox"
-						onClick={() => setModelMenu((open) => !open)}
-					>
-						<span>{t("code.model")}</span>
-						<span>{chosen?.name ?? model}</span>
-						<span className="oc-model-provider">{chosen?.provider}</span>
-					</button>
-					{modelMenu ? (
-						<div
-							className="oc-model-menu"
-							role="listbox"
-							aria-label={t("code.model")}
-						>
-							{choices.map((item) => (
-								<button
-									key={item.id}
-									type="button"
-									role="option"
-									aria-selected={item.id === model}
-									className={item.id === model ? "is-on" : undefined}
-									onClick={() => {
-										selectModel(item.id);
-										setModelMenu(false);
-									}}
-								>
-									<span>{item.name}</span>
-									<span className="oc-model-provider">{item.provider}</span>
-								</button>
-							))}
-						</div>
-					) : null}
-				</div>
+				<ChipMenu
+					open={menu === "model"}
+					label={t("code.model")}
+					value={chosen?.name ?? model}
+					hint={chosen?.provider}
+					selected={model}
+					options={choices.map((item) => ({
+						id: item.id,
+						name: item.name,
+						hint: item.provider,
+					}))}
+					menuRef={menuRef}
+					onOpen={() => toggleMenu("model")}
+					onPick={(id) => {
+						selectModel(id);
+						setMenu("");
+					}}
+				/>
 				{reasoning ? (
-					<label className="oc-chip">
-						{t("code.effort")}
-						<select
-							value={effort}
-							aria-label={t("code.effort")}
-							onChange={(event) => selectEffort(event.target.value)}
-						>
-							<option value="low">{t("code.effortLow")}</option>
-							<option value="medium">{t("code.effortMedium")}</option>
-							<option value="high">{t("code.effortHigh")}</option>
-						</select>
-					</label>
+					<ChipMenu
+						open={menu === "effort"}
+						label={t("code.effort")}
+						value={effortLabel(effort)}
+						selected={effort}
+						options={(["low", "medium", "high"] as const).map((id) => ({
+							id,
+							name: effortLabel(id),
+						}))}
+						menuRef={menuRef}
+						onOpen={() => toggleMenu("effort")}
+						onPick={(id) => {
+							selectEffort(id);
+							setMenu("");
+						}}
+					/>
 				) : null}
 			</>
 		);
@@ -1258,23 +1382,27 @@ export default function OpenCodeSession({
 								{composer(!repo)}
 								<p className="oc-muted">{t("code.draftHint")}</p>
 								<div className="oc-chips">
-									<label className="oc-chip">
-										{t("code.project")}
-										<select
-											value={repo}
-											aria-label={t("code.project")}
-											onChange={(event) => selectRepo(event.target.value)}
-										>
-											{repos.map((item) => (
-												<option
-													key={`${item.owner}/${item.name}`}
-													value={item.name}
-												>
-													{codeRepoLabel(item)}
-												</option>
-											))}
-										</select>
-									</label>
+									<ChipMenu
+										open={menu === "project"}
+										label={t("code.project")}
+										value={codeRepoLabel(
+											repos.find((item) => item.name === repo) ?? {
+												owner: "",
+												name: repo,
+											},
+										)}
+										selected={repo}
+										options={repos.map((item) => ({
+											id: item.name,
+											name: codeRepoLabel(item),
+										}))}
+										menuRef={menuRef}
+										onOpen={() => toggleMenu("project")}
+										onPick={(id) => {
+											selectRepo(id);
+											setMenu("");
+										}}
+									/>
 									{modelSelects()}
 								</div>
 							</div>

@@ -11,6 +11,7 @@ import {
 	emptyOpencodeView,
 	filterCodeSessions,
 	matchCodeRepo,
+	noteOpencodePrompt,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
 	type OpencodeClientCall,
@@ -18,6 +19,7 @@ import {
 	type OpencodeMarkdown,
 	type OpencodePart,
 	type OpencodePermissionResponse,
+	type OpencodePromptEpoch,
 	type OpencodeTurn,
 	type OpencodeView,
 	opencodeEventResumeUrl,
@@ -37,6 +39,7 @@ import {
 	type ReasoningEffort,
 	readCodeNav,
 	replaceCodeNav,
+	restoreOpencodeViewPrompts,
 	settleOpencodeTurns,
 } from "gpio-companion-opencode";
 import {
@@ -343,11 +346,17 @@ export default function Code() {
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
-	const [picker, setPicker] = useState<"" | "model" | "effort">("");
+	const [picker, setPicker] = useState<"" | "model" | "effort" | "project">("");
 	const [pane, setPane] = useState<"chat" | "files">("chat");
 	const [filesDirty, setFilesDirty] = useState(false);
 	const [filesStale, setFilesStale] = useState(false);
 	const transcript = useRef<ScrollView>(null);
+	const prompts = useRef<OpencodePromptEpoch>({
+		epoch: 0,
+		dropped: new Set(),
+	});
+	const promptSession = useRef("");
+	const [promptReload, setPromptReload] = useState(0);
 	const modelChoices = useMemo(() => opencodeModelChoices(), []);
 	const chosenModel = modelChoices.find((item) => item.id === model);
 	const reasoning = chosenModel?.reasoning === true;
@@ -521,7 +530,13 @@ export default function Code() {
 			return;
 		}
 		let cancelled = false;
-		setView(emptyOpencodeView());
+		setView({
+			...emptyOpencodeView(),
+			sessionID:
+				readCodeNav(window.location.search).mode === "session"
+					? readCodeNav(window.location.search).sessionID
+					: "",
+		});
 		setSessionsLoading(true);
 		void opencodeCall(token, { uuid: selected, repo, op: "sessions" })
 			.then((data) => {
@@ -575,6 +590,49 @@ export default function Code() {
 	}, [token, selected, repo, mode, view.sessionID]);
 
 	useEffect(() => {
+		if (
+			!token ||
+			!selected ||
+			!repo ||
+			mode !== "session" ||
+			!view.sessionID ||
+			promptReload < 0
+		) {
+			return;
+		}
+		let cancelled = false;
+		const sessionID = view.sessionID;
+		if (promptSession.current !== sessionID) {
+			promptSession.current = sessionID;
+			prompts.current.dropped.clear();
+		}
+		const started = prompts.current.epoch;
+		void Promise.all([
+			opencodeCall(token, { uuid: selected, repo, op: "questions" }).catch(
+				() => undefined,
+			),
+			opencodeCall(token, { uuid: selected, repo, op: "permissions" }).catch(
+				() => undefined,
+			),
+		]).then(([questions, permissions]) => {
+			if (cancelled) {
+				return;
+			}
+			setView((current) =>
+				restoreOpencodeViewPrompts(current, sessionID, {
+					questions,
+					permissions,
+					stale: prompts.current.epoch !== started,
+					dropped: prompts.current.dropped,
+				}),
+			);
+		});
+		return () => {
+			cancelled = true;
+		};
+	}, [token, selected, repo, mode, view.sessionID, promptReload]);
+
+	useEffect(() => {
 		if (!token || !selected || !repo) {
 			return;
 		}
@@ -597,6 +655,7 @@ export default function Code() {
 							opened = true;
 							if (!stopped) {
 								setReconnecting(false);
+								setPromptReload((value) => value + 1);
 							}
 						});
 						next.addEventListener("message", (event) => {
@@ -610,6 +669,7 @@ export default function Code() {
 							if (frame.id) {
 								lastEventId = frame.id;
 							}
+							noteOpencodePrompt(frame.data, prompts.current);
 							setView((current) => applyOpencodeEvent(current, frame.data));
 						});
 						next.addEventListener("close", () => {
@@ -1283,17 +1343,9 @@ export default function Code() {
 							</View>
 						) : null}
 						{mode === "draft" ? (
-							<View style={{ gap: 4, paddingHorizontal: 16 }}>
-								<Text style={ink}>
-									{codeRepoLabel(
-										repos.find((item) => item.name === repo) ?? {
-											owner,
-											name: repo,
-										},
-									)}
-								</Text>
-								<Text style={muted}>{t("code.draftHint")}</Text>
-							</View>
+							<Text style={[muted, { paddingHorizontal: 16 }]}>
+								{t("code.draftHint")}
+							</Text>
 						) : null}
 						<View
 							style={{
@@ -1304,6 +1356,40 @@ export default function Code() {
 								paddingBottom: 4,
 							}}
 						>
+							{mode === "draft" ? (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={t("code.project")}
+									onPress={() => setPicker("project")}
+									style={({ pressed }) => ({
+										flexDirection: "row",
+										alignItems: "center",
+										gap: 6,
+										borderRadius: 8,
+										borderWidth: 1,
+										borderColor:
+											pressed || picker === "project"
+												? colors.text
+												: colors.border,
+										paddingHorizontal: 10,
+										paddingVertical: 6,
+										backgroundColor: pressed ? colors.border : colors.chipBg,
+									})}
+								>
+									<Text
+										style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
+										numberOfLines={1}
+									>
+										{codeRepoLabel(
+											repos.find((item) => item.name === repo) ?? {
+												owner,
+												name: repo,
+											},
+										)}
+									</Text>
+									<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+								</Pressable>
+							) : null}
 							<Pressable
 								accessibilityRole="button"
 								accessibilityLabel={t("code.model")}
@@ -1388,39 +1474,22 @@ export default function Code() {
 									}}
 								>
 									<Text style={[ink, { fontWeight: "600", marginBottom: 8 }]}>
-										{picker === "effort" ? t("code.effort") : t("code.model")}
+										{picker === "effort"
+											? t("code.effort")
+											: picker === "project"
+												? t("code.project")
+												: t("code.model")}
 									</Text>
 									<ScrollView
 										style={{ maxHeight: 360 }}
 										contentContainerStyle={{ paddingBottom: 12 }}
 									>
-										{picker === "effort"
-											? (["low", "medium", "high"] as const).map((item) => (
+										{picker === "project"
+											? repos.map((item) => (
 													<Pressable
-														key={item}
+														key={`${item.owner}/${item.name}`}
 														onPress={() => {
-															setEffort(item);
-															void storageSet(OPENCODE_EFFORT_KEY, item);
-															setPicker("");
-														}}
-														style={{ paddingVertical: 12 }}
-													>
-														<Text style={ink}>
-															{item === "low"
-																? t("code.effortLow")
-																: item === "high"
-																	? t("code.effortHigh")
-																	: t("code.effortMedium")}
-														</Text>
-													</Pressable>
-												))
-											: modelChoices.map((item) => (
-													<Pressable
-														key={item.id}
-														onPress={() => {
-															const next = opencodeStoredModel(item.id);
-															setModel(next);
-															void storageSet(OPENCODE_MODEL_KEY, next);
+															selectRepo(item.name);
 															setPicker("");
 														}}
 														style={({ pressed }) => ({
@@ -1438,11 +1507,65 @@ export default function Code() {
 														<Text style={[ink, { flex: 1 }]} numberOfLines={1}>
 															{item.name}
 														</Text>
-														<Text style={[muted, { fontSize: 12 }]}>
-															{item.provider}
-														</Text>
+														{item.owner ? (
+															<Text style={[muted, { fontSize: 12 }]}>
+																{item.owner}
+															</Text>
+														) : null}
 													</Pressable>
-												))}
+												))
+											: picker === "effort"
+												? (["low", "medium", "high"] as const).map((item) => (
+														<Pressable
+															key={item}
+															onPress={() => {
+																setEffort(item);
+																void storageSet(OPENCODE_EFFORT_KEY, item);
+																setPicker("");
+															}}
+															style={{ paddingVertical: 12 }}
+														>
+															<Text style={ink}>
+																{item === "low"
+																	? t("code.effortLow")
+																	: item === "high"
+																		? t("code.effortHigh")
+																		: t("code.effortMedium")}
+															</Text>
+														</Pressable>
+													))
+												: modelChoices.map((item) => (
+														<Pressable
+															key={item.id}
+															onPress={() => {
+																const next = opencodeStoredModel(item.id);
+																setModel(next);
+																void storageSet(OPENCODE_MODEL_KEY, next);
+																setPicker("");
+															}}
+															style={({ pressed }) => ({
+																flexDirection: "row",
+																alignItems: "center",
+																gap: 12,
+																paddingVertical: 12,
+																paddingHorizontal: 8,
+																borderRadius: 8,
+																backgroundColor: pressed
+																	? colors.chipBg
+																	: "transparent",
+															})}
+														>
+															<Text
+																style={[ink, { flex: 1 }]}
+																numberOfLines={1}
+															>
+																{item.name}
+															</Text>
+															<Text style={[muted, { fontSize: 12 }]}>
+																{item.provider}
+															</Text>
+														</Pressable>
+													))}
 									</ScrollView>
 								</Pressable>
 							</Pressable>
