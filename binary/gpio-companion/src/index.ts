@@ -8,7 +8,11 @@ import {
 	publicDeviceUrl,
 	VERSION,
 } from "gpio-companion";
-import { createArduinoProxy, watchUsbSerialPorts } from "./arduino-proxy.ts";
+import {
+	createArduinoProxy,
+	proxyUploadHooks,
+	watchUsbSerialPorts,
+} from "./arduino-proxy.ts";
 import { startBleBridge } from "./ble.ts";
 import { createArduinoFlash } from "./flash.ts";
 import {
@@ -97,16 +101,7 @@ const deviceAuth = loadDeviceAuth();
 
 const gpio = createLibgpiodGpio();
 const proxy = createArduinoProxy();
-const flash = createArduinoFlash({
-	beforeUpload: () => {
-		proxy.release();
-	},
-	afterUpload: (job, result) => {
-		if (result.ok && job.port) {
-			void proxy.attach(job.port, job.fqbn).catch(() => undefined);
-		}
-	},
-});
+const flash = createArduinoFlash(proxyUploadHooks(proxy));
 const run = createHostRun({ hardware, gpio, proxy });
 const githubCredentials = async () => {
 	const state = await pairing.read();

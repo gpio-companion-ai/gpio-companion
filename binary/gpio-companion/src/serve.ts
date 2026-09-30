@@ -96,6 +96,7 @@ import { type FetchLike, proxyAiRequest } from "./ai-credentials.ts";
 import {
 	type ArduinoProxyController,
 	createArduinoProxy,
+	proxyUploadHooks,
 	resolveArduinoProxyDir,
 } from "./arduino-proxy.ts";
 import {
@@ -348,34 +349,25 @@ export function startDeviceApi(options: ServeOptions) {
 		files: fileHub,
 		flash:
 			options.flash ??
-			createArduinoFlash({
-				beforeUpload: () => {
-					consoleHub.stopUsb();
-					proxy.release();
-				},
-				afterUpload: (job, result) => {
-					if (!result.ok) {
-						return;
-					}
-					if (job.dir === resolveArduinoProxyDir() && job.port) {
-						const port = job.port;
-						const fqbn = job.fqbn;
-						void (async () => {
-							await Bun.sleep(400);
-							try {
-								await proxy.attach(port, fqbn);
-							} catch {
-								await Bun.sleep(1_500);
-								await proxy.attach(port, fqbn).catch(() => undefined);
-							}
-						})();
-						return;
-					}
-					if (job.port) {
-						consoleHub.scheduleUsb(job.port);
-					}
-				},
-			}),
+			(() => {
+				const upload = proxyUploadHooks(proxy);
+				return createArduinoFlash({
+					beforeUpload: async (job) => {
+						consoleHub.stopUsb();
+						await upload.beforeUpload(job);
+					},
+					afterUpload: async (job, result) => {
+						if (!result.ok || job.dir === resolveArduinoProxyDir()) {
+							await upload.afterUpload(job, result);
+							return;
+						}
+						proxy.hold(false);
+						if (job.port) {
+							consoleHub.scheduleUsb(job.port);
+						}
+					},
+				});
+			})(),
 		run,
 		agent:
 			options.agent ??

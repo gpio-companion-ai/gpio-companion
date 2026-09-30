@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, test } from "bun:test";
 import {
+	chmodSync,
 	constants,
 	existsSync,
 	lstatSync,
@@ -18,6 +19,7 @@ import {
 	listUsbSerialPorts,
 	memoryArduinoProxy,
 	openTtyReadStream,
+	proxyUploadHooks,
 	serialWatchDir,
 	TTY_NOCTTY_FLAGS,
 	usbSerialStamp,
@@ -327,6 +329,114 @@ describe("live handshake", () => {
 		proxy.hold(false);
 		await proxy.attach("/dev/ttyACM0", "arduino:avr:uno");
 		expect(opens).toBe(2);
+	});
+
+	test("upload restores hupcl and does not reopen the proxy mid-flash", async () => {
+		const root = await mkdtemp(join(tmpdir(), "proxy-hupcl-"));
+		const logPath = join(root, "stty.log");
+		writeFileSync(
+			join(root, "stty"),
+			'#!/bin/sh\nprintf \'%s\\n\' "$*" >> "$GPIO_STTY_LOG"\n',
+		);
+		chmodSync(join(root, "stty"), 0o755);
+		const previousPath = process.env.PATH;
+		process.env.PATH = `${root}${previousPath ? `:${previousPath}` : ""}`;
+		process.env.GPIO_STTY_LOG = logPath;
+		let opens = 0;
+		const proxy = createArduinoProxy({
+			probeMs: 30,
+			reconnectDelaysMs: [],
+			listPorts: async () =>
+				JSON.stringify({
+					detected_ports: [
+						{
+							port: { address: "/dev/ttyACM0", protocol: "serial" },
+							matching_boards: [
+								{ name: "Arduino Uno", fqbn: "arduino:avr:uno" },
+							],
+						},
+					],
+				}),
+			openSerial: (_port, _baud, onData) => {
+				opens += 1;
+				onData(Uint8Array.from([0xf0, 0x79, 2, 5, 0xf7]));
+				return {
+					write() {
+						undefined;
+					},
+					close() {
+						undefined;
+					},
+				};
+			},
+		});
+		const hooks = proxyUploadHooks(proxy, { settleMs: 0, retryMs: 0 });
+		try {
+			await proxy.attach("/dev/ttyACM0", "arduino:avr:uno");
+			const opened = opens;
+			await hooks.beforeUpload({ port: "/dev/ttyACM0" });
+			const carrier = readFileSync(logPath, "utf8");
+			expect(carrier).toContain("hupcl");
+			expect(carrier).not.toContain("-hupcl");
+			await proxy.probe();
+			expect(opens).toBe(opened);
+			await hooks.afterUpload(
+				{ port: "/dev/ttyACM0", fqbn: "arduino:avr:uno" },
+				{ ok: false },
+			);
+			expect(opens).toBeGreaterThan(opened);
+			expect(proxy.status().connected).toBe(true);
+			expect(proxy.status().fqbn).toBe("arduino:avr:uno");
+		} finally {
+			if (previousPath === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previousPath;
+			}
+			delete process.env.GPIO_STTY_LOG;
+		}
+	});
+
+	test("probe asks arduino-cli for the fqbn", async () => {
+		const root = await mkdtemp(join(tmpdir(), "proxy-cli-"));
+		const marker = join(root, "asked");
+		writeFileSync(
+			join(root, "arduino-cli"),
+			`#!/bin/sh\ntouch "$GPIO_PROXY_ASKED"\nprintf '%s\\n' '{"detected_ports":[{"port":{"address":"/dev/ttyACM0","protocol":"serial","label":"Arduino UNO"},"matching_boards":[{"name":"Arduino Uno","fqbn":"arduino:avr:uno"}]}]}'\n`,
+		);
+		chmodSync(join(root, "arduino-cli"), 0o755);
+		const previous = process.env.PATH;
+		process.env.PATH = `${root}${previous ? `:${previous}` : ""}`;
+		process.env.GPIO_PROXY_ASKED = marker;
+		try {
+			const proxy = createArduinoProxy({
+				probeMs: 40,
+				reconnectDelaysMs: [],
+				openSerial: (_port, _baud, onData) => {
+					onData(Uint8Array.from([0xf0, 0x79, 2, 5, 0xf7]));
+					return {
+						write() {
+							undefined;
+						},
+						close() {
+							undefined;
+						},
+					};
+				},
+			});
+			const status = await proxy.probe();
+			expect(existsSync(marker)).toBe(true);
+			expect(status.connected).toBe(true);
+			expect(status.board).toBe("uno");
+			expect(status.fqbn).toBe("arduino:avr:uno");
+		} finally {
+			if (previous === undefined) {
+				delete process.env.PATH;
+			} else {
+				process.env.PATH = previous;
+			}
+			delete process.env.GPIO_PROXY_ASKED;
+		}
 	});
 
 	test("probe retries while the port is still present", async () => {

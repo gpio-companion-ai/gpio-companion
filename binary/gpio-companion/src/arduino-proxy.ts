@@ -160,21 +160,21 @@ function openTtyByteStream(
 		}
 	}
 	function readOnce() {
-		try {
-			const n = readSync(fd, buf, 0, buf.length, null);
-			if (n > 0) {
-				emit("data", Buffer.from(buf.subarray(0, n)));
+		for (;;) {
+			try {
+				const n = readSync(fd, buf, 0, buf.length, null);
+				if (n > 0) {
+					emit("data", Buffer.from(buf.subarray(0, n)));
+					continue;
+				}
+				return;
+			} catch (error) {
+				if (isAgain(error)) {
+					return;
+				}
+				fail(error);
 				return;
 			}
-			if (n === 0) {
-				emit("end");
-				stream.destroy();
-			}
-		} catch (error) {
-			if (isAgain(error)) {
-				return;
-			}
-			fail(error);
 		}
 	}
 	const timer = setInterval(() => {
@@ -386,10 +386,13 @@ export function createArduinoProxy(
 	}
 
 	async function listedPorts(): Promise<FlashPort[] | null> {
-		if (options.listPorts) {
-			try {
-				return parseArduinoBoardList(await listPorts());
-			} catch {
+		try {
+			const parsed = parseArduinoBoardList(await listPorts());
+			if (parsed.length > 0 || options.listPorts) {
+				return parsed;
+			}
+		} catch {
+			if (options.listPorts) {
 				return null;
 			}
 		}
@@ -903,8 +906,65 @@ function liveOpenSerial(
 	};
 }
 
+export async function restoreUploadCarrier(port: string): Promise<void> {
+	if (!port.startsWith("/dev/ttyACM") && !port.startsWith("/dev/ttyUSB")) {
+		return;
+	}
+	const proc = Bun.spawn(["stty", "-F", port, "hupcl"], {
+		stdout: "ignore",
+		stderr: "ignore",
+		env: { ...process.env },
+	});
+	await proc.exited.catch(() => undefined);
+}
+
+export function proxyUploadHooks(
+	proxy: ArduinoProxyController,
+	timing: { settleMs?: number; retryMs?: number } = {},
+): {
+	beforeUpload(job: { port?: string }): Promise<void>;
+	afterUpload(
+		job: { port?: string; fqbn?: string },
+		result: { ok: boolean },
+	): Promise<void>;
+} {
+	const settleMs = timing.settleMs ?? 400;
+	const retryMs = timing.retryMs ?? 1_500;
+	return {
+		async beforeUpload(job) {
+			proxy.hold(true);
+			proxy.release();
+			if (job.port) {
+				await restoreUploadCarrier(job.port);
+			}
+		},
+		async afterUpload(job, result) {
+			proxy.hold(false);
+			if (result.ok && job.port) {
+				if (settleMs > 0) {
+					await Bun.sleep(settleMs);
+				}
+				try {
+					await proxy.attach(job.port, job.fqbn);
+				} catch {
+					if (retryMs > 0) {
+						await Bun.sleep(retryMs);
+					}
+					await proxy.attach(job.port, job.fqbn).catch(() => undefined);
+				}
+				return;
+			}
+			await proxy.probe();
+		},
+	};
+}
+
 async function spawnText(cmd: string[]): Promise<string> {
-	const proc = Bun.spawn(cmd, { stdout: "pipe", stderr: "pipe" });
+	const proc = Bun.spawn(cmd, {
+		stdout: "pipe",
+		stderr: "pipe",
+		env: { ...process.env },
+	});
 	const [stdout, stderr, code] = await Promise.all([
 		new Response(proc.stdout).text(),
 		new Response(proc.stderr).text(),
