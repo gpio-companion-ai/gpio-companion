@@ -5,6 +5,7 @@ import {
 	boardFileWatchPath,
 	FILES_LIST_PATH,
 	FILES_READ_PATH,
+	FILES_RENAME_PATH,
 	FILES_WRITE_PATH,
 	filesWsConnectUrl,
 	parseBoardFileListPut,
@@ -102,8 +103,7 @@ export async function writeSignedBoardFile(
 			env,
 			device.deviceUrl,
 			"PUT",
-	FILES_RENAME_PATH,
-	FILES_WRITE_PATH,
+			FILES_WRITE_PATH,
 			put,
 			{
 				timeoutMs: 15_000,
