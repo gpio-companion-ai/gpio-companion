@@ -25,6 +25,7 @@ import {
 	codeAppendSpeechDirective,
 	codeAttachPrompt,
 	codeComposerErrorKey,
+	codeHasSpeechDirective,
 	codeMentionAt,
 	codeSpeechBlocks,
 	codeSpokenText,
@@ -436,6 +437,7 @@ export default function Code() {
 	const voiceUri = useRef("");
 	const voiceModeRef = useRef(false);
 	const voiceReplyRef = useRef(false);
+	const speechDirectiveSentRef = useRef<string | null>(null);
 	const finishVoiceRef = useRef<(uri: string) => void>(() => {});
 	const startVoiceCaptureRef = useRef<() => void>(() => {});
 	const stopVoiceEngineRef = useRef<() => void>(() => {});
@@ -864,9 +866,18 @@ export default function Code() {
 						pending.questions,
 						pending.permissions,
 					);
+					const turns = settleOpencodeTurns(current.turns, opencodeTurns(data));
+					if (
+						turns.some(
+							(turn) =>
+								turn.role === "user" && codeHasSpeechDirective(turn.text),
+						)
+					) {
+						speechDirectiveSentRef.current = sessionID;
+					}
 					return {
 						...current,
-						turns: settleOpencodeTurns(current.turns, opencodeTurns(data)),
+						turns,
 						questions: mergeOpencodeQuestions(
 							current.questions,
 							pending.questions,
@@ -1671,11 +1682,19 @@ export default function Code() {
 		}
 		setFiles([]);
 		let text = "";
+		// Speech directive is injected once per session: the first voice-directed
+		// message carries it, later turns keep it from the transcript.
+		const wantsSpeech = Boolean(override) || voiceModeRef.current;
+		const existingSessionID = mode === "session" ? view.sessionID : "";
+		const injectSpeechDirective =
+			wantsSpeech &&
+			(!existingSessionID ||
+				speechDirectiveSentRef.current !== existingSessionID);
 		try {
 			text = codeAttachPrompt(typed, staged);
 			text = codeAppendSpeechDirective(
 				text,
-				Boolean(override) || voiceModeRef.current,
+				injectSpeechDirective,
 				voiceProvider,
 			);
 			if (override && !voiceModeRef.current) {
@@ -1752,6 +1771,9 @@ export default function Code() {
 		});
 		if (!sent) {
 			setView((current) => ({ ...current, busy: false }));
+		}
+		if (sent && injectSpeechDirective) {
+			speechDirectiveSentRef.current = sessionID;
 		}
 	}
 

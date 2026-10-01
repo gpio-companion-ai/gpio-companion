@@ -820,6 +820,12 @@ export function opencodeToolStacks(parts: OpencodePart[]): OpencodeTurnBlock[] {
 	return blocks;
 }
 
+// Injected OpenViking context blocks (synthetic parts from the on-device
+// opencode plugin) are kept for the model but hidden from the console.
+function isHiddenContextText(text: string): boolean {
+	return text.includes("<openviking-context");
+}
+
 function textOf(parts: OpencodePart[]): string {
 	return parts
 		.filter((part) => part.type === "text" && part.text)
@@ -846,6 +852,9 @@ function partsFrom(raw: unknown[]): OpencodePart[] {
 		}
 		const id = typeof record.id === "string" ? record.id : `part-${index}`;
 		if (record.type === "text" && typeof record.text === "string") {
+			if (isHiddenContextText(record.text)) {
+				continue;
+			}
 			parts.push({
 				id,
 				type: "text",
@@ -1835,6 +1844,9 @@ export function applyOpencodeEvent(
 			}
 			const echoed =
 				part.type === "text" && typeof part.text === "string" ? part.text : "";
+			if (echoed && isHiddenContextText(echoed)) {
+				return view;
+			}
 			if (echoed) {
 				const pending = view.turns.find(
 					(turn) => turn.pending && turn.text === echoed,

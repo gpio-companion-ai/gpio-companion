@@ -448,6 +448,16 @@ export function codeAppendSpeechDirective(
 	return `${text}\n\n${CODE_SPEECH_DIRECTIVE} The selected voice engine is Workers AI: plain spoken text only, never use inline or wrapping tags inside the <speech> blocks.`;
 }
 
+// True when the message text already carries the speech-mode directive, so it
+// only needs to be injected once per session instead of on every prompt.
+export function codeHasSpeechDirective(text: string): boolean {
+	return (
+		text.includes("<speech>") ||
+		text.includes("speech-mode") ||
+		text.includes(CODE_SPEECH_DIRECTIVE)
+	);
+}
+
 export function codeVoiceProvider(value: unknown): CodeVoiceProvider {
 	return value === "xai" ? "xai" : "workers-ai";
 }

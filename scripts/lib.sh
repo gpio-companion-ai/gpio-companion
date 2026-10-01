@@ -1529,29 +1529,34 @@ if "@openviking/opencode-plugin" not in plugins:
 data["plugin"] = plugins
 path.write_text(json.dumps(data, indent="\t") + "\n")
 PY
+	# autoRecall stays off: the plugin still injects its once-per-session
+	# session-start block (profile + archive); per-turn recall blocks are
+	# unwanted noise on the Code page console.
 	local behavior="$dest/openviking-config.json"
-	if [[ ! -f "$behavior" ]]; then
-		cat >"$behavior" <<'EOF'
-{
-	"enabled": true,
+	GPIO_OPENVIKING_CONFIG="$behavior" python3 - <<'PY'
+import json, os
+from pathlib import Path
+path = Path(os.environ["GPIO_OPENVIKING_CONFIG"])
+data = {
+	"enabled": True,
 	"timeoutMs": 30000,
-	"repoContext": { "enabled": true, "cacheTtlMs": 60000 },
-	"autoRecall": {
-		"enabled": true,
-		"limit": 6,
-		"scoreThreshold": 0.35,
-		"maxContentChars": 500,
-		"preferAbstract": true,
-		"tokenBudget": 2000,
-		"minQueryLength": 3
-	},
+	"repoContext": {"enabled": True, "cacheTtlMs": 60000},
+	"autoRecall": {"enabled": False},
 	"commitTokenThreshold": 20000,
 	"commitKeepRecentCount": 10,
 	"profileTokenBudget": 10000,
-	"resumeContextBudget": 32000
+	"resumeContextBudget": 32000,
 }
-EOF
-	fi
+if path.exists():
+	try:
+		loaded = json.loads(path.read_text())
+		if isinstance(loaded, dict):
+			data = loaded
+	except json.JSONDecodeError:
+		pass
+data["autoRecall"] = {"enabled": False}
+path.write_text(json.dumps(data, indent="\t") + "\n")
+PY
 	if [[ "$GPIO_USER" != "root" ]]; then
 		chown -R "$GPIO_USER:$GPIO_USER" "$dest"
 	fi

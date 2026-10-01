@@ -329,6 +329,7 @@ export {
 	codeAttachPath,
 	codeAttachPrompt,
 	codeComposerErrorKey,
+	codeHasSpeechDirective,
 	codeMentionAt,
 	codeSpeechBlocks,
 	codeSpokenText,
