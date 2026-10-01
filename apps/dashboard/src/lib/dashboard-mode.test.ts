@@ -29,6 +29,7 @@ describe("deviceTabs", () => {
 		expect(hrefs).not.toContain("/devices/debug");
 		expect(hrefs).not.toContain("/devices/admin");
 		expect(hrefs).toContain("/devices/wifi");
+		expect(hrefs).not.toContain("/devices/code");
 	});
 
 	test("expert adds admin only for admins", () => {
@@ -40,6 +41,9 @@ describe("deviceTabs", () => {
 		);
 		expect(deviceTabs("expert", true).map((tab) => tab.href)).not.toContain(
 			"/devices/keys",
+		);
+		expect(deviceTabs("expert", false).map((tab) => tab.href)).not.toContain(
+			"/devices/code",
 		);
 	});
 });

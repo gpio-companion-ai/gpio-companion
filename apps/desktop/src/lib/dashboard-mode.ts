@@ -28,7 +28,6 @@ export const DEVICE_TABS_EASY: Array<{
 }> = [
 	{ id: "overview", labelKey: "nav.myBoard" },
 	{ id: "wifi", labelKey: "nav.wifi" },
-	{ id: "code", labelKey: "nav.code" },
 	{ id: "docs", labelKey: "nav.learn" },
 ];
 
@@ -38,7 +37,6 @@ export const DEVICE_TABS_EXPERT: Array<{
 }> = [
 	{ id: "overview", labelKey: "nav.myBoard" },
 	{ id: "docs", labelKey: "nav.learn" },
-	{ id: "code", labelKey: "nav.code" },
 	{ id: "pair", labelKey: "nav.pair" },
 	{ id: "wifi", labelKey: "nav.wifi" },
 	{ id: "requests", labelKey: "nav.requests" },
@@ -67,7 +65,7 @@ export function isAllowedDeviceTab(
 	admin: boolean,
 	tab: DeviceTabId,
 ): boolean {
-	if (tab === "pair") {
+	if (tab === "pair" || tab === "code") {
 		return true;
 	}
 	return deviceTabs(mode, admin).some((item) => item.id === tab);

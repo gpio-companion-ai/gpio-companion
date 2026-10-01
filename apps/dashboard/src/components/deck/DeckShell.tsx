@@ -10,8 +10,8 @@ import LightModeIcon from "@material-design-icons/svg/filled/light_mode.svg";
 import MemoryIcon from "@material-design-icons/svg/filled/memory.svg";
 import MenuIcon from "@material-design-icons/svg/filled/menu.svg";
 import SearchIcon from "@material-design-icons/svg/filled/search.svg";
-import TerminalIcon from "@material-design-icons/svg/filled/terminal.svg";
 import StopCircleIcon from "@material-design-icons/svg/filled/stop_circle.svg";
+import TerminalIcon from "@material-design-icons/svg/filled/terminal.svg";
 import WarningIcon from "@material-design-icons/svg/filled/warning.svg";
 import { navigate } from "@next/client";
 import BottomNavigation, {
@@ -58,7 +58,7 @@ import DockBody from "./DockBody.tsx";
 const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
 
 type DeckTranslate = (key: `deck.${string}`) => string;
-type FocusRegion = "primary" | "secondary";
+type FocusRegion = "primary";
 type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
 type ContextLink = {
 	href: string;
@@ -191,7 +191,6 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 		docsSidebar,
 	} = workbench;
 	const primaryRef = useRef<HTMLElement>(null);
-	const secondaryRef = useRef<HTMLElement>(null);
 	const paletteInputRef = useRef<HTMLInputElement>(null);
 	const paletteTriggerRef = useRef<HTMLButtonElement>(null);
 	const mobileDockInit = useRef(false);
@@ -259,11 +258,6 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 		{ href: "/project", label: t("deck.rail.work"), icon: <FolderIcon /> },
 		{ href: "/devices", label: t("deck.rail.fleet"), icon: <MemoryIcon /> },
 		{
-			href: "/devices/code",
-			label: t("deck.rail.code"),
-			icon: <TerminalIcon />,
-		},
-		{
 			href: "/profile",
 			label: t("deck.rail.you"),
 			icon: <AccountCircleIcon />,
@@ -291,16 +285,20 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 		{ href: "/devices/code", labelKey: "deck.link.code" },
 		{ href: "/devices/docs", labelKey: "deck.link.learn" },
 	];
-	const contextLinks: ContextLink[] = pathname.startsWith("/profile")
-		? PROFILE_TABS.map(deckLink)
-		: pathname.startsWith("/devices")
-			? deviceTabs(mode, isAdmin(session.data?.role)).map(deckLink)
-			: workLinks;
-	const contextTitle = pathname.startsWith("/profile")
-		? t("deck.context.you")
-		: pathname.startsWith("/devices")
-			? t("deck.context.fleet")
-			: t("deck.context.work");
+	const onCode = pathname.startsWith("/devices/code");
+	const contextSection = onCode ? "/project" : section;
+	const contextLinks: ContextLink[] =
+		contextSection === "/profile"
+			? PROFILE_TABS.map(deckLink)
+			: contextSection === "/devices"
+				? deviceTabs(mode, isAdmin(session.data?.role)).map(deckLink)
+				: workLinks;
+	const contextTitle =
+		contextSection === "/profile"
+			? t("deck.context.you")
+			: contextSection === "/devices"
+				? t("deck.context.fleet")
+				: t("deck.context.work");
 	const activeContext = selectedHref(pathname, contextLinks);
 	const admin = isAdmin(session.data?.role);
 	const allNavLinks: ContextLink[] = [
@@ -439,11 +437,6 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				event.preventDefault();
 				setFocusRegion("primary");
 				focusPane(primaryRef.current);
-			}
-			if ((event.metaKey || event.ctrlKey) && event.key === "2") {
-				event.preventDefault();
-				setFocusRegion("secondary");
-				focusPane(secondaryRef.current);
 			}
 		};
 		window.addEventListener("keydown", onKeyDown);
@@ -585,7 +578,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	}
 
 	function renderContext() {
-		if (pathname.startsWith("/profile")) {
+		if (contextSection === "/profile") {
 			return contextLinks.map((item) => (
 				<a
 					key={item.href}
@@ -597,7 +590,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				</a>
 			));
 		}
-		if (pathname.startsWith("/devices")) {
+		if (contextSection === "/devices") {
 			return (
 				<>
 					{docsSidebar.length ? (
@@ -670,30 +663,18 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 						</span>
 					),
 				)}
-				<a href="/devices/docs">{t("deck.link.learn")}</a>
-			</>
-		);
-	}
-
-	function renderLiveBoard() {
-		const selected = boards.find((board) => board.uuid === selectedBoardUuid);
-		if (!selected) {
-			return <span>{t("deck.secondary.empty")}</span>;
-		}
-		const name = publicBoardName(
-			selected,
-			mode === "expert",
-			t("deck.status.unnamed"),
-		);
-		return (
-			<>
-				<span
-					className={`b6-live-status ${selected.online ? "is-online" : ""}`}
-				>
-					<i />
-					{selected.online ? t("deck.status.online") : t("deck.status.offline")}
-				</span>
-				<strong>{name}</strong>
+				{workLinks
+					.filter((item) => item.href !== "/project")
+					.map((item) => (
+						<a
+							key={item.href}
+							href={item.href}
+							className={activeContext === item.href ? "is-active" : undefined}
+							aria-current={activeContext === item.href ? "page" : undefined}
+						>
+							{t(item.labelKey)}
+						</a>
+					))}
 			</>
 		);
 	}
@@ -764,11 +745,9 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 			<div className={`b6-body${contextOpen ? "" : " is-context-collapsed"}`}>
 				<nav className="b6-rail" aria-label={t("deck.rail.label")}>
 					{rail.map((item) => {
-						const active =
-							item.href === "/devices/code"
-								? pathname.startsWith(item.href)
-								: section === item.href &&
-									!pathname.startsWith("/devices/code");
+						const active = onCode
+							? item.href === "/project"
+							: section === item.href;
 						return (
 							<a
 								key={item.href}
@@ -844,16 +823,6 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 								{children}
 							</div>
 						</section>
-						<aside
-							ref={secondaryRef}
-							tabIndex={-1}
-							aria-label={t("deck.focus.secondary")}
-							className={`b6-stage-secondary ${focusRegion === "secondary" ? "is-focused" : ""}`}
-							onClick={() => setFocusRegion("secondary")}
-							onKeyDown={() => setFocusRegion("secondary")}
-						>
-							{renderLiveBoard()}
-						</aside>
 					</main>
 					{section === "/profile" ? null : (
 						<section
@@ -996,7 +965,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				>
 					<BottomNavigation
 						showLabels
-						value={section}
+						value={onCode ? "/project" : section}
 						onChange={(_event, value) => navigate(String(value))}
 					>
 						{bottomNavigation.map((item) => (
