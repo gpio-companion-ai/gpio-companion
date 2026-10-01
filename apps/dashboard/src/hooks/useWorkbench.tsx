@@ -32,13 +32,16 @@ export type SidebarEntry = {
 
 export type ConsoleLinkStatus = "idle" | "connecting" | "live" | "reconnecting";
 export type BoardAction = "run" | "flash" | "verify" | "save";
-export type DockTab = "console" | "gpio" | "flash" | "problems";
+export type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
+export type FlashSketchPreselect = { dir: string; project: string };
 
 type WorkbenchValue = {
 	boards: FleetBoard[];
 	refreshBoards: () => void;
 	project: string;
 	setProject: (name: string) => void;
+	flashSketch: FlashSketchPreselect | null;
+	setFlashSketch: (sketch: FlashSketchPreselect | null) => void;
 	consoleStatus: ConsoleLinkStatus;
 	setConsoleStatus: (status: ConsoleLinkStatus) => void;
 	pendingAction: BoardAction | null;
@@ -67,6 +70,8 @@ const fallback: WorkbenchValue = {
 	refreshBoards: () => undefined,
 	project: "",
 	setProject: () => undefined,
+	flashSketch: null,
+	setFlashSketch: () => undefined,
 	consoleStatus: "idle",
 	setConsoleStatus: () => undefined,
 	pendingAction: null,
@@ -115,6 +120,9 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 	const session = useAuthSession();
 	const [boards, setBoards] = useState<FleetBoard[]>(EMPTY_BOARDS);
 	const [project, setProjectState] = useState("");
+	const [flashSketch, setFlashSketch] = useState<FlashSketchPreselect | null>(
+		null,
+	);
 	const [consoleStatus, setConsoleStatus] = useState<ConsoleLinkStatus>("idle");
 	const [pendingAction, setPendingAction] = useState<BoardAction | null>(null);
 	const [dockOpen, setDockOpen] = useState(true);
@@ -167,6 +175,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 		setProjectState(name);
 	}, []);
 
+	const updateFlashSketch = useCallback(
+		(sketch: FlashSketchPreselect | null) => {
+			setFlashSketch(sketch);
+		},
+		[],
+	);
+
 	const clearPending = useCallback(() => {
 		setPendingAction(null);
 	}, []);
@@ -194,6 +209,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 			refreshBoards,
 			project,
 			setProject,
+			flashSketch,
+			setFlashSketch: updateFlashSketch,
 			consoleStatus,
 			setConsoleStatus,
 			pendingAction,
@@ -218,6 +235,8 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 			refreshBoards,
 			project,
 			setProject,
+			flashSketch,
+			updateFlashSketch,
 			consoleStatus,
 			pendingAction,
 			requestAction,

@@ -30,7 +30,7 @@ export type UiNavigateTarget =
 	| "github"
 	| "credits";
 
-export type UiDockTab = "console" | "gpio" | "flash" | "problems";
+export type UiDockTab = "console" | "gpio" | "flash" | "problems" | "actions";
 
 export type UiNavigateCommand = { type: "navigate"; target: UiNavigateTarget };
 export type UiDockCommand = { type: "dock"; tab: UiDockTab };
@@ -72,6 +72,7 @@ export const UI_DOCK_TABS = [
 	"gpio",
 	"flash",
 	"problems",
+	"actions",
 ] as const satisfies readonly UiDockTab[];
 
 export const UI_SURFACES = [

@@ -1,6 +1,7 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
+import { router } from "expo-router";
 import {
 	codeAttachFileName,
 	codeAttachKind,
@@ -28,6 +29,7 @@ import {
 	parseBoardFileEvent,
 	parseEditorEmbedChange,
 } from "gpio-companion-files";
+import { findSketchByName, sketchNameFromPath } from "gpio-companion-sketches";
 import { useEffect, useRef, useState } from "react";
 import {
 	Alert,
@@ -41,15 +43,21 @@ import {
 import { WebView } from "react-native-webview";
 import {
 	listBoardFiles,
+	loadFlashSketches,
+	loadRun,
+	loadRunSketches,
 	pushProject,
 	readBoardFile,
 	removeBoardFile,
 	renameBoardFile,
 	signBoardFilesLive,
+	startRun,
+	stopRun,
 	uploadBoardFile,
 	writeBoardFile,
 } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
+import { useBoardSelection } from "../lib/board-selection.tsx";
 import { useColorMode, useColors } from "../lib/color-mode.tsx";
 import { dashboardUrl } from "../lib/config.ts";
 import { useLocale, useT } from "../lib/locale.tsx";
@@ -77,6 +85,12 @@ type OpenFile = {
 	base64: string;
 };
 
+type SketchAction = {
+	kind: "run" | "flash";
+	dir: string;
+	running: boolean;
+};
+
 export default function ProjectFiles({
 	token,
 	uuid,
@@ -91,6 +105,7 @@ export default function ProjectFiles({
 	const t = useT();
 	const colors = useColors();
 	const { boards } = useUserBoards();
+	const { setFlashSketch } = useBoardSelection();
 	const boardModel =
 		boards.find((board) => board.device.uuid === uuid)?.status?.model ?? null;
 	const { locale } = useLocale();
@@ -113,6 +128,8 @@ export default function ProjectFiles({
 		x: number;
 		y: number;
 	} | null>(null);
+	const [sketchAction, setSketchAction] = useState<SketchAction | null>(null);
+	const sketchActionId = useRef(0);
 	const [picked, setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState("");
@@ -482,6 +499,94 @@ export default function ProjectFiles({
 			setNote(shownError(caught instanceof Error ? caught.message : ""));
 			setSaved("");
 		}
+	}
+
+	function openFileMenu(path: string, x: number, y: number) {
+		setFileMenu({ path, x, y });
+		const id = ++sketchActionId.current;
+		const runName = sketchNameFromPath("host", path);
+		const flashName = sketchNameFromPath("firmware", path);
+		if (!runName && !flashName) {
+			setSketchAction(null);
+			return;
+		}
+		setSketchAction(null);
+		const kind = runName ? "run" : "flash";
+		void loadSketchAction(id, kind, runName ?? flashName ?? "");
+	}
+
+	async function loadSketchAction(
+		id: number,
+		kind: "run" | "flash",
+		sketchName: string,
+	) {
+		if (!token || !uuid) {
+			return;
+		}
+		try {
+			const list = await (kind === "run"
+				? loadRunSketches(token, uuid)
+				: loadFlashSketches(token, uuid));
+			const sketch = findSketchByName(list.sketches, name, sketchName);
+			if (!sketch) {
+				if (sketchActionId.current === id) {
+					setSketchAction(null);
+				}
+				return;
+			}
+			const running =
+				kind === "run" ? (await loadRun(token, uuid)).running : false;
+			if (sketchActionId.current !== id) {
+				return;
+			}
+			setSketchAction({ kind, dir: sketch.dir, running });
+		} catch {
+			if (sketchActionId.current === id) {
+				setSketchAction(null);
+			}
+		}
+	}
+
+	async function startSketch(dir: string) {
+		setFileMenu(null);
+		if (!token || !uuid) {
+			return;
+		}
+		setBusy("sketch");
+		try {
+			await startRun(token, { uuid, dir });
+			setNote("");
+			setSaved(t("code.sketchStarted"));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function stopSketch() {
+		setFileMenu(null);
+		if (!token || !uuid) {
+			return;
+		}
+		setBusy("sketch");
+		try {
+			await stopRun(token, uuid);
+			setNote("");
+			setSaved(t("code.sketchStopped"));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	function flashSketchFromMenu(dir: string) {
+		setFileMenu(null);
+		setFlashSketch({ dir, project: name });
+		router.push("/project");
 	}
 
 	function deleteFile(path: string) {
@@ -928,7 +1033,7 @@ export default function ProjectFiles({
 								nameDraft={nameDraft}
 								onName={setNameDraft}
 								onCommit={() => void commitName()}
-								onFileMenu={(path, x, y) => setFileMenu({ path, x, y })}
+								onFileMenu={openFileMenu}
 							/>
 						))
 					)}
@@ -956,6 +1061,32 @@ export default function ProjectFiles({
 								borderColor: colors.border,
 							}}
 						>
+							{sketchAction && sketchAction.kind === "run" ? (
+								<MenuRow
+									label={
+										sketchAction.running
+											? t("code.stopSketch")
+											: t("code.runSketch")
+									}
+									icon={sketchAction.running ? "stop" : "play-arrow"}
+									colors={colors}
+									onPress={() => {
+										if (sketchAction.running) {
+											void stopSketch();
+										} else {
+											void startSketch(sketchAction.dir);
+										}
+									}}
+								/>
+							) : null}
+							{sketchAction && sketchAction.kind === "flash" ? (
+								<MenuRow
+									label={t("code.flashSketch")}
+									icon="bolt"
+									colors={colors}
+									onPress={() => flashSketchFromMenu(sketchAction.dir)}
+								/>
+							) : null}
 							<MenuRow
 								label={t("code.addToContext")}
 								icon="playlist-add"

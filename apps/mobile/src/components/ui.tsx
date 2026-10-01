@@ -80,6 +80,14 @@ export function ErrorText({ children }: { children: ReactNode }) {
 	return <Text style={{ color: colors.danger }}>{children}</Text>;
 }
 
+export function Warn({ children }: { children: ReactNode }) {
+	const colors = useColors();
+	if (!children) {
+		return null;
+	}
+	return <Text style={{ color: colors.warning }}>{children}</Text>;
+}
+
 export function Paper({
 	children,
 	onPress,

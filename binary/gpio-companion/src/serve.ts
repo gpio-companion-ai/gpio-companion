@@ -128,7 +128,11 @@ import {
 	invalidateArduinoBoardCache,
 } from "./flash.ts";
 import type { GithubInstallationCreds } from "./github-credentials.ts";
-import { createLibgpiodGpio, type GpioController } from "./gpio.ts";
+import {
+	createLibgpiodGpio,
+	type GpioController,
+	readSketchStatus,
+} from "./gpio.ts";
 import { createGpioStream } from "./gpio-stream.ts";
 import { readDeviceInfoJson } from "./info.ts";
 import {
@@ -286,12 +290,14 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 	const debug = createDebugHub({
 		dashboardUrl,
 	});
+	let runRef: RunController | null = null;
 	const gpio = options.gpio ?? createLibgpiodGpio();
 	const proxy = options.proxy ?? createArduinoProxy();
 	const gpioStream = createGpioStream({
 		gpio,
 		proxy,
 		hardware: async () => (await options.store.read()).hardware,
+		sketchRunning: () => Boolean(runRef?.statusPath?.()),
 	});
 	const consoleHub = options.console ?? createConsoleHub();
 	const uiHub = options.ui ?? createUiHub();
@@ -356,6 +362,10 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 			},
 			isBusy: () => jobs.verify?.status().running ?? false,
 		});
+	runRef = run;
+	gpio.setSketchStatus?.(() =>
+		readSketchStatus(runRef?.statusPath?.() ?? null),
+	);
 	const verify =
 		options.verify ??
 		createCircuitVerify({
@@ -806,6 +816,7 @@ export async function handleDeviceRequest(
 				extras?.gpio,
 				extras?.gpioStream,
 				extras?.proxy,
+				extras?.run,
 			);
 		}
 		if (isRunPath(path)) {
@@ -1159,6 +1170,7 @@ export async function handleDeviceRequest(
 			extras?.gpio,
 			extras?.gpioStream,
 			extras?.proxy,
+			extras?.run,
 		);
 	}
 
@@ -1484,6 +1496,7 @@ async function handleGpio(
 	gpio: GpioController | undefined,
 	gpioStream?: { publish(): void },
 	proxy?: ArduinoProxyController,
+	run?: RunController,
 ): Promise<Response> {
 	if (!gpio) {
 		return json({ error: "gpio is unavailable" }, 503);
@@ -1510,6 +1523,9 @@ async function handleGpio(
 		}
 		if (isGpioBusCommand(command)) {
 			throw new GpioError("bus ops need arduino-proxy");
+		}
+		if (run?.statusPath?.()) {
+			return json({ error: "sketch is running — Live GPIO is read-only" }, 409);
 		}
 		const snapshot = await gpio.apply(hardware, command);
 		gpioStream?.publish();

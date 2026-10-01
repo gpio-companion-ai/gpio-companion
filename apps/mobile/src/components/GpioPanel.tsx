@@ -23,7 +23,7 @@ import { useGpioTunnel } from "../lib/use-gpio-tunnel.ts";
 import { useOfflineBleKey } from "../lib/use-offline-ble-key.ts";
 import ArduinoProxyPins from "./ArduinoProxyPins.tsx";
 import GpioHeader from "./GpioHeader.tsx";
-import { Body, Chip, ErrorText, Muted, TextButton } from "./ui.tsx";
+import { Body, Chip, ErrorText, Muted, TextButton, Warn } from "./ui.tsx";
 
 function canDriveGpio(pin: GpioPinState): boolean {
 	return pin.type === "gpio" && !pin.reserved && !pin.unresolved;
@@ -151,6 +151,7 @@ export default function GpioPanel({
 	const offline = useOfflineBleKey(uuid);
 	const pins = snapshot?.pins ?? [];
 	const selectedPin = pins.find((pin) => pin.physical === selected);
+	const sketchReadOnly = target === "header" && (snapshot?.sketch ?? false);
 	const available = Boolean(uuid) && connected !== false;
 	const applyLive = useCallback(
 		(next: GpioSnapshot | null) => {
@@ -197,6 +198,10 @@ export default function GpioPanel({
 
 	function drive(command: GpioCommand) {
 		const next = target === "arduino-proxy" ? { ...command, target } : command;
+		if (sketchReadOnly) {
+			setError(t("gpio.sketchReadOnly"));
+			return;
+		}
 		const current = snapshotRef.current;
 		if (current) {
 			applySnapshot(applyCommand(current, next));
@@ -323,6 +328,7 @@ export default function GpioPanel({
 				)}
 			</View>
 			{error ? <ErrorText>{translateError(t, error)}</ErrorText> : null}
+			{sketchReadOnly ? <Warn>{t("gpio.sketchReadOnly")}</Warn> : null}
 			{poll || snapshot ? (
 				target === "arduino-proxy" ? (
 					<ArduinoProxyPins
@@ -348,7 +354,7 @@ export default function GpioPanel({
 				<GpioPinActions
 					pin={selectedPin}
 					busy={busy}
-					disabled={!token}
+					disabled={!token || sketchReadOnly}
 					onDrive={drive}
 				/>
 			) : null}

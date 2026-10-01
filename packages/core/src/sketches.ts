@@ -18,6 +18,44 @@ export function sketchKindDir(kind: BoardSketchKind): string {
 	return kind === "host" ? HOST_SKETCH_DIR : FIRMWARE_SKETCH_DIR;
 }
 
+const SKETCH_SOURCE_EXT = [".c", ".ino"];
+
+export function sketchNameFromPath(
+	kind: BoardSketchKind,
+	path: string,
+): string | null {
+	const prefix = `${sketchKindDir(kind)}/`;
+	if (!path.startsWith(prefix)) {
+		return null;
+	}
+	const rest = path.slice(prefix.length);
+	const segments = rest.split("/");
+	const base = segments[segments.length - 1];
+	if (!base || !SKETCH_SOURCE_EXT.some((ext) => base.endsWith(ext))) {
+		return null;
+	}
+	if (segments.length === 1) {
+		return sketchKindDir(kind);
+	}
+	const name = segments[0];
+	if (!name || name.startsWith(".") || name.includes("\\")) {
+		return null;
+	}
+	return name;
+}
+
+export function findSketchByName(
+	sketches: BoardSketch[],
+	project: string,
+	name: string,
+): BoardSketch | null {
+	return (
+		sketches.find(
+			(sketch) => sketch.project === project && sketch.name === name,
+		) ?? null
+	);
+}
+
 export function parseBoardSketchList(input: unknown): BoardSketchList {
 	if (input === null || typeof input !== "object" || Array.isArray(input)) {
 		throw new Error("sketches must be an object");

@@ -22,6 +22,7 @@ export function createGpioStream(options: {
 	hardware: () => Promise<HardwareId>;
 	proxy?: ArduinoProxyController;
 	intervalMs?: number;
+	sketchRunning?: () => boolean;
 }): {
 	add(ws: GpioStreamSocket): void;
 	remove(ws: GpioStreamSocket): void;
@@ -167,6 +168,9 @@ export function createGpioStream(options: {
 				}
 				if (isGpioBusCommand(command)) {
 					throw new Error("bus ops need arduino-proxy");
+				}
+				if (options.sketchRunning?.()) {
+					throw new Error("sketch is running — Live GPIO is read-only");
 				}
 				await options.gpio.apply(hardware, command);
 				await broadcast(false);

@@ -1,14 +1,24 @@
+import { GET as loadRun } from "@api/run";
+import { POST as stopRun } from "@api/run/stop";
 import FlashPanel from "@components/FlashPanel";
 import FlashProxyButton from "@components/FlashProxyButton";
 import GpioPanel from "@components/GpioPanel";
 import RunPanel from "@components/RunPanel";
 import VerifyPanel from "@components/VerifyPanel";
+import Alert from "@shpaw415/mui-lite/Alert";
+import Button from "@shpaw415/mui-lite/Button";
+import Stack from "@shpaw415/mui-lite/Stack";
+import Typography from "@shpaw415/mui-lite/Typography";
+import type { RunStatus } from "gpio-companion";
+import { translateError } from "gpio-companion/i18n";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
 import { useConsoleTunnel } from "../../hooks/useConsoleTunnel.ts";
 import { useDashboardMode } from "../../hooks/useDashboardMode.tsx";
+import { useDeviceHub } from "../../hooks/useDeviceHub.ts";
 import { useT } from "../../hooks/useLocale.tsx";
 import { useWorkbench } from "../../hooks/useWorkbench.tsx";
+import { unwrapAction } from "../../lib/action.ts";
 
 export default function DockBody() {
 	const t = useT();
@@ -17,6 +27,7 @@ export default function DockBody() {
 	const {
 		boards,
 		project,
+		flashSketch,
 		dockTab,
 		setLivePins,
 		setVerifyResults,
@@ -53,11 +64,17 @@ export default function DockBody() {
 
 	if (dockTab === "flash") {
 		const proxy = <FlashProxyButton uuid={uuid} connected={online} />;
+		const preselectDir = flashSketch?.dir;
+		const preselectProject = project || flashSketch?.project;
 		if (!isEasy) {
 			return (
 				<>
 					{proxy}
-					<FlashPanel uuid={uuid} project={project} />
+					<FlashPanel
+						uuid={uuid}
+						project={preselectProject}
+						preselectDir={preselectDir}
+					/>
 				</>
 			);
 		}
@@ -65,7 +82,11 @@ export default function DockBody() {
 			<>
 				<DockTool title={t("flash.title")} startOpen>
 					{proxy}
-					<FlashPanel uuid={uuid} project={project} />
+					<FlashPanel
+						uuid={uuid}
+						project={preselectProject}
+						preselectDir={preselectDir}
+					/>
 				</DockTool>
 				<DockTool title={t("verify.title")}>
 					<VerifyPanel
@@ -82,6 +103,10 @@ export default function DockBody() {
 		return (
 			<VerifyPanel uuid={uuid} project={project} onResults={setVerifyResults} />
 		);
+	}
+
+	if (dockTab === "actions") {
+		return <DockActions uuid={uuid} online={online} />;
 	}
 
 	return (
@@ -138,9 +163,97 @@ function DockConsole({ uuid }: { uuid: string }) {
 
 	return (
 		<div className="b6-console">
+			<div className="b6-console-bar">
+				<button
+					type="button"
+					className="b6-console-clear"
+					disabled={!log}
+					onClick={tunnel.clear}
+				>
+					{t("deck.dock.consoleClear")}
+				</button>
+			</div>
 			<pre ref={logRef} className={log ? undefined : "is-empty"}>
 				{log || t("deck.dock.consoleEmpty")}
 			</pre>
 		</div>
+	);
+}
+
+function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
+	const t = useT();
+	const [stopping, setStopping] = useState(false);
+	const [error, setError] = useState("");
+	const [running, setRunning] = useState<boolean | null>(null);
+
+	useEffect(() => {
+		setRunning(null);
+		let cancelled = false;
+		loadRun(uuid)
+			.then((result) => {
+				if (cancelled) {
+					return;
+				}
+				setRunning(unwrapAction(result).running);
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setRunning(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [uuid]);
+
+	useDeviceHub(uuid, {
+		onRun: (status: RunStatus) => setRunning(status.running),
+	});
+
+	async function stopSketch() {
+		if (!uuid || stopping) {
+			return;
+		}
+		setError("");
+		setStopping(true);
+		try {
+			unwrapAction(await stopRun(uuid));
+			setRunning(unwrapAction(await loadRun(uuid)).running);
+		} catch (err) {
+			setError(
+				translateError(
+					t,
+					err instanceof Error ? err.message : "failed to stop sketch",
+				),
+			);
+		} finally {
+			setStopping(false);
+		}
+	}
+
+	const runRunning = running === true;
+
+	return (
+		<Stack spacing={1}>
+			<Typography variant="body2" color="secondary">
+				{runRunning
+					? t("deck.dock.runRunning")
+					: online
+						? t("deck.dock.runIdle")
+						: null}
+			</Typography>
+			{error ? <Alert severity="error">{error}</Alert> : null}
+			<Stack direction="row" spacing={1} className="flex-wrap">
+				<Button
+					type="button"
+					variant="outlined"
+					color={runRunning ? "error" : "primary"}
+					disabled={stopping || !runRunning}
+					onClick={() => void stopSketch()}
+				>
+					{stopping ? t("deck.dock.stopping") : t("deck.dock.stopSketch")}
+				</Button>
+			</Stack>
+		</Stack>
 	);
 }

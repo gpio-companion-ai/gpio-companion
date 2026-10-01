@@ -21,6 +21,7 @@ import {
 	OC_EDITOR_SPLIT_KEY,
 	parseBoardFileEvent,
 } from "gpio-companion-files";
+import { findSketchByName, sketchNameFromPath } from "gpio-companion-sketches";
 import {
 	Fragment,
 	type ReactNode,
@@ -33,15 +34,21 @@ import {
 import { createPortal } from "react-dom";
 import {
 	listBoardFiles,
+	loadFlashSketches,
+	loadRun,
+	loadRunSketches,
 	pushProject,
 	readBoardFile,
 	removeBoardFile,
 	renameBoardFile,
 	signBoardFilesLive,
+	startRun,
+	stopRun,
 	uploadBoardFile,
 	writeBoardFile,
 } from "../api";
 import { useColorMode } from "../color-mode";
+import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useUserBoards } from "../hooks/useApiCache";
 import { useT } from "../locale";
 import BreadboardViewer from "./BreadboardViewer";
@@ -56,6 +63,12 @@ type FileMenu = {
 	path: string;
 	x: number;
 	y: number;
+};
+
+type SketchAction = {
+	kind: "run" | "flash";
+	dir: string;
+	running: boolean;
 };
 
 type ContextMenuItem = {
@@ -100,6 +113,7 @@ export default function ProjectFiles({
 	const t = useT();
 	const { mode } = useColorMode();
 	const { boards } = useUserBoards();
+	const { setDockOpen, setDockTab, setFlashSketch } = useBoardSelection();
 	const boardModel =
 		boards.find((board) => board.device.uuid === uuid)?.status?.model ?? null;
 	const [entries, setEntries] = useState<BoardFileEntry[]>([]);
@@ -116,6 +130,8 @@ export default function ProjectFiles({
 	const [fileFilter, setFileFilter] = useState("");
 	const [fileMenu, setFileMenu] = useState<FileMenu | null>(null);
 	const fileMenuRef = useRef<HTMLDivElement | null>(null);
+	const [sketchAction, setSketchAction] = useState<SketchAction | null>(null);
+	const sketchActionId = useRef(0);
 	const [dropDir, setDropDir] = useState<string | null>(null);
 	const [picked, setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
@@ -441,6 +457,87 @@ export default function ProjectFiles({
 		const left = Math.max(8, Math.min(x, window.innerWidth - 228));
 		const top = Math.max(8, Math.min(y, window.innerHeight - 96));
 		setFileMenu({ path, x: left, y: top });
+		const id = ++sketchActionId.current;
+		const runName = sketchNameFromPath("host", path);
+		const flashName = sketchNameFromPath("firmware", path);
+		if (!runName && !flashName) {
+			setSketchAction(null);
+			return;
+		}
+		setSketchAction(null);
+		const kind = runName ? "run" : "flash";
+		void loadSketchAction(id, kind, runName ?? flashName ?? "");
+	}
+
+	async function loadSketchAction(
+		id: number,
+		kind: "run" | "flash",
+		sketchName: string,
+	) {
+		try {
+			const list = await (kind === "run"
+				? loadRunSketches(uuid)
+				: loadFlashSketches(uuid));
+			const sketch = findSketchByName(list.sketches, name, sketchName);
+			if (!sketch) {
+				if (sketchActionId.current === id) {
+					setSketchAction(null);
+				}
+				return;
+			}
+			const running = kind === "run" ? (await loadRun(uuid)).running : false;
+			if (sketchActionId.current !== id) {
+				return;
+			}
+			setSketchAction({ kind, dir: sketch.dir, running });
+		} catch {
+			if (sketchActionId.current === id) {
+				setSketchAction(null);
+			}
+		}
+	}
+
+	async function startSketch(dir: string) {
+		setFileMenu(null);
+		if (!uuid) {
+			return;
+		}
+		setBusy("sketch");
+		try {
+			await startRun({ uuid, dir });
+			setNote("");
+			setSaved(t("code.sketchStarted"));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function stopSketch() {
+		setFileMenu(null);
+		if (!uuid) {
+			return;
+		}
+		setBusy("sketch");
+		try {
+			await stopRun(uuid);
+			setNote("");
+			setSaved(t("code.sketchStopped"));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	function flashSketchFromMenu(dir: string) {
+		setFileMenu(null);
+		setFlashSketch({ dir, project: name });
+		setDockOpen(true);
+		setDockTab("flash");
 	}
 
 	async function textFor(path: string) {
@@ -967,7 +1064,31 @@ export default function ProjectFiles({
 	);
 
 	function fileMenuItems(path: string): ContextMenuItem[] {
-		return [
+		const items: ContextMenuItem[] = [];
+		if (sketchAction) {
+			if (sketchAction.kind === "run") {
+				items.push({
+					key: sketchAction.running ? "stop-sketch" : "run-sketch",
+					label: t(sketchAction.running ? "code.stopSketch" : "code.runSketch"),
+					icon: sketchAction.running ? <StopSketchIcon /> : <PlayIcon />,
+					onSelect: () => {
+						if (sketchAction.running) {
+							void stopSketch();
+						} else {
+							void startSketch(sketchAction.dir);
+						}
+					},
+				});
+			} else {
+				items.push({
+					key: "flash-sketch",
+					label: t("code.flashSketch"),
+					icon: <FlashSketchIcon />,
+					onSelect: () => flashSketchFromMenu(sketchAction.dir),
+				});
+			}
+		}
+		items.push(
 			{
 				key: "context",
 				label: t("code.addToContext"),
@@ -988,7 +1109,8 @@ export default function ProjectFiles({
 				icon: <TrashIcon />,
 				onSelect: () => void deleteFile(path),
 			},
-		];
+		);
+		return items;
 	}
 }
 
@@ -1135,6 +1257,30 @@ function TrashIcon() {
 			strokeWidth="1.3"
 		>
 			<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2h5.8l.6-8.2M6.7 7v3.9M9.3 7v3.9" />
+		</svg>
+	);
+}
+
+function PlayIcon() {
+	return (
+		<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+			<path d="M5 3.2l7.5 4.8L5 12.8z" />
+		</svg>
+	);
+}
+
+function StopSketchIcon() {
+	return (
+		<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+			<path d="M4.5 4.5h7v7h-7z" />
+		</svg>
+	);
+}
+
+function FlashSketchIcon() {
+	return (
+		<svg viewBox="0 0 16 16" aria-hidden="true" fill="currentColor">
+			<path d="M8.8 1.5L4 9h3.1L6 14.5 12 7H8.4z" />
 		</svg>
 	);
 }

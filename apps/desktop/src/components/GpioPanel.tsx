@@ -135,6 +135,7 @@ export default function GpioPanel({
 	const available = Boolean(uuid) && connected !== false;
 	const pins = snapshot?.pins ?? [];
 	const selectedPin = pins.find((pin) => pin.physical === selected);
+	const sketchReadOnly = target === "header" && (snapshot?.sketch ?? false);
 	const livePinsRef = useRef("");
 	const onGpio = useCallback(
 		(next: GpioSnapshot) => {
@@ -175,6 +176,10 @@ export default function GpioPanel({
 
 	function drive(command: GpioCommand) {
 		const next = target === "arduino-proxy" ? { ...command, target } : command;
+		if (sketchReadOnly) {
+			setError(t("gpio.sketchReadOnly"));
+			return;
+		}
 		const current = snapshotRef.current;
 		if (current) {
 			applySnapshot(applyCommand(current, next));
@@ -296,6 +301,9 @@ export default function GpioPanel({
 			{error ? (
 				<Alert severity="error">{translateError(t, error)}</Alert>
 			) : null}
+			{sketchReadOnly ? (
+				<Alert severity="warning">{t("gpio.sketchReadOnly")}</Alert>
+			) : null}
 			{poll || snapshot ? (
 				target === "arduino-proxy" ? (
 					<ArduinoProxyPins
@@ -323,8 +331,13 @@ export default function GpioPanel({
 				<GpioPinActions
 					pin={selectedPin}
 					busy={busy}
+					readOnly={sketchReadOnly}
 					onDrive={drive}
 					onPwm={(physical, analog) => {
+						if (sketchReadOnly) {
+							setError(t("gpio.sketchReadOnly"));
+							return;
+						}
 						const command: GpioCommand = {
 							physical,
 							dir: "pwm",
@@ -396,11 +409,13 @@ function LiveChip({
 function GpioPinActions({
 	pin,
 	busy,
+	readOnly,
 	onDrive,
 	onPwm,
 }: {
 	pin: GpioPinState | undefined;
 	busy: boolean;
+	readOnly?: boolean;
 	onDrive: (command: GpioCommand) => void;
 	onPwm: (physical: number, analog: number) => void;
 }) {
@@ -412,7 +427,7 @@ function GpioPinActions({
 			</Typography>
 		);
 	}
-	const locked = !canDriveGpio(pin);
+	const locked = readOnly || !canDriveGpio(pin);
 	const analog = typeof pin.analog === "number" ? pin.analog : 128;
 	return (
 		<Stack spacing={1}>

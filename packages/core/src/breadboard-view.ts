@@ -27,6 +27,9 @@ export {
 } from "./breadboard-embed.ts";
 export { isHardwareId } from "./config.ts";
 export {
+	type GpioPinState,
+	type GpioSnapshot,
+	type GpioTarget,
 	gpioLiveValues,
 	type HeaderPinDef,
 	headerPinsForBoard,

@@ -25,9 +25,11 @@ import { Body, ErrorText, Field, Muted, TextButton } from "./ui.tsx";
 export default function FlashPanel({
 	uuid,
 	project,
+	preselectDir,
 }: {
 	uuid: string;
 	project?: string;
+	preselectDir?: string;
 }) {
 	const auth = useAuth();
 	const t = useT();
@@ -82,6 +84,15 @@ export default function FlashPanel({
 			setDir(listed[0]?.dir ?? "");
 		}
 	}, [listed, dir, legacy]);
+
+	useEffect(() => {
+		if (legacy || !preselectDir) {
+			return;
+		}
+		if (listed.some((item) => item.dir === preselectDir)) {
+			setDir(preselectDir);
+		}
+	}, [listed, legacy, preselectDir]);
 	const onFlash = useCallback((next: FlashStatus) => {
 		setStatus(next);
 	}, []);

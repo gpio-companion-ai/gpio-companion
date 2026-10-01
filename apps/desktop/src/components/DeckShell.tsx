@@ -28,11 +28,11 @@ import {
 } from "../lib/dashboard-mode";
 import { useT } from "../locale";
 import DockBody from "./DockBody";
+import type { DockTab } from "../hooks/useBoardSelection";
 
 export type DeckSection = "project" | "devices" | "profile";
 type RailPane = "work" | "fleet" | "code" | "you";
 type FocusRegion = "primary" | "secondary";
-type DockTab = "console" | "gpio" | "flash" | "problems";
 type ProfileSection = "account" | "language" | "keys" | "credits" | "address";
 
 function DeckIcon({
@@ -107,7 +107,8 @@ export default function DeckShell({
 }) {
 	const t = useT();
 	const { mode, isEasy, toggleMode } = useDashboardMode();
-	const { uuid, setUuid } = useBoardSelection();
+	const { uuid, setUuid, dockTab, setDockTab, dockOpen, setDockOpen } =
+		useBoardSelection();
 	const { boards } = useUserBoards();
 	const tunnel = useConsoleTunnel(section === "profile" ? "" : uuid);
 	const [drawerOpen, setDrawerOpen] = useState(false);
@@ -115,8 +116,6 @@ export default function DeckShell({
 	const [paletteOpen, setPaletteOpen] = useState(false);
 	const [query, setQuery] = useState("");
 	const [focus, setFocus] = useState<FocusRegion>("primary");
-	const [dockTab, setDockTab] = useState<DockTab>("console");
-	const [dockOpen, setDockOpen] = useState(true);
 	const [dockHeight, setDockHeight] = useState(readDockHeight);
 	const [profileSection, setProfileSection] =
 		useState<ProfileSection>("account");
@@ -305,7 +304,7 @@ export default function DeckShell({
 
 	useEffect(() => {
 		if (isEasy && dockTab === "problems") setDockTab("flash");
-	}, [dockTab, isEasy]);
+	}, [dockTab, isEasy, setDockTab]);
 
 	const startResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
 		event.currentTarget.setPointerCapture(event.pointerId);
@@ -570,6 +569,7 @@ export default function DeckShell({
 								"console",
 								"gpio",
 								"flash",
+								"actions",
 								...(isEasy ? [] : ["problems"]),
 							] as DockTab[]
 						).map((item) => (
@@ -619,6 +619,7 @@ export default function DeckShell({
 								uuid={uuid}
 								log={tunnel.snapshot.host.log}
 								status={tunnel.status}
+								clear={tunnel.clear}
 								connected={Boolean(selected?.status)}
 							/>
 						) : null}

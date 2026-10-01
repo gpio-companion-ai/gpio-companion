@@ -24,6 +24,7 @@ export async function runScenarios(
 	const sketchDir = await writeSketch(root);
 	await hostRun(handle, sketchDir);
 	await gpioThenRun(handle, sketchDir);
+	await runLiveGpio(handle, sketchDir);
 	await flashJobs(handle, sketchDir);
 	await consoleUsb(handle);
 	await sockets(handle);
@@ -157,6 +158,74 @@ async function gpioThenRun(
 		() => !leftoverLabels(census(pid, root)).includes("gpioset"),
 		"releaseAll on run",
 	);
+}
+
+async function runLiveGpio(
+	handle: CompanionHandle,
+	dir: string,
+): Promise<void> {
+	const { client, pid, root } = handle;
+	const start = await deviceJson(client, paths.run, {
+		method: "POST",
+		body: JSON.stringify({ dir }),
+	});
+	if (start.status !== 200) {
+		throw new Error(
+			`live run start failed ${start.status} ${JSON.stringify(start.body)}`,
+		);
+	}
+	await waitUntil(
+		() => leftoverLabels(census(pid, root)).includes("sketch"),
+		"live sketch hold",
+	);
+	const get = await deviceJson(client, paths.gpio);
+	if (get.status !== 200) {
+		throw new Error(`live gpio get failed ${get.status}`);
+	}
+	const snapshot = get.body as {
+		sketch?: boolean;
+		pins?: Array<{
+			physical: number;
+			dir?: string;
+			value?: number;
+			analog?: number;
+			sketch?: boolean;
+		}>;
+	};
+	if (!snapshot.sketch) {
+		throw new Error("live snapshot missing sketch flag");
+	}
+	const pin11 = snapshot.pins?.find((pin) => pin.physical === PIN);
+	if (pin11?.sketch !== true || pin11.dir !== "out" || pin11.value !== 1) {
+		throw new Error(`sketch pin ${PIN} not merged ${JSON.stringify(pin11)}`);
+	}
+	const pin13 = snapshot.pins?.find((pin) => pin.physical === 13);
+	if (pin13?.sketch !== true || pin13.dir !== "pwm" || pin13.analog !== 100) {
+		throw new Error(`sketch pin 13 not merged ${JSON.stringify(pin13)}`);
+	}
+	const blocked = await deviceJson(client, paths.gpio, {
+		method: "PUT",
+		body: JSON.stringify({ physical: PIN, dir: "out", value: 0 }),
+	});
+	if (blocked.status !== 409) {
+		throw new Error(
+			`expected 409 during sketch got ${blocked.status} ${JSON.stringify(blocked.body)}`,
+		);
+	}
+	await deviceJson(client, paths.runStop, { method: "POST", body: "{}" });
+	await waitUntil(async () => {
+		const status = await deviceJson(client, paths.run);
+		return !(status.body as { running?: boolean } | null)?.running;
+	}, "live run stopped");
+	await waitUntil(
+		() => !leftoverLabels(census(pid, root)).includes("sketch"),
+		"live sketch gone",
+	);
+	const after = await deviceJson(client, paths.gpio);
+	if ((after.body as { sketch?: boolean } | null)?.sketch) {
+		throw new Error("sketch flag still set after stop");
+	}
+	await gpioHold(handle);
 }
 
 async function flashJobs(handle: CompanionHandle, dir: string): Promise<void> {

@@ -5,7 +5,7 @@ import {
 	type ConsoleSnapshot,
 	emptyConsoleSnapshot,
 } from "gpio-companion";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { unwrapAction } from "../lib/action.ts";
 
 export type ConsoleTunnelStatus =
@@ -17,6 +17,7 @@ export type ConsoleTunnelStatus =
 export type ConsoleTunnel = {
 	status: ConsoleTunnelStatus;
 	snapshot: ConsoleSnapshot;
+	clear: () => void;
 };
 
 export function useConsoleTunnel(
@@ -126,5 +127,10 @@ export function useConsoleTunnel(
 		};
 	}, [uuid]);
 
-	return { status, snapshot };
+	const clear = useCallback(() => {
+		snapshotRef.current = emptyConsoleSnapshot();
+		setSnapshot(emptyConsoleSnapshot());
+	}, []);
+
+	return { status, snapshot, clear };
 }

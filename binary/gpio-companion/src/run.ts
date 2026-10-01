@@ -1,4 +1,10 @@
-import { mkdirSync, readdirSync, statSync, writeFileSync } from "node:fs";
+import {
+	mkdirSync,
+	readdirSync,
+	statSync,
+	unlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import {
@@ -20,6 +26,7 @@ export type RunController = {
 	status(): RunStatus;
 	start(input: unknown): { started: true };
 	stop(): { stopped: true };
+	statusPath?(): string | null;
 };
 
 export type HostRunOptions = {
@@ -35,6 +42,7 @@ export type HostRunOptions = {
 		proxy?: boolean;
 		setProc?: (proc: RunProcess | null) => void;
 		cancelled?: () => boolean;
+		statusPath?: string;
 	}) => Promise<{ ok: boolean; log: string; proc?: RunProcess }>;
 	hasSketch?: (dir: string) => boolean;
 	onLog?: (chunk: string) => void;
@@ -63,9 +71,13 @@ export function createRunController(options: HostRunOptions): RunController {
 	let log = "";
 	let last: RunResult | null = null;
 	let current: RunProcess | null = null;
+	let statusPath: string | null = null;
 	return {
 		status() {
 			return { running, log, last };
+		},
+		statusPath() {
+			return statusPath;
 		},
 		start(input) {
 			const put = parseRunPut(input);
@@ -92,6 +104,9 @@ export function createRunController(options: HostRunOptions): RunController {
 				cancelled() {
 					return cancelled;
 				},
+				setStatusPath(path) {
+					statusPath = path;
+				},
 			})
 				.then((result) => {
 					last = result;
@@ -112,6 +127,7 @@ export function createRunController(options: HostRunOptions): RunController {
 				.finally(() => {
 					current = null;
 					running = false;
+					statusPath = null;
 					options.onRunning?.(false);
 				});
 			return { started: true };
@@ -196,6 +212,7 @@ async function runJob(
 		append(text: string): void;
 		setProc(proc: RunProcess | null): void;
 		cancelled(): boolean;
+		setStatusPath(path: string | null): void;
 	},
 ): Promise<RunResult> {
 	const stopped = (): RunResult => ({
@@ -213,6 +230,8 @@ async function runJob(
 	mkdirSync(work, { recursive: true });
 	const pinmapPath = join(work, "pins.txt");
 	const outPath = join(work, "sketch");
+	const statusFile = join(work, "gpio-host-status.json");
+	hooks.setStatusPath(statusFile);
 	const proxySketch = isArduinoProxySketchName(basename(put.dir));
 	let restore: { port: string; fqbn?: string } | null = null;
 	let restoreHeld = false;
@@ -257,6 +276,7 @@ async function runJob(
 			proxy: proxySketch,
 			setProc: hooks.setProc,
 			cancelled: hooks.cancelled,
+			statusPath: statusFile,
 		});
 		if (hooks.cancelled()) {
 			if (result.proc) {
@@ -293,6 +313,14 @@ async function runJob(
 			finishedAt: Date.now(),
 		};
 	} finally {
+		hooks.setStatusPath(null);
+		if (!proxySketch) {
+			try {
+				unlinkSync(statusFile);
+			} catch {
+				undefined;
+			}
+		}
 		if (restoreHeld && options.proxy) {
 			options.proxy.hold(false);
 			if (restore) {
@@ -336,6 +364,7 @@ async function liveCompileAndRun(job: {
 	proxy?: boolean;
 	setProc?: (proc: RunProcess | null) => void;
 	cancelled?: () => boolean;
+	statusPath?: string;
 }): Promise<{ ok: boolean; log: string; proc?: RunProcess }> {
 	if (job.cancelled?.()) {
 		return { ok: true, log: "stopped" };
@@ -378,6 +407,10 @@ async function liveCompileAndRun(job: {
 		cwd: job.dir,
 		stdout: "pipe",
 		stderr: "pipe",
+		env:
+			job.proxy || !job.statusPath
+				? undefined
+				: { ...process.env, GPIO_HOST_STATUS: job.statusPath },
 	});
 	if (job.cancelled?.()) {
 		await killTree(proc);

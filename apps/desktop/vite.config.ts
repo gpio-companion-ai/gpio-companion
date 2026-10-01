@@ -36,6 +36,10 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/board-files.ts",
 			),
+			"gpio-companion-sketches": path.resolve(
+				repoRoot,
+				"packages/core/src/sketches.ts",
+			),
 			"gpio-companion-attach": path.resolve(
 				repoRoot,
 				"packages/core/src/code-attach.ts",

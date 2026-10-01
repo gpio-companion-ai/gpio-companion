@@ -75,6 +75,14 @@ Unsigned loopback only without Ed25519 headers; dashboard/BLE run is signed.
 Poll `GET /v1/run` until `running` is false, or stop a looping sketch.
 Do not start a second job while one is running (409).
 
+## Live GPIO while a sketch runs
+
+While a sketch runs, Live GPIO keeps working **read-only**: the shim publishes
+each touched pin's mode/value/analog duty/tone Hz to the companion, so the
+dashboard/desktop/mobile 40-pin header shows the sketch's state live. Header
+writes (`PUT /v1/gpio`, websocket drive) are refused with **409** while the
+sketch runs — stop the sketch first to drive pins from the panel.
+
 ## Sketch
 
 ```c

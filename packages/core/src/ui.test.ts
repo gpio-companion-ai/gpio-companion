@@ -244,7 +244,13 @@ describe("closed sets", () => {
 			"github",
 			"credits",
 		]);
-		expect([...UI_DOCK_TABS]).toEqual(["console", "gpio", "flash", "problems"]);
+		expect([...UI_DOCK_TABS]).toEqual([
+			"console",
+			"gpio",
+			"flash",
+			"problems",
+			"actions",
+		]);
 		expect(UI_MAX_SOCKETS).toBe(8);
 	});
 });

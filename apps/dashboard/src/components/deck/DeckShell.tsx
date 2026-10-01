@@ -11,6 +11,7 @@ import MemoryIcon from "@material-design-icons/svg/filled/memory.svg";
 import MenuIcon from "@material-design-icons/svg/filled/menu.svg";
 import SearchIcon from "@material-design-icons/svg/filled/search.svg";
 import TerminalIcon from "@material-design-icons/svg/filled/terminal.svg";
+import StopCircleIcon from "@material-design-icons/svg/filled/stop_circle.svg";
 import WarningIcon from "@material-design-icons/svg/filled/warning.svg";
 import { navigate } from "@next/client";
 import BottomNavigation, {
@@ -58,7 +59,7 @@ const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
 
 type DeckTranslate = (key: `deck.${string}`) => string;
 type FocusRegion = "primary" | "secondary";
-type DockTab = "console" | "gpio" | "flash" | "problems";
+type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
 type ContextLink = {
 	href: string;
 	labelKey: `deck.${string}`;
@@ -69,6 +70,7 @@ const DOCK_TABS: Array<[DockTab, ComponentType]> = [
 	["gpio", BoltIcon],
 	["flash", BuildIcon],
 	["problems", WarningIcon],
+	["actions", StopCircleIcon],
 ];
 
 const UI_NAVIGATE_HREF: Record<UiNavigateTarget, string> = {

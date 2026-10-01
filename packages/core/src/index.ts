@@ -925,7 +925,9 @@ export {
 	type BoardSketchKind,
 	type BoardSketchList,
 	parseBoardSketchList,
+	findSketchByName,
 	sketchKindDir,
+	sketchNameFromPath,
 } from "./sketches.ts";
 export {
 	cloudflareTunnelName,

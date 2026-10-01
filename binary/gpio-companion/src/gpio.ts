@@ -1,4 +1,4 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import {
 	analogToPwmPercent,
 	assertGpioDrive,
@@ -79,10 +79,121 @@ export type GpioController = {
 	snapshot(hardware: HardwareId): Promise<GpioSnapshot>;
 	apply(hardware: HardwareId, put: GpioApply): Promise<GpioSnapshot>;
 	releaseAll?(): Promise<void>;
+	setSketchStatus?(sketchStatus: () => SketchStatus | null): void;
 };
+
+export type SketchPinStatus = {
+	physical: number;
+	chip: string;
+	line: number;
+	mode: "in" | "out";
+	value?: 0 | 1;
+	analog?: number;
+	hz?: number;
+};
+
+export type SketchStatus = {
+	pid: number;
+	started?: number;
+	pins: SketchPinStatus[];
+};
+
+export function isPidAlive(pid: number): boolean {
+	if (!Number.isInteger(pid) || pid <= 0) {
+		return false;
+	}
+	if (pid === process.pid) {
+		return true;
+	}
+	try {
+		process.kill(pid, 0);
+		return true;
+	} catch (error) {
+		return (error as NodeJS.ErrnoException)?.code === "EPERM";
+	}
+}
+
+export function readSketchStatus(
+	path: string | null | undefined,
+): SketchStatus | null {
+	if (!path) {
+		return null;
+	}
+	let raw: string;
+	try {
+		raw = readFileSync(path, "utf8");
+	} catch {
+		return null;
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(raw);
+	} catch {
+		return null;
+	}
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+		return null;
+	}
+	const record = parsed as {
+		pid?: unknown;
+		started?: unknown;
+		pins?: unknown;
+	};
+	if (!isPidAlive(Number(record.pid))) {
+		return null;
+	}
+	if (!Array.isArray(record.pins)) {
+		return null;
+	}
+	const pins: SketchPinStatus[] = [];
+	for (const item of record.pins) {
+		if (!item || typeof item !== "object" || Array.isArray(item)) {
+			continue;
+		}
+		const pin = item as Record<string, unknown>;
+		const physical = Number(pin.physical);
+		const line = Number(pin.line);
+		if (
+			!Number.isInteger(physical) ||
+			physical < 1 ||
+			physical > 40 ||
+			typeof pin.chip !== "string" ||
+			!pin.chip ||
+			!Number.isInteger(line)
+		) {
+			continue;
+		}
+		const status: SketchPinStatus = {
+			physical,
+			chip: pin.chip,
+			line,
+			mode: pin.mode === "out" ? "out" : "in",
+		};
+		if (pin.value === 0 || pin.value === 1) {
+			status.value = pin.value;
+		}
+		if (
+			typeof pin.analog === "number" &&
+			pin.analog >= 0 &&
+			pin.analog <= 255
+		) {
+			status.analog = pin.analog;
+		}
+		if (typeof pin.hz === "number" && pin.hz >= 31 && pin.hz <= 65535) {
+			status.hz = pin.hz;
+		}
+		pins.push(status);
+	}
+	const out: SketchStatus = { pid: Number(record.pid), pins };
+	if (typeof record.started === "number" && Number.isFinite(record.started)) {
+		out.started = record.started;
+	}
+	return out;
+}
 
 export type GpioControllerOptions = {
 	model?: string | (() => string | undefined);
+	sketchStatus?: () => SketchStatus | null;
 };
 
 export function parseGpioinfo(text: string): GpioInfoLine[] {
@@ -187,6 +298,8 @@ export function createGpioController(
 	backend: GpioBackend,
 	options?: GpioControllerOptions,
 ): GpioController {
+	let sketchLookup: (() => SketchStatus | null) | null =
+		options?.sketchStatus ?? null;
 	function model(): string | undefined {
 		if (typeof options?.model === "function") {
 			return options.model();
@@ -223,7 +336,11 @@ export function createGpioController(
 				cached.gpioinfoText,
 				cached.readallText,
 				model(),
+				() => sketchLookup?.() ?? null,
 			);
+		},
+		setSketchStatus(sketchStatus) {
+			sketchLookup = sketchStatus;
 		},
 		async apply(hardware, put) {
 			const board = model();
@@ -269,12 +386,21 @@ export function createGpioController(
 				}
 				await backend.set(ref, put.dir, put.value);
 			}
-			return readSnapshot(hardware, backend, gpioinfoText, readallText, board);
+			return readSnapshot(
+				hardware,
+				backend,
+				gpioinfoText,
+				readallText,
+				board,
+				() => sketchLookup?.() ?? null,
+			);
 		},
 	};
 }
 
-export function createLibgpiodGpio(): GpioController {
+export function createLibgpiodGpio(
+	options?: GpioControllerOptions,
+): GpioController {
 	const held = new Map<
 		string,
 		{ proc: ReturnType<typeof Bun.spawn>; value: 0 | 1 }
@@ -362,11 +488,12 @@ export function createLibgpiodGpio(): GpioController {
 				});
 			},
 		},
-		{ model: () => readBoardModel() },
+		{ model: () => readBoardModel(), sketchStatus: options?.sketchStatus },
 	);
 	return {
 		snapshot: controller.snapshot,
 		apply: controller.apply,
+		setSketchStatus: controller.setSketchStatus,
 		async releaseAll() {
 			await serial(async () => {
 				offHeld.clear();
@@ -446,6 +573,7 @@ async function readSnapshot(
 	gpioinfoText?: string,
 	readallText?: string,
 	model?: string,
+	sketchStatus?: () => SketchStatus | null,
 ): Promise<GpioSnapshot> {
 	const infoText = gpioinfoText ?? (await backend.gpioinfo());
 	const wiringText =
@@ -455,6 +583,10 @@ async function readSnapshot(
 		: new Map<number, number>();
 	const resolved = resolveHeaderLines(hardware, infoText, wiringText, model);
 	const infoDirs = gpioinfoDirs(infoText);
+	const sketch = sketchStatus?.() ?? null;
+	const sketchByPhysical = new Map(
+		(sketch?.pins ?? []).map((pin) => [pin.physical, pin] as const),
+	);
 	const pins: GpioPinState[] = [];
 	const gpioRefs: GpioLineRef[] = [];
 	for (const def of headerPinsForBoard(hardware, model)) {
@@ -499,6 +631,7 @@ async function readSnapshot(
 		const live = lives.get(lineKey(ref));
 		const infoDir = infoDirs.get(lineKey(ref));
 		const pwm = pwmForPin(def, pwmDuties);
+		const sketchPin = sketchByPhysical.get(def.physical);
 		const pin: GpioPinState = {
 			physical: def.physical,
 			name: def.name,
@@ -512,7 +645,27 @@ async function readSnapshot(
 		if (def.alt?.length) {
 			pin.alt = def.alt;
 		}
-		if (live?.dir !== "off") {
+		if (sketchPin) {
+			pin.sketch = true;
+			delete pin.dir;
+			delete pin.value;
+			delete pin.analog;
+			delete pin.hz;
+			pin.dir = sketchPin.mode === "in" ? "in" : "out";
+			if (sketchPin.mode === "in") {
+				pin.value = sketchPin.value ?? 0;
+			} else if (typeof sketchPin.analog === "number") {
+				pin.analog = sketchPin.analog;
+				pin.pwm = analogToPwmPercent(sketchPin.analog);
+				pin.dir = "pwm";
+				pin.value = sketchPin.analog >= 128 ? 1 : 0;
+			} else {
+				pin.value = sketchPin.value ?? 0;
+				if (typeof sketchPin.hz === "number") {
+					pin.hz = sketchPin.hz;
+				}
+			}
+		} else if (live?.dir !== "off") {
 			if (live?.analog !== undefined) {
 				pin.analog = live.analog;
 				pin.pwm = analogToPwmPercent(live.analog);
@@ -527,7 +680,7 @@ async function readSnapshot(
 		}
 		pins.push(pin);
 	}
-	return { hardware, pins };
+	return sketch ? { hardware, pins, sketch: true } : { hardware, pins };
 }
 
 async function probe(backend: GpioBackend): Promise<{

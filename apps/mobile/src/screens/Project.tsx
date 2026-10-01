@@ -285,6 +285,7 @@ export default function Project() {
 	});
 	const { boards, paired } = useUserBoards();
 	const { uuid: selectedUuid, setUuid: selectBoard } = useBoardSelection();
+	const { flashSketch } = useBoardSelection();
 	const { setTab } = useDeviceHub();
 	const router = useRouter();
 	const { setWorkItems } = useDeckNav();
@@ -866,6 +867,18 @@ export default function Project() {
 		});
 	}
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: open the flash tool when a sketch was preselected from the Code page
+	useEffect(() => {
+		if (
+			bundle &&
+			flashSketch &&
+			flashSketch.project === bundle.repo &&
+			openTool !== "flash"
+		) {
+			toggleTool("flash");
+		}
+	}, [bundle, flashSketch]);
+
 	return (
 		<Screen>
 			{paired && activeUuid ? (
@@ -1283,7 +1296,15 @@ export default function Project() {
 							open={openTool === "flash"}
 							onToggle={() => toggleTool("flash")}
 						>
-							<FlashPanel uuid={activeUuid} project={bundle.repo} />
+							<FlashPanel
+								uuid={activeUuid}
+								project={bundle.repo}
+								preselectDir={
+									flashSketch?.project === bundle.repo
+										? flashSketch.dir
+										: undefined
+								}
+							/>
 						</ToolSection>
 						<ToolSection
 							title={t("run.title")}

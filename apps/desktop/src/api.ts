@@ -1214,6 +1214,7 @@ export type GpioPinState = {
 	adc?: number;
 	reserved?: boolean;
 	unresolved?: boolean;
+	sketch?: boolean;
 };
 
 export type GpioTarget = "header" | "arduino-proxy";
@@ -1223,6 +1224,7 @@ export type GpioSnapshot = {
 	pins: GpioPinState[];
 	target?: GpioTarget;
 	proxy?: { fqbn?: string; name?: string };
+	sketch?: boolean;
 };
 
 export function loadGpio(uuid: string) {

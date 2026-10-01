@@ -29,6 +29,7 @@ enum PinKind {
 typedef struct {
 	int analog;
 	int hz;
+	int is_tone;
 	unsigned int line;
 	struct gpiod_line_request *request;
 	pthread_t thread;
@@ -50,6 +51,8 @@ static PinState pins[MAX_PINS + 1];
 static struct timespec start_time;
 static int analog_warned;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+
+static void status_mark(void);
 
 int A0, A1, A2, A3, A4, A5, A6, A7, A8, A9, A10, A11, A12, A13, A14, A15;
 
@@ -161,6 +164,7 @@ static void stop_pwm(PinState *state) {
 	release_request(&state->pwm->request);
 	free(state->pwm);
 	state->pwm = NULL;
+	status_mark();
 }
 
 static void set_line(struct gpiod_line_request *request, unsigned int line,
@@ -205,12 +209,14 @@ static void *pwm_loop(void *arg) {
 	return NULL;
 }
 
-static void start_pwm(PinState *state, int analog, int hz) {
+static void start_pwm(PinState *state, int analog, int hz, int is_tone) {
 	if (state->pwm) {
 		pthread_mutex_lock(&lock);
 		state->pwm->analog = analog;
 		state->pwm->hz = hz;
+		state->pwm->is_tone = is_tone;
 		pthread_mutex_unlock(&lock);
+		status_mark();
 		return;
 	}
 	release_request(&state->request);
@@ -220,6 +226,7 @@ static void start_pwm(PinState *state, int analog, int hz) {
 	}
 	pwm->analog = analog;
 	pwm->hz = hz;
+	pwm->is_tone = is_tone;
 	pwm->line = state->line;
 	pwm->request = request_line(state, OUTPUT, 0);
 	if (pthread_create(&pwm->thread, NULL, pwm_loop, pwm) != 0) {
@@ -227,6 +234,7 @@ static void start_pwm(PinState *state, int analog, int hz) {
 	}
 	state->pwm = pwm;
 	state->mode = OUTPUT;
+	status_mark();
 }
 
 static void serial_begin(unsigned long baud) {
@@ -294,6 +302,131 @@ static void parse_pinmap(const char *path) {
 	fclose(file);
 }
 
+#define STATUS_MS 100
+#define STATUS_PATH_MAX 256
+
+static char status_path[STATUS_PATH_MAX];
+static long long status_started_ms;
+static volatile int status_dirty = 1;
+static pthread_t status_thread;
+static volatile int status_thread_running;
+
+static void status_mark(void) {
+	status_dirty = 1;
+}
+
+static long long wall_ms(void) {
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+	return (long long)now.tv_sec * 1000L + now.tv_nsec / 1000000L;
+}
+
+static void write_status_file(void) {
+	if (!status_path[0]) {
+		return;
+	}
+	char buf[MAX_PINS * 128 + 256];
+	size_t pos = (size_t)snprintf(buf, sizeof(buf),
+		"{\"pid\":%d,\"started\":%lld,\"pins\":[", getpid(),
+		status_started_ms);
+	if (pos >= sizeof(buf)) {
+		return;
+	}
+	int first = 1;
+	pthread_mutex_lock(&lock);
+	for (int pin = 1; pin <= MAX_PINS; pin++) {
+		PinState *state = &pins[pin];
+		if (state->kind != PIN_GPIO || (!state->request && !state->pwm)) {
+			continue;
+		}
+		int out = state->pwm || state->mode == OUTPUT;
+		int value = state->pwm
+			? (state->pwm->analog >= ANALOG_MAX / 2 ? 1 : 0)
+			: (state->value ? 1 : 0);
+		int n = snprintf(buf + pos, sizeof(buf) - pos,
+			"%s{\"physical\":%d,\"chip\":\"%s\",\"line\":%u,\"mode\":\"%s\","
+			"\"value\":%d",
+			first ? "" : ",", pin, state->chip, state->line, out ? "out" : "in",
+			value);
+		if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+			break;
+		}
+		pos += (size_t)n;
+		first = 0;
+		if (state->pwm) {
+			n = state->pwm->is_tone
+				? snprintf(buf + pos, sizeof(buf) - pos, ",\"hz\":%d",
+					state->pwm->hz)
+				: snprintf(buf + pos, sizeof(buf) - pos, ",\"analog\":%d",
+					state->pwm->analog);
+			if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+				break;
+			}
+			pos += (size_t)n;
+		}
+		n = snprintf(buf + pos, sizeof(buf) - pos, "}");
+		if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+			break;
+		}
+		pos += (size_t)n;
+	}
+	pthread_mutex_unlock(&lock);
+	pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, "]}\n");
+	char tmp[STATUS_PATH_MAX + 8];
+	snprintf(tmp, sizeof(tmp), "%s.tmp", status_path);
+	FILE *file = fopen(tmp, "w");
+	if (!file) {
+		return;
+	}
+	fwrite(buf, 1, pos, file);
+	fclose(file);
+	rename(tmp, status_path);
+}
+
+static void *status_loop(void *arg) {
+	(void)arg;
+	while (!gpio_host_stopping()) {
+		struct timespec ts = {
+			.tv_sec = STATUS_MS / 1000,
+			.tv_nsec = (STATUS_MS % 1000) * 1000000L,
+		};
+		while (clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, &ts) == EINTR) {
+		}
+		if (status_dirty) {
+			status_dirty = 0;
+			write_status_file();
+		}
+	}
+	return NULL;
+}
+
+static void status_start(void) {
+	const char *path = getenv("GPIO_HOST_STATUS");
+	if (!path || !path[0]) {
+		return;
+	}
+	snprintf(status_path, sizeof(status_path), "%s", path);
+	status_started_ms = wall_ms();
+	write_status_file();
+	if (pthread_create(&status_thread, NULL, status_loop, NULL) == 0) {
+		status_thread_running = 1;
+	}
+}
+
+static void status_stop(void) {
+	if (status_thread_running) {
+		status_thread_running = 0;
+		pthread_join(status_thread, NULL);
+	}
+	if (!status_path[0]) {
+		return;
+	}
+	char tmp[STATUS_PATH_MAX + 8];
+	snprintf(tmp, sizeof(tmp), "%s.tmp", status_path);
+	unlink(tmp);
+	unlink(status_path);
+}
+
 void gpio_host_init(int argc, char **argv) {
 	const char *pinmap = getenv("GPIO_HOST_PINMAP");
 	for (int i = 1; i < argc; i++) {
@@ -310,9 +443,11 @@ void gpio_host_init(int argc, char **argv) {
 	Serial.print = serial_print;
 	Serial.println = serial_println;
 	Serial.printf = serial_printf;
+	status_start();
 }
 
 void gpio_host_shutdown(void) {
+	status_stop();
 	for (int pin = 1; pin <= MAX_PINS; pin++) {
 		stop_pwm(&pins[pin]);
 		release_request(&pins[pin].request);
@@ -325,6 +460,7 @@ void pinMode(int pin, int mode) {
 	release_request(&state->request);
 	state->mode = mode;
 	state->request = request_line(state, mode, 0);
+	status_mark();
 }
 
 void digitalWrite(int pin, int value) {
@@ -336,9 +472,11 @@ void digitalWrite(int pin, int value) {
 		release_request(&state->request);
 		state->mode = OUTPUT;
 		state->request = request_line(state, OUTPUT, high);
+		status_mark();
 		return;
 	}
 	set_line(state->request, state->line, high);
+	status_mark();
 }
 
 int digitalRead(int pin) {
@@ -349,13 +487,19 @@ int digitalRead(int pin) {
 	if (!state->request) {
 		state->mode = INPUT;
 		state->request = request_line(state, INPUT, 0);
+		status_mark();
 	}
 	if (state->mode == OUTPUT) {
 		return state->value ? HIGH : LOW;
 	}
 	enum gpiod_line_value value =
 		gpiod_line_request_get_value(state->request, state->line);
-	return value == GPIOD_LINE_VALUE_ACTIVE ? HIGH : LOW;
+	int read = value == GPIOD_LINE_VALUE_ACTIVE ? HIGH : LOW;
+	if (state->value != read) {
+		state->value = read;
+		status_mark();
+	}
+	return read;
 }
 
 void analogWrite(int pin, int value) {
@@ -366,7 +510,7 @@ void analogWrite(int pin, int value) {
 	if (value > ANALOG_MAX) {
 		value = ANALOG_MAX;
 	}
-	start_pwm(state, value, DEFAULT_HZ);
+	start_pwm(state, value, DEFAULT_HZ, 0);
 }
 
 int analogRead(int pin) {
@@ -390,7 +534,7 @@ void tone(int pin, unsigned int frequency) {
 	if (hz > 65535) {
 		hz = 65535;
 	}
-	start_pwm(state, 128, hz);
+	start_pwm(state, 128, hz, 1);
 }
 
 void noTone(int pin) {
@@ -400,6 +544,7 @@ void noTone(int pin) {
 	state->mode = OUTPUT;
 	state->value = 0;
 	state->request = request_line(state, OUTPUT, 0);
+	status_mark();
 }
 
 void delay(unsigned long ms) {

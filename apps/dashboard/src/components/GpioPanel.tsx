@@ -103,9 +103,14 @@ export default function GpioPanel({
 
 	const pins = snapshot?.pins ?? [];
 	const selectedPin = pins.find((pin) => pin.physical === selected);
+	const sketchReadOnly = target === "header" && (snapshot?.sketch ?? false);
 
 	function drive(command: GpioApply) {
 		const next = target === "arduino-proxy" ? { ...command, target } : command;
+		if (sketchReadOnly) {
+			setError(t("gpio.sketchReadOnly"));
+			return;
+		}
 		const current = snapshotRef.current;
 		if (current) {
 			applySnapshot(applyGpioApply(current, next));
@@ -240,6 +245,9 @@ export default function GpioPanel({
 				)}
 			</Stack>
 			{error ? <Alert severity="error">{error}</Alert> : null}
+			{sketchReadOnly ? (
+				<Alert severity="warning">{t("gpio.sketchReadOnly")}</Alert>
+			) : null}
 			{supported || poll ? null : pasteText ? (
 				<>
 					<CopyBlock label={t("ble.bluetoothName")} value={BLE_DEVICE_NAME} />
@@ -278,8 +286,13 @@ export default function GpioPanel({
 					pin={selectedPin}
 					busy={busy}
 					disabled={!uuid}
+					readOnly={sketchReadOnly}
 					onDrive={drive}
 					onPwm={(physical, analog) => {
+						if (sketchReadOnly) {
+							setError(t("gpio.sketchReadOnly"));
+							return;
+						}
 						const command: GpioApply = {
 							physical,
 							dir: "pwm",
@@ -352,12 +365,14 @@ function GpioPinActions({
 	pin,
 	busy,
 	disabled,
+	readOnly,
 	onDrive,
 	onPwm,
 }: {
 	pin: GpioPinState | undefined;
 	busy: boolean;
 	disabled: boolean;
+	readOnly?: boolean;
 	onDrive: (command: GpioApply) => void;
 	onPwm: (physical: number, analog: number) => void;
 }) {
@@ -369,7 +384,7 @@ function GpioPinActions({
 			</Typography>
 		);
 	}
-	const locked = !canDriveGpio(pin);
+	const locked = readOnly || !canDriveGpio(pin);
 	const analog = typeof pin.analog === "number" ? pin.analog : 128;
 	return (
 		<Stack spacing={1}>

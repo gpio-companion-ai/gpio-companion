@@ -394,6 +394,35 @@ body {
 	gap: 12px;
 }
 
+.b6-dock-console {
+	display: flex;
+	min-height: 100%;
+	flex-direction: column;
+}
+
+.b6-dock-console-bar {
+	display: flex;
+	flex: 0 0 auto;
+	justify-content: flex-end;
+	margin-bottom: 6px;
+}
+
+.b6-dock-console-clear {
+	border: 1px solid rgba(var(--text-main), 0.16);
+	border-radius: 6px;
+	background: rgb(var(--bg-main));
+	color: rgb(var(--text-secondary));
+	font: inherit;
+	font-size: 0.68rem;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+.b6-dock-console-clear:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
 .b6-console-log {
 	min-height: 100%;
 	margin: 0;

@@ -44,9 +44,11 @@ import LiveConsole from "./LiveConsole.tsx";
 export default function FlashPanel({
 	uuid,
 	project,
+	preselectDir,
 }: {
 	uuid: string;
 	project?: string;
+	preselectDir?: string;
 }) {
 	const t = useT();
 	const [busy, setBusy] = useState(false);
@@ -103,6 +105,15 @@ export default function FlashPanel({
 			setDir(listed[0]?.dir ?? "");
 		}
 	}, [listed, dir, legacy]);
+
+	useEffect(() => {
+		if (legacy || !preselectDir) {
+			return;
+		}
+		if (listed.some((item) => item.dir === preselectDir)) {
+			setDir(preselectDir);
+		}
+	}, [listed, legacy, preselectDir]);
 
 	useEffect(() => {
 		if (!uuid) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { connectConsoleLive } from "../api";
 import { startReconnectSocket } from "../hub";
 
@@ -16,6 +16,7 @@ export type ConsoleTunnelStatus =
 export type ConsoleTunnel = {
 	status: ConsoleTunnelStatus;
 	snapshot: ConsoleSnapshot;
+	clear: () => void;
 };
 
 function emptySnapshot(): ConsoleSnapshot {
@@ -159,5 +160,10 @@ export function useConsoleTunnel(
 		};
 	}, [uuid]);
 
-	return { status, snapshot };
+	const clear = useCallback(() => {
+		snapshotRef.current = emptySnapshot();
+		setSnapshot(emptySnapshot());
+	}, []);
+
+	return { status, snapshot, clear };
 }

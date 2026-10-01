@@ -37,8 +37,11 @@ import {
 	loadFlash,
 	loadFlashPorts,
 	loadFlashSketches,
+	loadRun,
+	type RunStatus,
 	startFlash,
 	startFlashProxy,
+	stopRun,
 } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
@@ -1042,7 +1045,7 @@ function CommandRow({
 	);
 }
 
-type DockTab = "console" | "gpio" | "flash" | "problems";
+type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
 
 function DockStatusRow({ name, status }: { name: string; status: string }) {
 	const colors = useColorMode().colors;
@@ -1064,11 +1067,13 @@ function DockConsole({
 	hostLog,
 	usbLog,
 	name,
+	onClear,
 }: {
 	status: "idle" | "connecting" | "live" | "reconnecting";
 	hostLog: string;
 	usbLog: string;
 	name: string;
+	onClear: () => void;
 }) {
 	const colors = useColorMode().colors;
 	const tCore = useT();
@@ -1082,7 +1087,24 @@ function DockConsole({
 	const usbTail = usbLog.length > 800 ? usbLog.slice(-800) : usbLog;
 	return (
 		<View style={{ flex: 1 }}>
-			<DockStatusRow name={name} status={statusLabel} />
+			<View
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					justifyContent: "space-between",
+				}}
+			>
+				<DockStatusRow name={name} status={statusLabel} />
+				<Pressable
+					onPress={onClear}
+					disabled={!hostTail && !usbTail}
+					style={{ opacity: !hostTail && !usbTail ? 0.45 : 1 }}
+				>
+					<Text style={{ color: colors.muted, fontSize: 11 }}>
+						{tCore("deck.dock.consoleClear")}
+					</Text>
+				</Pressable>
+			</View>
 			<ScrollView nestedScrollEnabled style={{ flex: 1, marginTop: 4 }}>
 				{hostTail ? (
 					<Text
@@ -1115,6 +1137,82 @@ function DockConsole({
 					</Text>
 				) : null}
 			</ScrollView>
+		</View>
+	);
+}
+
+function DockActions({ uuid, token }: { uuid: string; token: string | null }) {
+	const tCore = useT();
+	const colors = useColorMode().colors;
+	const [stopping, setStopping] = useState(false);
+	const [error, setError] = useState("");
+	const [running, setRunning] = useState<boolean | null>(null);
+
+	useEffect(() => {
+		setRunning(null);
+		if (!token || !uuid.trim()) {
+			return;
+		}
+		let cancelled = false;
+		void loadRun(token, uuid)
+			.then((result) => {
+				if (!cancelled) {
+					setRunning(result.running);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setRunning(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [uuid, token]);
+
+	const onRun = useCallback((status: RunStatus) => {
+		setRunning(status.running);
+	}, []);
+	useLiveHub(uuid, token, { onRun });
+
+	async function stopSketch() {
+		if (!token || !uuid || stopping) {
+			return;
+		}
+		setError("");
+		setStopping(true);
+		try {
+			await stopRun(token, uuid);
+			setRunning((await loadRun(token, uuid)).running);
+		} catch (caught) {
+			setError(
+				translateError(
+					tCore,
+					caught instanceof Error ? caught.message : "failed to stop sketch",
+				),
+			);
+		} finally {
+			setStopping(false);
+		}
+	}
+
+	const runRunning = running === true;
+	return (
+		<View style={{ gap: 8 }}>
+			{runRunning ? (
+				<Text style={{ color: colors.muted, fontSize: 11 }}>
+					{tCore("deck.dock.runRunning")}
+				</Text>
+			) : null}
+			{error ? <ErrorText>{error}</ErrorText> : null}
+			<TextButton
+				label={
+					stopping ? tCore("deck.dock.stopping") : tCore("deck.dock.stopSketch")
+				}
+				danger={runRunning}
+				disabled={stopping || !runRunning}
+				onPress={() => void stopSketch()}
+			/>
 		</View>
 	);
 }
@@ -1362,7 +1460,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 					next === "console" ||
 					next === "gpio" ||
 					next === "flash" ||
-					next === "problems"
+					next === "problems" ||
+					next === "actions"
 				) {
 					setTab(next);
 					setCollapsed(false);
@@ -1628,8 +1727,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 		[updateHeight, collapsed, setDockCollapsed],
 	);
 	const tabs: DockTab[] = isEasy
-		? ["console", "gpio", "flash"]
-		: ["console", "gpio", "flash", "problems"];
+		? ["console", "gpio", "flash", "actions"]
+		: ["console", "gpio", "flash", "problems", "actions"];
 	const helpKey = `deck.${tab}Help` as DeckKey;
 	const currentBoard = pairedBoards.find((board) => board.device.uuid === uuid);
 	const boardLabel = currentBoard
@@ -1762,7 +1861,10 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 							hostLog={serial.snapshot.host.log}
 							usbLog={serial.snapshot.usb.log}
 							name={boardLabel}
+							onClear={serial.clear}
 						/>
+					) : tab === "actions" ? (
+						<DockActions uuid={uuid} token={auth.token} />
 					) : tab === "gpio" ? (
 						<DockGpio
 							status={gpioTunnel.status}

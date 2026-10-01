@@ -73,6 +73,7 @@ export type GpioPinState = {
 	adc?: number;
 	reserved?: boolean;
 	unresolved?: boolean;
+	sketch?: boolean;
 };
 
 export type GpioSnapshot = {
@@ -80,6 +81,7 @@ export type GpioSnapshot = {
 	pins: GpioPinState[];
 	target?: GpioTarget;
 	proxy?: GpioProxyInfo;
+	sketch?: boolean;
 };
 
 export type GpioPatch = {
@@ -87,6 +89,7 @@ export type GpioPatch = {
 	patch: GpioPinState[];
 	target?: GpioTarget;
 	proxy?: GpioProxyInfo;
+	sketch?: boolean;
 };
 
 export type GpioStreamFrame = GpioSnapshot | GpioPatch;
@@ -444,6 +447,7 @@ export function gpioPinStatusKey(pin: GpioPinState): string {
 		pin.adc ?? "",
 		pin.unresolved ? 1 : 0,
 		pin.reserved ? 1 : 0,
+		pin.sketch ? 1 : 0,
 	].join(":");
 }
 
@@ -494,6 +498,7 @@ export function applyGpioMessage(
 			pins: record.pins,
 			target: record.target,
 			proxy: record.proxy,
+			sketch: record.sketch,
 		};
 	}
 	if (!Array.isArray(record.patch)) {
@@ -505,6 +510,7 @@ export function applyGpioMessage(
 			pins: record.patch,
 			target: record.target,
 			proxy: record.proxy,
+			sketch: record.sketch,
 		};
 	}
 	const byPhysical = new Map(
@@ -518,6 +524,7 @@ export function applyGpioMessage(
 		pins: [...byPhysical.values()].sort((a, b) => a.physical - b.physical),
 		target: record.target ?? prev.target,
 		proxy: record.proxy ?? prev.proxy,
+		sketch: record.sketch ?? prev.sketch,
 	};
 }
 
@@ -545,6 +552,7 @@ export function gpioPatchFrame(
 		patch,
 		target: next.target,
 		proxy: next.proxy,
+		sketch: next.sketch,
 	};
 }
 

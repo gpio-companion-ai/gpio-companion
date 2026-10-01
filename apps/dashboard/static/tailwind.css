@@ -547,6 +547,29 @@ body {
 	flex-direction: column;
 }
 
+.b6-console-bar {
+	display: flex;
+	flex: 0 0 auto;
+	justify-content: flex-end;
+	margin-bottom: 4px;
+}
+
+.b6-console-clear {
+	border: 1px solid rgba(var(--text-main), 0.16);
+	border-radius: 6px;
+	background: rgb(var(--bg-main));
+	color: rgb(var(--text-secondary));
+	font: inherit;
+	font-size: 0.68rem;
+	padding: 2px 8px;
+	cursor: pointer;
+}
+
+.b6-console-clear:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
 .b6-console pre {
 	min-height: 0;
 	flex: 1;

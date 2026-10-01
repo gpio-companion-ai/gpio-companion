@@ -16,7 +16,11 @@ type BoardSelectionValue = {
 	uuid: string;
 	setUuid: (uuid: string) => void;
 	openCode: () => void;
+	flashSketch: FlashSketchPreselect | null;
+	setFlashSketch: (sketch: FlashSketchPreselect | null) => void;
 };
+
+export type FlashSketchPreselect = { dir: string; project: string };
 
 const BoardSelectionCtx = createContext<BoardSelectionValue | null>(null);
 
@@ -28,6 +32,8 @@ export function BoardSelectionProvider({
 	onOpenCode?: () => void;
 }) {
 	const [uuid, setUuidState] = useState("");
+	const [flashSketch, setFlashSketchState] =
+		useState<FlashSketchPreselect | null>(null);
 
 	useEffect(() => {
 		void Promise.all([
@@ -54,9 +60,13 @@ export function BoardSelectionProvider({
 		onOpenCode?.();
 	}, [onOpenCode]);
 
+	const setFlashSketch = useCallback((next: FlashSketchPreselect | null) => {
+		setFlashSketchState(next);
+	}, []);
+
 	const value = useMemo(
-		() => ({ uuid, setUuid, openCode }),
-		[uuid, setUuid, openCode],
+		() => ({ uuid, setUuid, openCode, flashSketch, setFlashSketch }),
+		[uuid, setUuid, openCode, flashSketch, setFlashSketch],
 	);
 	return (
 		<BoardSelectionCtx.Provider value={value}>
@@ -72,6 +82,8 @@ export function useBoardSelection(): BoardSelectionValue {
 			uuid: "",
 			setUuid: () => undefined,
 			openCode: () => undefined,
+			flashSketch: null,
+			setFlashSketch: () => undefined,
 		};
 	}
 	return ctx;
