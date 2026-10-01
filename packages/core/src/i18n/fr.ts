@@ -98,7 +98,7 @@ export const fr = {
 		focus: {
 			primary: "Activer l’espace de travail",
 			secondary: "Activer le contexte en direct",
-			contextHint: "Ctrl 1 espace · Ctrl 2 direct",
+			contextHint: "Ctrl 1 espace",
 		},
 		secondary: {
 			title: "Carte en direct",
@@ -149,7 +149,7 @@ export const fr = {
 			consoleLive: "Console en direct",
 			consoleDown: "Console inactive",
 			context: "Actuel : {context}",
-			shortcuts: "Ctrl 1 / Ctrl 2 · Ctrl K",
+			shortcuts: "Ctrl 1 · Ctrl K",
 		},
 		sidebar: {
 			repos: "Projets",

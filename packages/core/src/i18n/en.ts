@@ -96,7 +96,7 @@ export const en = {
 		focus: {
 			primary: "Focus workspace",
 			secondary: "Focus live context",
-			contextHint: "Ctrl 1 workspace · Ctrl 2 live",
+			contextHint: "Ctrl 1 workspace",
 		},
 		secondary: {
 			title: "Live board",
@@ -145,7 +145,7 @@ export const en = {
 			consoleLive: "Console live",
 			consoleDown: "Console idle",
 			context: "Current: {context}",
-			shortcuts: "Ctrl 1 / Ctrl 2 · Ctrl K",
+			shortcuts: "Ctrl 1 · Ctrl K",
 		},
 		sidebar: {
 			repos: "Projects",

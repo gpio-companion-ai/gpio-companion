@@ -17,6 +17,7 @@ import {
 } from "react";
 import logo from "../../../../logo/logo.png";
 import { useUserBoards } from "../hooks/useApiCache";
+import type { DockTab } from "../hooks/useBoardSelection";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useConsoleTunnel } from "../hooks/useConsoleTunnel";
 import { useDashboardMode } from "../hooks/useDashboardMode";
@@ -28,11 +29,10 @@ import {
 } from "../lib/dashboard-mode";
 import { useT } from "../locale";
 import DockBody from "./DockBody";
-import type { DockTab } from "../hooks/useBoardSelection";
 
 export type DeckSection = "project" | "devices" | "profile";
-type RailPane = "work" | "fleet" | "code" | "you";
-type FocusRegion = "primary" | "secondary";
+type RailPane = "work" | "fleet" | "you";
+type FocusRegion = "primary";
 type ProfileSection = "account" | "language" | "keys" | "credits" | "address";
 
 function DeckIcon({
@@ -43,7 +43,6 @@ function DeckIcon({
 	const paths = {
 		work: "M4 7h16v12H4zM9 7V4h6v3",
 		fleet: "M5 5h14v14H5zM8 9h8M8 13h5",
-		code: "M7 4h10v4h3v12H4V8h3zM9 12h6M9 16h4",
 		you: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM5 21a7 7 0 0 1 14 0",
 		menu: "M4 7h16M4 12h16M4 17h16",
 		collapse: "M15 6 9 12l6 6",
@@ -202,22 +201,21 @@ export default function DeckShell({
 	const paletteInput = useRef<HTMLInputElement>(null);
 
 	const pane: RailPane =
-		section === "project"
-			? "work"
-			: section === "profile"
-				? "you"
-				: deviceTab === "code"
-					? "code"
-					: "fleet";
+		section === "profile"
+			? "you"
+			: section === "project" || deviceTab === "code"
+				? "work"
+				: "fleet";
+	const openCode = () => {
+		onNavigate("devices");
+		onDeviceTab("code");
+		setDrawerOpen(false);
+	};
 	const navigateRail = (next: RailPane) => {
 		if (next === "work") onNavigate("project");
 		if (next === "fleet") {
 			onNavigate("devices");
 			onDeviceTab("overview");
-		}
-		if (next === "code") {
-			onNavigate("devices");
-			onDeviceTab("code");
 		}
 		if (next === "you") onNavigate("profile");
 		setDrawerOpen(false);
@@ -226,7 +224,7 @@ export default function DeckShell({
 	const commands = [
 		{ label: t("deck.command.work"), run: () => navigateRail("work") },
 		{ label: t("deck.command.fleet"), run: () => navigateRail("fleet") },
-		{ label: t("nav.code"), run: () => navigateRail("code") },
+		{ label: t("nav.code"), run: openCode },
 		{ label: t("deck.command.you"), run: () => navigateRail("you") },
 		...deviceTabs(mode, admin).map((item) => ({
 			label: t(item.labelKey),
@@ -288,10 +286,6 @@ export default function DeckShell({
 			if ((event.metaKey || event.ctrlKey) && event.key === "1") {
 				event.preventDefault();
 				setFocus("primary");
-			}
-			if ((event.metaKey || event.ctrlKey) && event.key === "2") {
-				event.preventDefault();
-				setFocus("secondary");
 			}
 		};
 		window.addEventListener("keydown", onKey);
@@ -382,7 +376,7 @@ export default function DeckShell({
 			</header>
 
 			<nav className="b6-rail" aria-label={t("deck.rail.label")}>
-				{(["work", "fleet", "code", "you"] as const).map((item) => (
+				{(["work", "fleet", "you"] as const).map((item) => (
 					<button
 						key={item}
 						type="button"
@@ -412,7 +406,7 @@ export default function DeckShell({
 			) : null}
 			<aside className={`b6-sidebar ${drawerOpen ? "is-open" : ""}`}>
 				<div className="b6-mobile-rail">
-					{(["work", "fleet", "code", "you"] as const).map((item) => (
+					{(["work", "fleet", "you"] as const).map((item) => (
 						<button
 							key={item}
 							type="button"
@@ -437,15 +431,31 @@ export default function DeckShell({
 				</div>
 				<div className="b6-sidebar-items">
 					{pane === "work" ? (
-						<button
-							type="button"
-							className="is-active"
-							onClick={() => setDrawerOpen(false)}
-						>
-							{t("nav.project")}
-						</button>
+						<>
+							<button
+								type="button"
+								className={section === "project" ? "is-active" : ""}
+								onClick={() => {
+									onNavigate("project");
+									setDrawerOpen(false);
+								}}
+							>
+								{t("nav.project")}
+							</button>
+							<button
+								type="button"
+								className={
+									section === "devices" && deviceTab === "code"
+										? "is-active"
+										: ""
+								}
+								onClick={openCode}
+							>
+								{t("nav.code")}
+							</button>
+						</>
 					) : null}
-					{pane === "fleet" || pane === "code"
+					{pane === "fleet"
 						? deviceTabs(mode, admin).map((item) => (
 								<button
 									type="button"
@@ -504,25 +514,6 @@ export default function DeckShell({
 						{children}
 					</div>
 				</section>
-				<aside
-					className={`b6-context ${focus === "secondary" ? "is-focused" : ""}`}
-					tabIndex={-1}
-					aria-label={t("deck.focus.secondary")}
-					onFocus={() => setFocus("secondary")}
-				>
-					<Typography variant="caption" color="secondary">
-						{selected
-							? selected.status
-								? t("deck.status.online")
-								: t("deck.status.offline")
-							: t("deck.secondary.empty")}
-					</Typography>
-					<Typography variant="body2" noWrap>
-						{selected
-							? boardName(selected, !isEasy, t("deck.status.unnamed"))
-							: ""}
-					</Typography>
-				</aside>
 			</main>
 
 			{section === "profile" ? null : (
