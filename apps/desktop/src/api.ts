@@ -802,6 +802,13 @@ export function transcribeCode(audio: string, locale: string) {
 	});
 }
 
+export function speakCode(text: string, locale: string) {
+	return apiRequest<{ audio: string }>("POST", "/api/mobile/code/tts", {
+		text,
+		locale,
+	});
+}
+
 export function signBoardFilesLive(uuid: string, name: string) {
 	return apiRequest<{ wsUrl: string }>("POST", "/api/mobile/files/live", {
 		uuid,

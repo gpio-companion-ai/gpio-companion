@@ -1,19 +1,28 @@
 import {
+	type AudioPlayer,
+	createAudioPlayer,
 	RecordingPresets,
 	requestRecordingPermissionsAsync,
 	setAudioModeAsync,
 	useAudioRecorder,
+	useAudioRecorderState,
 } from "expo-audio";
 import * as DocumentPicker from "expo-document-picker";
-import { File } from "expo-file-system";
+import { File, Paths } from "expo-file-system";
 import { router } from "expo-router";
 import {
 	applyCodeMention,
 	CODE_STT_MAX_MS,
+	CODE_VOICE_BARGE_DB,
+	CODE_VOICE_METER_DB,
+	CODE_VOICE_MIN_MS,
+	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
 	codeAttachPrompt,
 	codeComposerErrorKey,
 	codeMentionAt,
+	codeSpokenText,
+	decodeBase64,
 	encodeBase64,
 	filterCodeMentions,
 	removeContextDrafts,
@@ -104,6 +113,7 @@ import {
 	opencodeCall,
 	readBoardFile,
 	signOpencodeLive,
+	speakCode,
 	transcribeCode,
 	uploadBoardFile,
 } from "../lib/api.ts";
@@ -384,8 +394,28 @@ function MdBlock({
 export default function Code() {
 	const t = useT();
 	const { locale } = useLocale();
-	const recorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+	const recorder = useAudioRecorder({
+		...RecordingPresets.HIGH_QUALITY,
+		isMeteringEnabled: true,
+	});
+	const recState = useAudioRecorderState(recorder, 200);
 	const heardUri = useRef("");
+	const voiceSpeaking = useRef<AudioPlayer | null>(null);
+	const voiceSpoken = useRef(new Set<string>());
+	const voiceQueue = useRef<string[]>([]);
+	const voiceBarge = useRef(0);
+	const voiceLastVoice = useRef(0);
+	const voiceSpeech = useRef(false);
+	const voiceHandling = useRef(false);
+	const voicePreparing = useRef(false);
+	const voiceUri = useRef("");
+	const voiceModeRef = useRef(false);
+	const finishVoiceRef = useRef<(uri: string) => void>(() => {});
+	const startVoiceCaptureRef = useRef<() => void>(() => {});
+	const stopVoiceEngineRef = useRef<() => void>(() => {});
+	const voiceTickRef = useRef<() => void>(() => {});
+	const recStateRef = useRef(recState);
+	recStateRef.current = recState;
 	const colors = useColors();
 	const insets = useSafeAreaInsets();
 	const auth = useAuth();
@@ -417,6 +447,12 @@ export default function Code() {
 	const [mentionOff, setMentionOff] = useState("");
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
+	const [voiceMode, setVoiceMode] = useState(false);
+	const [voiceLevel, setVoiceLevel] = useState(0);
+	const [voiceListening, setVoiceListening] = useState(false);
+	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
+	const [voiceQueued, setVoiceQueued] = useState(0);
+	const [voicePulse, setVoicePulse] = useState(0);
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
@@ -1026,14 +1062,340 @@ export default function Code() {
 		return () => clearInterval(timer);
 	}, [recording, recorder]);
 
-	async function send() {
-		const typed = prompt.trim();
+	function startVoiceCapture() {
+		if (
+			!voiceModeRef.current ||
+			voiceHandling.current ||
+			voicePreparing.current
+		) {
+			return;
+		}
+		try {
+			if (recorder.isRecording) {
+				return;
+			}
+			voicePreparing.current = true;
+			void recorder
+				.prepareToRecordAsync()
+				.then(() => {
+					if (
+						!voiceModeRef.current ||
+						voiceHandling.current ||
+						!recStateRef.current.canRecord
+					) {
+						return;
+					}
+					voiceSpeech.current = false;
+					voiceLastVoice.current = Date.now();
+					recorder.record({ forDuration: CODE_STT_MAX_MS / 1000 });
+					setVoiceListening(false);
+				})
+				.catch(() => {})
+				.finally(() => {
+					voicePreparing.current = false;
+				});
+		} catch {
+			voicePreparing.current = false;
+		}
+	}
+
+	function stopVoiceSpeech() {
+		const player = voiceSpeaking.current;
+		voiceSpeaking.current = null;
+		if (player) {
+			try {
+				player.pause();
+				player.remove();
+			} catch {
+				// already released
+			}
+		}
+		setVoiceSpeakingNow(false);
+	}
+
+	function stopVoiceEngine() {
+		try {
+			if (recorder.isRecording) {
+				void recorder.stop();
+			}
+		} catch {
+			// ignore
+		}
+		stopVoiceSpeech();
+		setVoiceListening(false);
+		setVoiceLevel(0);
+	}
+
+	async function finishVoice(uri: string) {
+		try {
+			const heard = (
+				await transcribeCode(
+					token,
+					encodeBase64(new Uint8Array(await new File(uri).arrayBuffer())),
+					locale,
+				)
+			).text.trim();
+			if (heard) {
+				if (view.busy || uploading) {
+					voiceQueue.current.push(heard);
+					setVoiceQueued(voiceQueue.current.length);
+				} else {
+					await send(heard);
+				}
+			}
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			voiceHandling.current = false;
+			if (voiceModeRef.current) {
+				startVoiceCapture();
+			}
+		}
+	}
+
+	finishVoiceRef.current = finishVoice;
+	startVoiceCaptureRef.current = startVoiceCapture;
+	stopVoiceEngineRef.current = stopVoiceEngine;
+
+	async function speakReply(text: string) {
+		try {
+			const audio = (await speakCode(token, text, locale)).audio;
+			if (!audio || !voiceModeRef.current) {
+				return;
+			}
+			stopVoiceSpeech();
+			let replyPath = "";
+			try {
+				const file = new File(Paths.cache, "code-reply.mp3");
+				try {
+					file.delete();
+				} catch {
+					// absent
+				}
+				file.write(decodeBase64(audio));
+				replyPath = file.uri;
+			} catch {
+				replyPath = "";
+			}
+			const player = createAudioPlayer(
+				{ uri: replyPath || `data:audio/mpeg;base64,${audio}` },
+				{ updateInterval: 200 },
+			);
+			voiceSpeaking.current = player;
+			setVoiceSpeakingNow(true);
+			const sub = player.addListener("playbackStatusUpdate", (status) => {
+				if (!status.didJustFinish) {
+					return;
+				}
+				sub.remove();
+				if (voiceSpeaking.current === player) {
+					voiceSpeaking.current = null;
+					try {
+						player.remove();
+					} catch {
+						// released
+					}
+					setVoiceSpeakingNow(false);
+				}
+			});
+			player.play();
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	function voiceTick() {
+		if (!voiceModeRef.current || voiceHandling.current) {
+			return;
+		}
+		const state = recStateRef.current;
+		const metering = state.metering ?? -160;
+		const loud = metering >= CODE_VOICE_METER_DB;
+		setVoiceLevel(loud ? Math.max(0, Math.min(1, (metering + 60) / 45)) : 0.04);
+		if (voiceSpeaking.current) {
+			if (metering >= CODE_VOICE_BARGE_DB) {
+				voiceBarge.current += 1;
+				if (voiceBarge.current >= 3) {
+					voiceBarge.current = 0;
+					stopVoiceSpeech();
+				}
+			} else {
+				voiceBarge.current = 0;
+			}
+			return;
+		}
+		if (loud) {
+			voiceLastVoice.current = Date.now();
+			if (!voiceSpeech.current) {
+				voiceSpeech.current = true;
+				setVoiceListening(true);
+			}
+		}
+		if (!state.isRecording) {
+			if (voiceSpeech.current) {
+				const uri = recorder.uri;
+				if (uri && voiceUri.current !== uri) {
+					voiceUri.current = uri;
+					voiceHandling.current = true;
+					voiceSpeech.current = false;
+					void finishVoiceRef.current(uri);
+					return;
+				}
+			}
+			startVoiceCaptureRef.current();
+			return;
+		}
+		if (
+			voiceSpeech.current &&
+			state.durationMillis > CODE_VOICE_MIN_MS &&
+			Date.now() - voiceLastVoice.current > CODE_VOICE_SILENCE_MS
+		) {
+			void recorder.stop().catch(() => {});
+		}
+	}
+
+	voiceTickRef.current = voiceTick;
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: voice engine is ref-driven and reads the latest render through refs
+	useEffect(() => {
+		voiceModeRef.current = voiceMode;
+		if (!voiceMode || mode === "home") {
+			stopVoiceEngineRef.current();
+			return;
+		}
+		for (const turn of view.turns) {
+			if (turn.role === "assistant") {
+				voiceSpoken.current.add(turn.id);
+			}
+		}
+		let cancelled = false;
+		void (async () => {
+			const perm = await requestRecordingPermissionsAsync();
+			if (cancelled) {
+				return;
+			}
+			if (!perm.granted) {
+				setError(t("code.micDenied"));
+				setVoiceMode(false);
+				return;
+			}
+			await setAudioModeAsync({
+				allowsRecording: true,
+				playsInSilentMode: true,
+			}).catch(() => {});
+			if (cancelled) {
+				return;
+			}
+			startVoiceCaptureRef.current();
+		})();
+		const timer = setInterval(() => voiceTickRef.current(), 200);
+		return () => {
+			cancelled = true;
+			clearInterval(timer);
+			stopVoiceEngineRef.current();
+		};
+	}, [voiceMode, mode]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: drains the voice queue through refs and send()
+	useEffect(() => {
+		if (!voiceMode || view.busy || uploading) {
+			return;
+		}
+		if (voiceQueue.current.length === 0) {
+			return;
+		}
+		const next = voiceQueue.current.shift();
+		setVoiceQueued(voiceQueue.current.length);
+		if (!next) {
+			return;
+		}
+		const timer = setTimeout(() => {
+			if (!voiceModeRef.current) {
+				return;
+			}
+			void send(next);
+		}, 200);
+		return () => clearTimeout(timer);
+	}, [voiceMode, view.busy, uploading, view.sessionID]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
+	useEffect(() => {
+		if (!voiceMode) {
+			stopVoiceSpeech();
+			return;
+		}
+		if (voiceSpeaking.current || voiceHandling.current) {
+			return;
+		}
+		if (view.busy || uploading) {
+			return;
+		}
+		if (
+			view.questions.some((item) => item.sessionID === view.sessionID) ||
+			view.permissions.some((item) => item.sessionID === view.sessionID)
+		) {
+			return;
+		}
+		const turn = [...view.turns]
+			.reverse()
+			.find(
+				(item) =>
+					item.role === "assistant" &&
+					!item.pending &&
+					!voiceSpoken.current.has(item.id),
+			);
+		if (!turn) {
+			return;
+		}
+		voiceSpoken.current.add(turn.id);
+		const text = codeSpokenText(turn.text);
+		if (!text) {
+			return;
+		}
+		void speakReply(text);
+	}, [
+		voiceMode,
+		view.busy,
+		uploading,
+		view.turns,
+		view.questions,
+		view.permissions,
+		view.sessionID,
+	]);
+
+	useEffect(() => {
+		const waiting =
+			voiceMode &&
+			!voiceListening &&
+			!voiceSpeakingNow &&
+			(view.busy || uploading);
+		if (!waiting) {
+			return;
+		}
+		const timer = setInterval(() => setVoicePulse((n) => n + 1), 150);
+		return () => clearInterval(timer);
+	}, [voiceMode, voiceListening, voiceSpeakingNow, view.busy, uploading]);
+
+	async function send(override?: string) {
+		const typed = (override ?? prompt).trim();
 		const staged = files;
-		if ((!typed && staged.length === 0) || !repo || view.busy || uploading) {
+		if (!typed && staged.length === 0) {
+			return;
+		}
+		if (!repo) {
+			return;
+		}
+		if (view.busy || uploading) {
+			if (override) {
+				voiceQueue.current.push(override);
+				setVoiceQueued(voiceQueue.current.length);
+			}
 			return;
 		}
 		setUploading(true);
-		setPrompt("");
+		if (!override) {
+			setPrompt("");
+		}
 		setFiles([]);
 		let text = "";
 		try {
@@ -1320,8 +1682,91 @@ export default function Code() {
 			mentionLive && mention
 				? filterCodeMentions(boardPaths, mention.query)
 				: [];
+		const voicePhase = voiceListening
+			? "listening"
+			: voiceSpeakingNow
+				? "speaking"
+				: view.busy || uploading
+					? "waiting"
+					: "idle";
+		const voiceLabel = voiceSpeakingNow
+			? t("code.voiceSpeaking")
+			: voiceListening || voicePhase === "idle"
+				? t("code.voiceListening")
+				: t("code.voiceThinking");
+		const bars = [0, 1, 2, 3, 4, 5, 6];
 		return (
 			<View style={{ margin: 12, gap: 8 }}>
+				{voiceMode ? (
+					<View
+						accessibilityLiveRegion="polite"
+						style={{
+							flexDirection: "row",
+							alignItems: "center",
+							gap: 10,
+							borderWidth: 1,
+							borderRadius: 10,
+							paddingHorizontal: 10,
+							paddingVertical: 5,
+							borderColor: colors.primary,
+							backgroundColor: colors.chipBg,
+						}}
+					>
+						<View
+							style={{
+								flexDirection: "row",
+								alignItems: "center",
+								gap: 3,
+								height: 22,
+							}}
+							aria-hidden
+						>
+							{bars.map((bar) => {
+								const gain = 1 - Math.abs(bar - 3) / 4;
+								const scale =
+									voicePhase === "waiting"
+										? 0.25 + 0.55 * Math.abs(Math.sin(voicePulse / 2))
+										: 0.2 + voiceLevel * gain * 0.8;
+								return (
+									<View
+										key={bar}
+										style={{
+											width: 3,
+											height: 22,
+											borderRadius: 2,
+											backgroundColor:
+												voicePhase === "idle" ? colors.muted : colors.primary,
+											transform: [{ scaleY: scale }],
+											opacity: voicePhase === "waiting" ? 0.7 : 1,
+										}}
+									/>
+								);
+							})}
+						</View>
+						<Text
+							numberOfLines={1}
+							style={{
+								flex: 1,
+								color: colors.text,
+								fontSize: 12,
+								opacity: 0.8,
+							}}
+						>
+							{voiceQueued > 0
+								? `${t("code.voiceQueued", { n: voiceQueued })} · ${voiceLabel}`
+								: voiceLabel}
+						</Text>
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel={t("code.voiceStop")}
+							onPress={() => setVoiceMode(false)}
+							hitSlop={8}
+							style={{ padding: 4 }}
+						>
+							<Text style={{ color: colors.text, fontSize: 13 }}>×</Text>
+						</Pressable>
+					</View>
+				) : null}
 				{mentionLive ? (
 					<View
 						style={{
@@ -1480,6 +1925,33 @@ export default function Code() {
 							}}
 						>
 							{recording ? "●" : "M"}
+						</Text>
+					</Pressable>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={
+							voiceMode ? t("code.voiceStop") : t("code.voiceMode")
+						}
+						accessibilityState={{ selected: voiceMode }}
+						disabled={toolsDisabled}
+						onPress={() => setVoiceMode((current) => !current)}
+						style={{
+							width: 28,
+							height: 28,
+							alignItems: "center",
+							justifyContent: "center",
+							borderRadius: 8,
+							backgroundColor: voiceMode ? colors.text : "transparent",
+							opacity: toolsDisabled ? 0.35 : 1,
+						}}
+					>
+						<Text
+							style={{
+								color: voiceMode ? colors.surface : colors.text,
+								fontSize: 11,
+							}}
+						>
+							∿
 						</Text>
 					</Pressable>
 					<TextInput

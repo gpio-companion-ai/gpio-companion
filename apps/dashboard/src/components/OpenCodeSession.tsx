@@ -1,4 +1,5 @@
 import { POST as transcribe } from "@api/code/stt";
+import { POST as speak } from "@api/code/tts";
 import { PUT as writeFile } from "@api/files/write";
 import { POST as postOpencode } from "@api/opencode";
 import { POST as signOpencodeLive } from "@api/opencode/live";
@@ -11,6 +12,11 @@ import {
 	CODE_ATTACH_ACCEPT,
 	CODE_DEFAULT_MODEL,
 	CODE_STT_MAX_MS,
+	CODE_VOICE_BARGE_RMS,
+	CODE_VOICE_MAX_MS,
+	CODE_VOICE_MIN_MS,
+	CODE_VOICE_RMS,
+	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
 	codeAttachPrompt,
 	codeComposerErrorKey,
@@ -21,6 +27,7 @@ import {
 	codeRepoOwner,
 	codeScrollKey,
 	codeSessionTitle,
+	codeSpokenText,
 	emptyOpencodeView,
 	encodeBase64,
 	filterCodeMentions,
@@ -179,6 +186,14 @@ function MicIcon() {
 		<svg viewBox="0 0 24 24" aria-hidden="true">
 			<rect x="9" y="3" width="6" height="11" rx="3" />
 			<path d="M6 11a6 6 0 0012 0M12 17v4" />
+		</svg>
+	);
+}
+
+function WaveIcon() {
+	return (
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			<path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
 		</svg>
 	);
 }
@@ -518,6 +533,11 @@ export default function OpenCodeSession({
 	}, []);
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
+	const [voiceMode, setVoiceMode] = useState(false);
+	const [voiceLevel, setVoiceLevel] = useState(0);
+	const [voiceListening, setVoiceListening] = useState(false);
+	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
+	const [voiceQueued, setVoiceQueued] = useState(0);
 	const [query, setQuery] = useState("");
 	const [searching, setSearching] = useState(false);
 	const [error, setError] = useState("");
@@ -536,6 +556,25 @@ export default function OpenCodeSession({
 	const picker = useRef<HTMLInputElement>(null);
 	const recorder = useRef<MediaRecorder | null>(null);
 	const recordTimer = useRef(0);
+	const voiceEngine = useRef<{
+		stream: MediaStream;
+		context: AudioContext;
+		analyser: AnalyserNode;
+		data: Float32Array<ArrayBuffer>;
+		raf: number;
+	} | null>(null);
+	const voiceUtter = useRef<{
+		recorder: MediaRecorder;
+		started: number;
+		voiceAt: number;
+		cancel(): void;
+	} | null>(null);
+	const voiceSpeaking = useRef<HTMLAudioElement | null>(null);
+	const voiceSpoken = useRef(new Set<string>());
+	const voiceQueue = useRef<string[]>([]);
+	const voiceBarge = useRef(0);
+	const voiceModeRef = useRef(false);
+	const finishVoiceRef = useRef<(blob: Blob) => void>(() => {});
 	const menuRef = useRef<HTMLDivElement>(null);
 	const prompts = useRef<OpencodePromptEpoch>({
 		epoch: 0,
@@ -1149,14 +1188,331 @@ export default function OpenCodeSession({
 		}
 	}
 
-	async function send() {
-		const typed = prompt.trim();
+	function startVoiceUtterance() {
+		const engine = voiceEngine.current;
+		if (!engine || voiceUtter.current) {
+			return;
+		}
+		try {
+			const rec = new MediaRecorder(engine.stream);
+			const chunks: Blob[] = [];
+			let cancelled = false;
+			rec.ondataavailable = (event) => {
+				if (event.data.size > 0) {
+					chunks.push(event.data);
+				}
+			};
+			rec.onstop = () => {
+				voiceUtter.current = null;
+				setVoiceListening(false);
+				if (cancelled || !voiceModeRef.current) {
+					return;
+				}
+				const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+				void finishVoiceRef.current(blob);
+			};
+			voiceUtter.current = {
+				recorder: rec,
+				started: Date.now(),
+				voiceAt: Date.now(),
+				cancel() {
+					cancelled = true;
+					try {
+						rec.stop();
+					} catch {
+						voiceUtter.current = null;
+						setVoiceListening(false);
+					}
+				},
+			};
+			rec.start();
+			setVoiceListening(true);
+		} catch {
+			setVoiceListening(false);
+		}
+	}
+
+	function stopVoiceUtterance() {
+		const utter = voiceUtter.current;
+		if (!utter) {
+			return;
+		}
+		try {
+			utter.recorder.stop();
+		} catch {
+			voiceUtter.current = null;
+			setVoiceListening(false);
+		}
+	}
+
+	function stopVoiceSpeech() {
+		const player = voiceSpeaking.current;
+		voiceSpeaking.current = null;
+		if (player) {
+			player.onended = null;
+			player.onerror = null;
+			player.pause();
+		}
+		setVoiceSpeakingNow(false);
+	}
+
+	function stopVoiceEngine() {
+		const engine = voiceEngine.current;
+		voiceEngine.current = null;
+		if (engine) {
+			window.cancelAnimationFrame(engine.raf);
+			for (const track of engine.stream.getTracks()) {
+				track.stop();
+			}
+			void engine.context.close().catch(() => {});
+		}
+		voiceUtter.current?.cancel();
+		voiceUtter.current = null;
+		stopVoiceSpeech();
+		setVoiceListening(false);
+		setVoiceLevel(0);
+	}
+
+	async function finishVoice(blob: Blob) {
+		if (voiceSpeaking.current) {
+			stopVoiceSpeech();
+		}
+		try {
+			const result = await transcribe({
+				audio: encodeBase64(new Uint8Array(await blob.arrayBuffer())),
+				locale,
+			});
+			if (!result.ok) {
+				setError(shownError(result.error));
+				return;
+			}
+			const heard = result.data.text.trim();
+			if (!heard) {
+				return;
+			}
+			if (view.busy || uploading) {
+				voiceQueue.current.push(heard);
+				setVoiceQueued(voiceQueue.current.length);
+				return;
+			}
+			await send(heard);
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	finishVoiceRef.current = finishVoice;
+
+	async function speakReply(text: string) {
+		try {
+			const result = await speak({ text, locale });
+			if (!result.ok) {
+				setError(shownError(result.error));
+				return;
+			}
+			if (!voiceModeRef.current) {
+				return;
+			}
+			const player = new Audio(`data:audio/mpeg;base64,${result.data.audio}`);
+			const done = () => {
+				if (voiceSpeaking.current === player) {
+					voiceSpeaking.current = null;
+					setVoiceSpeakingNow(false);
+				}
+			};
+			player.onended = done;
+			player.addEventListener("error", done);
+			voiceSpeaking.current = player;
+			setVoiceSpeakingNow(true);
+			await player.play();
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+		}
+	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: voice engine is ref-driven and reads the latest render through refs
+	useEffect(() => {
+		voiceModeRef.current = voiceMode;
+		if (!voiceMode || mode === "home") {
+			stopVoiceEngine();
+			return;
+		}
+		for (const turn of view.turns) {
+			if (turn.role === "assistant") {
+				voiceSpoken.current.add(turn.id);
+			}
+		}
+		let cancelled = false;
+		void (async () => {
+			try {
+				const stream = await navigator.mediaDevices.getUserMedia({
+					audio: true,
+				});
+				if (cancelled) {
+					for (const track of stream.getTracks()) {
+						track.stop();
+					}
+					return;
+				}
+				const context = new AudioContext();
+				await context.resume().catch(() => {});
+				const analyser = context.createAnalyser();
+				analyser.fftSize = 512;
+				context.createMediaStreamSource(stream).connect(analyser);
+				const data = new Float32Array(analyser.fftSize);
+				const engine = { stream, context, analyser, data, raf: 0 };
+				voiceEngine.current = engine;
+				let shown = -1;
+				const tick = () => {
+					const live = voiceEngine.current;
+					if (!live || cancelled) {
+						return;
+					}
+					live.analyser.getFloatTimeDomainData(live.data);
+					let sum = 0;
+					for (let i = 0; i < live.data.length; i += 1) {
+						const sample = live.data[i] ?? 0;
+						sum += sample * sample;
+					}
+					const rms = Math.sqrt(sum / live.data.length);
+					const level = Math.max(0, Math.min(1, rms * 8));
+					const bucket = Math.round(level * 12);
+					if (bucket !== shown) {
+						shown = bucket;
+						setVoiceLevel(level);
+					}
+					const now = Date.now();
+					const utter = voiceUtter.current;
+					if (utter) {
+						if (rms >= CODE_VOICE_RMS) {
+							utter.voiceAt = now;
+						}
+						const elapsed = now - utter.started;
+						const quiet = now - utter.voiceAt;
+						if (
+							elapsed > CODE_VOICE_MAX_MS ||
+							(elapsed > CODE_VOICE_MIN_MS && quiet > CODE_VOICE_SILENCE_MS)
+						) {
+							stopVoiceUtterance();
+						}
+					} else if (rms >= CODE_VOICE_RMS) {
+						startVoiceUtterance();
+					}
+					if (voiceSpeaking.current) {
+						if (rms >= CODE_VOICE_BARGE_RMS) {
+							voiceBarge.current += 1;
+							if (voiceBarge.current >= 4) {
+								voiceBarge.current = 0;
+								stopVoiceSpeech();
+							}
+						} else {
+							voiceBarge.current = 0;
+						}
+					}
+					engine.raf = requestAnimationFrame(tick);
+				};
+				engine.raf = requestAnimationFrame(tick);
+			} catch {
+				if (!cancelled) {
+					setError(t("code.micDenied"));
+					setVoiceMode(false);
+				}
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [voiceMode, mode]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: drains the voice queue through refs and send()
+	useEffect(() => {
+		if (!voiceMode || view.busy || uploading) {
+			return;
+		}
+		if (voiceQueue.current.length === 0) {
+			return;
+		}
+		const next = voiceQueue.current.shift();
+		setVoiceQueued(voiceQueue.current.length);
+		if (!next) {
+			return;
+		}
+		const timer = window.setTimeout(() => {
+			if (!voiceModeRef.current) {
+				return;
+			}
+			void send(next);
+		}, 200);
+		return () => {
+			window.clearTimeout(timer);
+		};
+	}, [voiceMode, view.busy, uploading, view.sessionID]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
+	useEffect(() => {
+		if (!voiceMode) {
+			stopVoiceSpeech();
+			return;
+		}
+		if (voiceSpeaking.current || voiceUtter.current) {
+			return;
+		}
+		if (view.busy || uploading) {
+			return;
+		}
+		if (
+			view.questions.some((item) => item.sessionID === view.sessionID) ||
+			view.permissions.some((item) => item.sessionID === view.sessionID)
+		) {
+			return;
+		}
+		const turn = [...view.turns]
+			.reverse()
+			.find(
+				(item) =>
+					item.role === "assistant" &&
+					!item.pending &&
+					!voiceSpoken.current.has(item.id),
+			);
+		if (!turn) {
+			return;
+		}
+		voiceSpoken.current.add(turn.id);
+		const text = codeSpokenText(turn.text);
+		if (!text) {
+			return;
+		}
+		void speakReply(text);
+	}, [
+		voiceMode,
+		view.busy,
+		uploading,
+		view.turns,
+		view.questions,
+		view.permissions,
+		view.sessionID,
+	]);
+
+	async function send(override?: string) {
+		const typed = (override ?? prompt).trim();
 		const staged = files;
-		if ((!typed && staged.length === 0) || !repo || view.busy || uploading) {
+		if (!typed && staged.length === 0) {
+			return;
+		}
+		if (!repo) {
+			return;
+		}
+		if (view.busy || uploading) {
+			if (override) {
+				voiceQueue.current.push(override);
+				setVoiceQueued(voiceQueue.current.length);
+			}
 			return;
 		}
 		setUploading(true);
-		setPrompt("");
+		if (!override) {
+			setPrompt("");
+		}
 		setFiles([]);
 		if (field.current) {
 			field.current.style.height = "24px";
@@ -1425,6 +1781,18 @@ export default function OpenCodeSession({
 				? filterCodeMentions(boardPaths, mention.query)
 				: [];
 		const active = matches.length === 0 ? 0 : mentionIndex % matches.length;
+		const voicePhase = voiceListening
+			? "listening"
+			: voiceSpeakingNow
+				? "speaking"
+				: view.busy || uploading
+					? "waiting"
+					: "idle";
+		const voiceLabel = voiceSpeakingNow
+			? t("code.voiceSpeaking")
+			: voiceListening || voicePhase === "idle"
+				? t("code.voiceListening")
+				: t("code.voiceThinking");
 		return (
 			<div
 				className="oc-compose"
@@ -1521,6 +1889,40 @@ export default function OpenCodeSession({
 						))}
 					</div>
 				) : null}
+				{voiceMode ? (
+					<div className={`oc-voice is-${voicePhase}`} aria-live="polite">
+						<span className="oc-voice-bars" aria-hidden="true">
+							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
+								<i
+									key={bar}
+									style={
+										voicePhase === "waiting"
+											? undefined
+											: {
+													transform: `scaleY(${(
+														0.2 + voiceLevel * (1 - Math.abs(bar - 3) / 4) * 0.8
+													).toFixed(2)})`,
+												}
+									}
+								/>
+							))}
+						</span>
+						<span className="oc-voice-label">
+							{voiceQueued > 0
+								? `${t("code.voiceQueued", { n: voiceQueued })} · `
+								: ""}
+							{voiceLabel}
+						</span>
+						<button
+							type="button"
+							className="oc-voice-stop"
+							aria-label={t("code.voiceStop")}
+							onClick={() => setVoiceMode(false)}
+						>
+							×
+						</button>
+					</div>
+				) : null}
 				<div className="oc-composer">
 					<input
 						ref={picker}
@@ -1551,6 +1953,16 @@ export default function OpenCodeSession({
 						onClick={() => void dictate()}
 					>
 						<MicIcon />
+					</button>
+					<button
+						type="button"
+						className={`oc-tool${voiceMode ? " is-on" : ""}`}
+						aria-label={voiceMode ? t("code.voiceStop") : t("code.voiceMode")}
+						aria-pressed={voiceMode}
+						disabled={toolsDisabled}
+						onClick={() => setVoiceMode((current) => !current)}
+					>
+						<WaveIcon />
 					</button>
 					<textarea
 						ref={field}

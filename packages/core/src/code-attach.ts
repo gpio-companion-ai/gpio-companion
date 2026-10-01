@@ -14,6 +14,17 @@ export const CODE_STT_MODEL = "@cf/openai/whisper-large-v3-turbo";
 export const CODE_STT_USD_PER_MINUTE = 0.0005;
 export const CODE_STT_MAX_MS = 60_000;
 export const CODE_STT_MAX_BYTES = 8 * 1024 * 1024;
+export const CODE_TTS_MODEL = "@cf/myshell-ai/melotts";
+export const CODE_TTS_USD_PER_MINUTE = 0.000205;
+export const CODE_TTS_CHARS_PER_MINUTE = 900;
+export const CODE_TTS_MAX_CHARS = 4000;
+export const CODE_VOICE_RMS = 0.015;
+export const CODE_VOICE_BARGE_RMS = 0.045;
+export const CODE_VOICE_SILENCE_MS = 1200;
+export const CODE_VOICE_MIN_MS = 400;
+export const CODE_VOICE_MAX_MS = CODE_STT_MAX_MS;
+export const CODE_VOICE_METER_DB = -35;
+export const CODE_VOICE_BARGE_DB = -22;
 export const CODE_ATTACH_ACCEPT =
 	".c,.h,.hh,.hpp,.cc,.cpp,.cxx,.ino,.txt,.text,.md,.markdown,.ts,.tsx,.mts,.cts,.js,.jsx,.mjs,.cjs,.json,.css,.scss,.html,.htm,.yml,.yaml,.toml,.xml,.svg,.py,.sh,.bash,.rs,.go,.csv,.png,.jpg,.jpeg,.gif,.webp,.pdf";
 
@@ -347,6 +358,36 @@ export function removeContextDrafts(
 
 export function codeSttLanguage(locale: string): "en" | "fr" {
 	return locale.trim().toLowerCase().startsWith("fr") ? "fr" : "en";
+}
+
+export const codeTtsLanguage = codeSttLanguage;
+
+export function codeTtsMicros(
+	chars: number,
+	markup: number = DEFAULT_AI_MARKUP,
+): number {
+	const safe = Math.min(
+		CODE_TTS_MAX_CHARS,
+		Math.max(0, Number.isFinite(chars) ? Math.ceil(chars) : 0),
+	);
+	if (safe <= 0) {
+		return 0;
+	}
+	const raw = usdToMicros(
+		(safe / CODE_TTS_CHARS_PER_MINUTE) * CODE_TTS_USD_PER_MINUTE,
+	);
+	return applyMarkup(raw === 0 ? 1 : raw, markup);
+}
+
+export function codeSpokenText(text: string): string {
+	const stripped = text
+		.replace(/```[\s\S]*?```/g, " ")
+		.replace(/`[^`\n]+`/g, " ")
+		.replace(/https?:\/\/\S+/g, " ")
+		.replace(/[#*_>|~-]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return stripped.slice(0, CODE_TTS_MAX_CHARS);
 }
 
 export function codeSttMicros(

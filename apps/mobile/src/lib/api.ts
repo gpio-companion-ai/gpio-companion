@@ -723,6 +723,13 @@ export function transcribeCode(token: string, audio: string, locale: string) {
 	});
 }
 
+export function speakCode(token: string, text: string, locale: string) {
+	return request<{ audio: string }>(token, "/api/mobile/code/tts", {
+		method: "POST",
+		body: JSON.stringify({ text, locale }),
+	});
+}
+
 export function signBoardFilesLive(token: string, uuid: string, name: string) {
 	return request<{ wsUrl: string }>(token, "/api/mobile/files/live", {
 		method: "POST",
