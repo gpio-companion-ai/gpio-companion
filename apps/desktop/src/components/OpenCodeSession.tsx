@@ -88,6 +88,7 @@ import {
 	storeOpencodePrompts,
 } from "gpio-companion-opencode";
 import {
+	type ReactNode,
 	useCallback,
 	useEffect,
 	useLayoutEffect,
@@ -471,6 +472,7 @@ export default function OpenCodeSession({
 	const [permissionMode, setPermissionMode] =
 		useState<OpencodePermissionMode>("ask");
 	const [menu, setMenu] = useState<ChipMenuId | "">("");
+	const [selectsOpen, setSelectsOpen] = useState(false);
 	const [replyBusy, setReplyBusy] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
@@ -2235,6 +2237,41 @@ export default function OpenCodeSession({
 		);
 	}
 
+	function selectsSummary() {
+		const chosen = opencodeModelChoices().find((item) => item.id === model);
+		const parts = [
+			chosen?.name ?? model,
+			permissionMode === "full"
+				? t("code.permissionFull")
+				: t("code.permissionAsk"),
+		];
+		if (chosen?.reasoning === true) {
+			parts.push(effortLabel(effort));
+		}
+		return parts.join(" · ");
+	}
+
+	function renderSelects(children: ReactNode) {
+		return (
+			<div className={`oc-selects${selectsOpen ? " is-open" : ""}`}>
+				<button
+					type="button"
+					className="oc-selects-toggle"
+					aria-expanded={selectsOpen}
+					aria-label={t("code.model")}
+					onClick={() => {
+						setMenu("");
+						setSelectsOpen((open) => !open);
+					}}
+				>
+					<span className="oc-selects-summary">{selectsSummary()}</span>
+					<span aria-hidden="true">{selectsOpen ? "▴" : "▾"}</span>
+				</button>
+				<div className="oc-chips">{children}</div>
+			</div>
+		);
+	}
+
 	function composer(disabled: boolean, blocked = false) {
 		const sendDisabled =
 			!view.busy &&
@@ -2895,30 +2932,32 @@ export default function OpenCodeSession({
 								) : null}
 								{composer(!repo)}
 								<p className="oc-muted">{t("code.draftHint")}</p>
-								<div className="oc-chips">
-									<ChipMenu
-										open={menu === "project"}
-										label={t("code.project")}
-										value={codeRepoLabel(
-											repos.find((item) => item.name === repo) ?? {
-												owner: "",
-												name: repo,
-											},
-										)}
-										selected={repo}
-										options={repos.map((item) => ({
-											id: item.name,
-											name: codeRepoLabel(item),
-										}))}
-										menuRef={menuRef}
-										onOpen={() => toggleMenu("project")}
-										onPick={(id) => {
-											selectRepo(id);
-											setMenu("");
-										}}
-									/>
-									{modelSelects()}
-								</div>
+								{renderSelects(
+									<>
+										<ChipMenu
+											open={menu === "project"}
+											label={t("code.project")}
+											value={codeRepoLabel(
+												repos.find((item) => item.name === repo) ?? {
+													owner: "",
+													name: repo,
+												},
+											)}
+											selected={repo}
+											options={repos.map((item) => ({
+												id: item.name,
+												name: codeRepoLabel(item),
+											}))}
+											menuRef={menuRef}
+											onOpen={() => toggleMenu("project")}
+											onPick={(id) => {
+												selectRepo(id);
+												setMenu("");
+											}}
+										/>
+										{modelSelects()}
+									</>,
+								)}
 							</div>
 						</div>
 					) : null}
@@ -3159,7 +3198,7 @@ export default function OpenCodeSession({
 									})()}
 								</div>
 							) : null}
-							<div className="oc-chips">{modelSelects()}</div>
+							{renderSelects(modelSelects())}
 							{permission || question ? (
 								<p className="oc-muted oc-blocked">
 									{t("code.blockedComposer")}

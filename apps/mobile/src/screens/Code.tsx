@@ -271,6 +271,7 @@ export default function Code() {
 	const [picker, setPicker] = useState<
 		"" | "model" | "effort" | "permission" | "project" | "board"
 	>("");
+	const [selectsOpen, setSelectsOpen] = useState(false);
 	const [replyBusy, setReplyBusy] = useState(false);
 	const [pane, setPane] = useState<"chat" | "files">("chat");
 	const [filesDirty, setFilesDirty] = useState(false);
@@ -3042,20 +3043,105 @@ export default function Code() {
 								{t("code.draftHint")}
 							</Text>
 						) : null}
-						<View
-							style={{
-								flexDirection: "row",
-								flexWrap: "wrap",
-								gap: 8,
-								paddingHorizontal: 16,
-								paddingBottom: 4,
-							}}
-						>
-							{mode === "draft" ? (
+						<View style={{ paddingHorizontal: 16, paddingBottom: 4 }}>
+							<Pressable
+								accessibilityRole="button"
+								accessibilityLabel={t("code.model")}
+								accessibilityState={{ expanded: selectsOpen }}
+								onPress={() => {
+									setPicker("");
+									setSelectsOpen((open) => !open);
+								}}
+								style={({ pressed }) => ({
+									flexDirection: "row",
+									alignItems: "center",
+									alignSelf: "flex-start",
+									gap: 6,
+									maxWidth: "100%",
+									borderRadius: 999,
+									borderWidth: 1,
+									borderColor:
+										pressed || selectsOpen ? colors.text : colors.border,
+									paddingHorizontal: 10,
+									paddingVertical: 6,
+									backgroundColor: pressed ? colors.border : "transparent",
+								})}
+							>
+								<Text
+									style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
+									numberOfLines={1}
+								>
+									{[
+										chosenModel?.name ?? model,
+										permissionModeLabel(permissionMode),
+										...(reasoning
+											? [
+													effort === "low"
+														? t("code.effortLow")
+														: effort === "high"
+															? t("code.effortHigh")
+															: t("code.effortMedium"),
+												]
+											: []),
+									].join(" · ")}
+								</Text>
+								<Text style={{ color: colors.text, fontSize: 10 }}>
+									{selectsOpen ? "▴" : "▾"}
+								</Text>
+							</Pressable>
+						</View>
+						{selectsOpen ? (
+							<View
+								style={{
+									flexDirection: "row",
+									flexWrap: "wrap",
+									gap: 8,
+									paddingHorizontal: 16,
+									paddingBottom: 4,
+								}}
+							>
+								{mode === "draft" ? (
+									<Pressable
+										accessibilityRole="button"
+										accessibilityLabel={t("code.project")}
+										onPress={() => setPicker("project")}
+										style={({ pressed }) => ({
+											flexDirection: "row",
+											alignItems: "center",
+											gap: 6,
+											borderRadius: 8,
+											borderWidth: 1,
+											borderColor:
+												pressed || picker === "project"
+													? colors.text
+													: colors.border,
+											paddingHorizontal: 10,
+											paddingVertical: 6,
+											backgroundColor: pressed ? colors.border : colors.chipBg,
+										})}
+									>
+										<Text
+											style={{
+												color: colors.text,
+												fontSize: 12,
+												flexShrink: 1,
+											}}
+											numberOfLines={1}
+										>
+											{codeRepoLabel(
+												repos.find((item) => item.name === repo) ?? {
+													owner,
+													name: repo,
+												},
+											)}
+										</Text>
+										<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+									</Pressable>
+								) : null}
 								<Pressable
 									accessibilityRole="button"
-									accessibilityLabel={t("code.project")}
-									onPress={() => setPicker("project")}
+									accessibilityLabel={t("code.permissionMode")}
+									onPress={() => setPicker("permission")}
 									style={({ pressed }) => ({
 										flexDirection: "row",
 										alignItems: "center",
@@ -3063,7 +3149,31 @@ export default function Code() {
 										borderRadius: 8,
 										borderWidth: 1,
 										borderColor:
-											pressed || picker === "project"
+											pressed || picker === "permission"
+												? colors.text
+												: colors.border,
+										paddingHorizontal: 10,
+										paddingVertical: 6,
+										backgroundColor: pressed ? colors.border : colors.chipBg,
+									})}
+								>
+									<Text style={{ color: colors.text, fontSize: 12 }}>
+										{permissionModeLabel(permissionMode)}
+									</Text>
+									<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+								</Pressable>
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={t("code.model")}
+									onPress={() => setPicker("model")}
+									style={({ pressed }) => ({
+										flexDirection: "row",
+										alignItems: "center",
+										gap: 6,
+										borderRadius: 8,
+										borderWidth: 1,
+										borderColor:
+											pressed || picker === "model"
 												? colors.text
 												: colors.border,
 										paddingHorizontal: 10,
@@ -3073,100 +3183,46 @@ export default function Code() {
 								>
 									<Text
 										style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
-										numberOfLines={1}
 									>
-										{codeRepoLabel(
-											repos.find((item) => item.name === repo) ?? {
-												owner,
-												name: repo,
-											},
-										)}
+										{chosenModel?.name ?? model}
+									</Text>
+									<Text style={{ color: colors.muted, fontSize: 11 }}>
+										{chosenModel?.provider}
 									</Text>
 									<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
 								</Pressable>
-							) : null}
-							<Pressable
-								accessibilityRole="button"
-								accessibilityLabel={t("code.permissionMode")}
-								onPress={() => setPicker("permission")}
-								style={({ pressed }) => ({
-									flexDirection: "row",
-									alignItems: "center",
-									gap: 6,
-									borderRadius: 8,
-									borderWidth: 1,
-									borderColor:
-										pressed || picker === "permission"
-											? colors.text
-											: colors.border,
-									paddingHorizontal: 10,
-									paddingVertical: 6,
-									backgroundColor: pressed ? colors.border : colors.chipBg,
-								})}
-							>
-								<Text style={{ color: colors.text, fontSize: 12 }}>
-									{permissionModeLabel(permissionMode)}
-								</Text>
-								<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
-							</Pressable>
-							<Pressable
-								accessibilityRole="button"
-								accessibilityLabel={t("code.model")}
-								onPress={() => setPicker("model")}
-								style={({ pressed }) => ({
-									flexDirection: "row",
-									alignItems: "center",
-									gap: 6,
-									borderRadius: 8,
-									borderWidth: 1,
-									borderColor:
-										pressed || picker === "model" ? colors.text : colors.border,
-									paddingHorizontal: 10,
-									paddingVertical: 6,
-									backgroundColor: pressed ? colors.border : colors.chipBg,
-								})}
-							>
-								<Text
-									style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
-								>
-									{chosenModel?.name ?? model}
-								</Text>
-								<Text style={{ color: colors.muted, fontSize: 11 }}>
-									{chosenModel?.provider}
-								</Text>
-								<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
-							</Pressable>
-							{reasoning ? (
-								<Pressable
-									accessibilityRole="button"
-									accessibilityLabel={t("code.effort")}
-									onPress={() => setPicker("effort")}
-									style={({ pressed }) => ({
-										flexDirection: "row",
-										alignItems: "center",
-										gap: 6,
-										borderRadius: 8,
-										borderWidth: 1,
-										borderColor:
-											pressed || picker === "effort"
-												? colors.text
-												: colors.border,
-										paddingHorizontal: 10,
-										paddingVertical: 6,
-										backgroundColor: pressed ? colors.border : colors.chipBg,
-									})}
-								>
-									<Text style={{ color: colors.text, fontSize: 12 }}>
-										{effort === "low"
-											? t("code.effortLow")
-											: effort === "high"
-												? t("code.effortHigh")
-												: t("code.effortMedium")}
-									</Text>
-									<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
-								</Pressable>
-							) : null}
-						</View>
+								{reasoning ? (
+									<Pressable
+										accessibilityRole="button"
+										accessibilityLabel={t("code.effort")}
+										onPress={() => setPicker("effort")}
+										style={({ pressed }) => ({
+											flexDirection: "row",
+											alignItems: "center",
+											gap: 6,
+											borderRadius: 8,
+											borderWidth: 1,
+											borderColor:
+												pressed || picker === "effort"
+													? colors.text
+													: colors.border,
+											paddingHorizontal: 10,
+											paddingVertical: 6,
+											backgroundColor: pressed ? colors.border : colors.chipBg,
+										})}
+									>
+										<Text style={{ color: colors.text, fontSize: 12 }}>
+											{effort === "low"
+												? t("code.effortLow")
+												: effort === "high"
+													? t("code.effortHigh")
+													: t("code.effortMedium")}
+										</Text>
+										<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+									</Pressable>
+								) : null}
+							</View>
+						) : null}
 						<Modal
 							visible={
 								picker === "model" ||
