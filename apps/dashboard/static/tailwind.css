@@ -2442,6 +2442,37 @@ button.oc-chip,
 	background: rgba(var(--text-main), 0.08);
 }
 
+.oc-context-menu-sep {
+	height: 1px;
+	margin: 4px 8px;
+	background: rgba(var(--text-main), 0.12);
+}
+
+.oc-context-menu-item.is-danger {
+	color: rgb(var(--text-error, 180, 40, 40));
+}
+
+.oc-context-menu-item.is-danger:hover,
+.oc-context-menu-item.is-danger:focus-visible {
+	background: rgba(var(--text-error, 180, 40, 40), 0.1);
+	color: rgb(var(--text-error, 180, 40, 40));
+}
+
+.oc-context-menu-icon {
+	display: inline-flex;
+	flex: none;
+	width: 16px;
+	height: 16px;
+	align-items: center;
+	justify-content: center;
+	color: inherit;
+}
+
+.oc-context-menu-icon svg {
+	width: 16px;
+	height: 16px;
+}
+
 .oc-compose .oc-composer {
 	width: auto;
 	max-width: none;

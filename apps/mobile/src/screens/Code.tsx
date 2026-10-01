@@ -16,6 +16,7 @@ import {
 	codeMentionAt,
 	encodeBase64,
 	filterCodeMentions,
+	removeContextDrafts,
 	renameContextDrafts,
 	stageBoardContext,
 	stageCodeAttach,
@@ -1394,7 +1395,9 @@ export default function Code() {
 														? {
 																...item,
 																use:
-																	item.use === "context" ? "project" : "context",
+																	item.use === "context"
+																		? "project"
+																		: "context",
 															}
 														: item,
 												),
@@ -1658,6 +1661,9 @@ export default function Code() {
 						onAddContext={addBoardContext}
 						onContextRenamed={(from, to) =>
 							setFiles((current) => renameContextDrafts(current, from, to))
+						}
+						onContextRemoved={(path) =>
+							setFiles((current) => removeContextDrafts(current, path))
 						}
 					/>
 				) : mode === "home" ? (

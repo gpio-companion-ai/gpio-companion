@@ -8,8 +8,9 @@ import {
 	boardFileTree,
 	boardFileWatchPath,
 	parseBoardFileEvent,
-	parseBoardFileWatchPath,
+	parseBoardFileRemovePut,
 	parseBoardFileRenamePut,
+	parseBoardFileWatchPath,
 	parseBoardFileWritePut,
 } from "./board-files.ts";
 
@@ -70,6 +71,18 @@ describe("board file kinds", () => {
 				to: "host/y.c",
 			}),
 		).toThrow("invalid path");
+	});
+
+	test("removes inside the project", () => {
+		expect(
+			parseBoardFileRemovePut({ name: "blink", path: "host/main.c" }),
+		).toEqual({ name: "blink", path: "host/main.c" });
+		expect(() =>
+			parseBoardFileRemovePut({ name: "blink", path: "host/../x.c" }),
+		).toThrow("invalid path");
+		expect(() => parseBoardFileRemovePut({ name: "blink" })).toThrow(
+			"name and path are required",
+		);
 	});
 
 	test("accepts an uploads image and refuses a binary elsewhere", () => {

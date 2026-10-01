@@ -666,6 +666,22 @@ export function renameBoardFile(
 	);
 }
 
+export function removeBoardFile(
+	token: string,
+	uuid: string,
+	name: string,
+	path: string,
+) {
+	return request<{ removed: boolean; path: string }>(
+		token,
+		"/api/mobile/files/remove",
+		{
+			method: "POST",
+			body: JSON.stringify({ uuid, name, path }),
+		},
+	);
+}
+
 export function writeBoardFile(
 	token: string,
 	uuid: string,

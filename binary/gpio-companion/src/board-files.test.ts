@@ -5,6 +5,7 @@ import { join } from "node:path";
 import {
 	listBoardFiles,
 	readBoardFile,
+	removeBoardFile,
 	renameBoardFile,
 	writeBoardFile,
 	writeBoardFileBytes,
@@ -56,8 +57,14 @@ describe("board files", () => {
 		);
 		expect(written.path).toBe("uploads/board.png");
 		expect(
-			(await writeBoardFileBytes(root, "blink", "firmware/board.png", "aGVsbG8="))
-				.path,
+			(
+				await writeBoardFileBytes(
+					root,
+					"blink",
+					"firmware/board.png",
+					"aGVsbG8=",
+				)
+			).path,
 		).toBe("firmware/board.png");
 		await expect(
 			writeBoardFileBytes(root, "blink", "firmware/tool.exe", "aGVsbG8="),
@@ -78,6 +85,25 @@ describe("board files", () => {
 		await expect(
 			renameBoardFile(root, "blink", "host/missing.c", "host/x.c"),
 		).rejects.toThrow("file is missing");
+	});
+
+	test("removes a file inside the project", async () => {
+		const root = makeRoot();
+		mkdirSync(join(root, "blink", "host"), { recursive: true });
+		writeFileSync(join(root, "blink", "host", "main.c"), "int x;\n");
+		mkdirSync(join(root, "blink", "notes"), { recursive: true });
+		const removed = await removeBoardFile(root, "blink", "host/main.c");
+		expect(removed).toEqual({ removed: true, path: "host/main.c" });
+		expect(() => {
+			void readBoardFile(root, "blink", "host/main.c");
+		}).not.toThrow();
+		await expect(readBoardFile(root, "blink", "host/main.c")).rejects.toThrow();
+		await expect(
+			removeBoardFile(root, "blink", "host/missing.c"),
+		).rejects.toThrow("file is missing");
+		await expect(removeBoardFile(root, "blink", "notes")).rejects.toThrow(
+			"cannot remove a directory",
+		);
 	});
 
 	test("refuses paths outside the project", async () => {
@@ -101,6 +127,9 @@ describe("board files", () => {
 		const listed = await listBoardFiles(root, "blink");
 		expect(listed.entries.map((entry) => entry.path)).not.toContain("leak.txt");
 		await expect(readBoardFile(root, "blink", "leak.txt")).rejects.toThrow(
+			"invalid path",
+		);
+		await expect(removeBoardFile(root, "blink", "leak.txt")).rejects.toThrow(
 			"invalid path",
 		);
 	});

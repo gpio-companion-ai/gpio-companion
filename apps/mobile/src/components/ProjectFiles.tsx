@@ -1,3 +1,4 @@
+import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import {
@@ -41,6 +42,7 @@ import {
 	listBoardFiles,
 	pushProject,
 	readBoardFile,
+	removeBoardFile,
 	renameBoardFile,
 	signBoardFilesLive,
 	uploadBoardFile,
@@ -50,6 +52,7 @@ import { useUserBoards } from "../lib/api-cache.tsx";
 import { useColorMode, useColors } from "../lib/color-mode.tsx";
 import { dashboardUrl } from "../lib/config.ts";
 import { useLocale, useT } from "../lib/locale.tsx";
+import type { Colors } from "../lib/theme.ts";
 import BreadboardWebView from "./BreadboardWebView.tsx";
 import ModelWebView from "./ModelWebView.tsx";
 
@@ -62,6 +65,7 @@ type Props = {
 	onEntries?: (entries: BoardFileEntry[]) => void;
 	onAddContext?: (path: string, text: string) => void;
 	onContextRenamed?: (from: string, to: string) => void;
+	onContextRemoved?: (path: string) => void;
 };
 
 type OpenFile = {
@@ -80,6 +84,7 @@ export default function ProjectFiles({
 	onEntries,
 	onAddContext,
 	onContextRenamed,
+	onContextRemoved,
 }: Props) {
 	const t = useT();
 	const colors = useColors();
@@ -471,6 +476,52 @@ export default function ProjectFiles({
 		} catch (caught) {
 			setNote(shownError(caught instanceof Error ? caught.message : ""));
 			setSaved("");
+		}
+	}
+
+	function deleteFile(path: string) {
+		setFileMenu(null);
+		if (!uuid || !name) {
+			return;
+		}
+		const label = path.split("/").pop() ?? path;
+		Alert.alert(
+			t("code.deleteFile"),
+			t("code.deleteFileConfirm", { name: label }),
+			[
+				{ text: t("common.close"), style: "cancel" },
+				{
+					text: t("code.deleteFile"),
+					style: "destructive",
+					onPress: () => {
+						void confirmDelete(path, label);
+					},
+				},
+			],
+		);
+	}
+
+	async function confirmDelete(path: string, label: string) {
+		if (!token || !uuid || !name) {
+			return;
+		}
+		setBusy("file");
+		try {
+			await removeBoardFile(token, uuid, name, path);
+			if (fileRef.current?.path === path) {
+				setFile(null);
+				setDraft("");
+				openedPath.current = "";
+			}
+			onContextRemoved?.(path);
+			await reloadFiles();
+			setNote("");
+			setSaved(t("code.deletedFile", { name: label }));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
 		}
 	}
 
@@ -866,39 +917,72 @@ export default function ProjectFiles({
 								borderColor: colors.border,
 							}}
 						>
-							<Pressable
-								accessibilityRole="button"
+							<MenuRow
+								label={t("code.addToContext")}
+								icon="playlist-add"
+								colors={colors}
 								onPress={() => void addToContext(fileMenu.path)}
-								style={{ padding: 10 }}
-							>
-								<Text style={{ color: colors.text }}>
-									{t("code.addToContext")}
-								</Text>
-							</Pressable>
-							<Pressable
-								accessibilityRole="button"
+							/>
+							<MenuRow
+								label={t("code.renameFile")}
+								icon="edit"
+								colors={colors}
 								onPress={() => startRename(fileMenu.path)}
-								style={{ padding: 10 }}
-							>
-								<Text style={{ color: colors.text }}>{t("code.renameFile")}</Text>
-							</Pressable>
+							/>
+							<View
+								role="separator"
+								style={{
+									height: 1,
+									marginVertical: 4,
+									marginHorizontal: 8,
+									backgroundColor: colors.border,
+								}}
+							/>
+							<MenuRow
+								label={t("code.deleteFile")}
+								icon="delete-outline"
+								danger
+								colors={colors}
+								onPress={() => deleteFile(fileMenu.path)}
+							/>
 						</View>
 					) : null}
 				</View>
-							<Pressable
-								accessibilityRole="button"
-								onPress={() => startRename(fileMenu.path)}
-								style={{ padding: 10 }}
-							>
-								<Text style={{ color: colors.text }}>
-									{t("code.renameFile")}
-								</Text>
-							</Pressable>
-						</View>
-					) : null}
-				</Pressable>
 			</Modal>
 		</View>
+	);
+}
+
+function MenuRow({
+	label,
+	icon,
+	danger,
+	colors,
+	onPress,
+}: {
+	label: string;
+	icon: React.ComponentProps<typeof MaterialIcons>["name"];
+	danger?: boolean;
+	colors: Colors;
+	onPress: () => void;
+}) {
+	const color = danger ? colors.danger : colors.text;
+	return (
+		<Pressable
+			accessibilityRole="button"
+			onPress={onPress}
+			style={({ pressed }) => ({
+				flexDirection: "row",
+				alignItems: "center",
+				gap: 12,
+				padding: 10,
+				borderRadius: 6,
+				backgroundColor: pressed ? colors.border : "transparent",
+			})}
+		>
+			<Text style={{ flex: 1, color }}>{label}</Text>
+			<MaterialIcons name={icon} size={18} color={color} />
+		</Pressable>
 	);
 }
 

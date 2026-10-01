@@ -335,6 +335,16 @@ export function renameContextDrafts(
 	);
 }
 
+export function removeContextDrafts(
+	files: readonly CodeAttachDraft[],
+	path: string,
+): CodeAttachDraft[] {
+	const target = path.trim().replace(/^\/+/, "");
+	return files.filter(
+		(file) => !(file.source === "board" && file.path === target),
+	);
+}
+
 export function codeSttLanguage(locale: string): "en" | "fr" {
 	return locale.trim().toLowerCase().startsWith("fr") ? "fr" : "en";
 }

@@ -761,6 +761,14 @@ export function renameBoardFile(
 	);
 }
 
+export function removeBoardFile(uuid: string, name: string, path: string) {
+	return apiRequest<{ removed: boolean; path: string }>(
+		"POST",
+		"/api/mobile/files/remove",
+		{ uuid, name, path },
+	);
+}
+
 export function writeBoardFile(
 	uuid: string,
 	name: string,

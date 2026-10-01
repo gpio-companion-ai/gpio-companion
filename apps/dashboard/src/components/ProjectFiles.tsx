@@ -1,6 +1,7 @@
 import { POST as listFiles } from "@api/files/list";
 import { POST as signFilesLive } from "@api/files/live";
 import { POST as readFile } from "@api/files/read";
+import { POST as removeFile } from "@api/files/remove";
 import { POST as renameFile } from "@api/files/rename";
 import { PUT as writeFile } from "@api/files/write";
 import { POST as pushProject } from "@api/projects/push";
@@ -16,17 +17,19 @@ import {
 	codeAttachFileName,
 	codeAttachKind,
 	codeComposerErrorKey,
+	countBoardFiles,
 	type ExplorerPick,
 	explorerCreateDir,
-	countBoardFiles,
 	filterBoardNodes,
 	OC_EDITOR_SPLIT_KEY,
 	parseBoardFileEvent,
 	stageExplorerFile,
 } from "gpio-companion";
 import {
+	Fragment,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
+	type RefObject,
 	useEffect,
 	useRef,
 	useState,
@@ -49,6 +52,15 @@ type FileMenu = {
 	y: number;
 };
 
+type ContextMenuItem = {
+	key: string;
+	label: string;
+	danger?: boolean;
+	separatorBefore?: boolean;
+	icon: ReactNode;
+	onSelect: () => void;
+};
+
 type Props = {
 	uuid: string;
 	owner: string;
@@ -58,6 +70,7 @@ type Props = {
 	onEntries?: (entries: BoardFileEntry[]) => void;
 	onAddContext?: (path: string, text: string) => void;
 	onContextRenamed?: (from: string, to: string) => void;
+	onContextRemoved?: (path: string) => void;
 };
 
 type OpenFile = {
@@ -76,6 +89,7 @@ export default function ProjectFiles({
 	onEntries,
 	onAddContext,
 	onContextRenamed,
+	onContextRemoved,
 }: Props) {
 	const t = useT();
 	const { mode } = useColorMode();
@@ -397,7 +411,8 @@ export default function ProjectFiles({
 	}
 
 	function startCreate() {
-		const dir = explorerCreateDir(picked) || (file?.path ? parentDir(file.path) : "");
+		const dir =
+			explorerCreateDir(picked) || (file?.path ? parentDir(file.path) : "");
 		setRenaming("");
 		setCreating(dir);
 		setNameDraft("untitled.txt");
@@ -450,6 +465,38 @@ export default function ProjectFiles({
 		} catch (caught) {
 			setNote(shownError(caught instanceof Error ? caught.message : ""));
 			setSaved("");
+		}
+	}
+
+	async function deleteFile(path: string) {
+		setFileMenu(null);
+		if (!uuid || !name) {
+			return;
+		}
+		const label = path.split("/").pop() ?? path;
+		if (!window.confirm(t("code.deleteFileConfirm", { name: label }))) {
+			return;
+		}
+		setBusy("file");
+		try {
+			const removed = await removeFile({ uuid, name, path });
+			if (!removed.ok) {
+				throw new Error(removed.error);
+			}
+			if (fileRef.current?.path === path) {
+				setFile(null);
+				setDraft("");
+				openedPath.current = "";
+			}
+			onContextRemoved?.(path);
+			await reloadFiles();
+			setNote("");
+			setSaved(t("code.deletedFile", { name: label }));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
 		}
 	}
 
@@ -902,32 +949,88 @@ export default function ProjectFiles({
 			</div>
 			{fileMenu
 				? createPortal(
-						<div
-							ref={fileMenuRef}
-							className="oc-context-menu"
-							role="menu"
-							aria-label={t("code.fileActions")}
-							style={{ left: fileMenu.x, top: fileMenu.y }}
-						>
-							<button
-								type="button"
-								role="menuitem"
-								onClick={() => void addToContext(fileMenu.path)}
-							>
-								{t("code.addToContext")}
-							</button>
-							<button
-								type="button"
-								role="menuitem"
-								onMouseDown={(event) => event.preventDefault()}
-								onClick={() => startRename(fileMenu.path)}
-							>
-								{t("code.renameFile")}
-							</button>
-						</div>,
+						<FileContextMenu
+							menu={fileMenu}
+							menuRef={fileMenuRef}
+							ariaLabel={t("code.fileActions")}
+							onClose={() => setFileMenu(null)}
+							items={fileMenuItems(fileMenu.path)}
+						/>,
 						document.body,
 					)
 				: null}
+		</div>
+	);
+
+	function fileMenuItems(path: string): ContextMenuItem[] {
+		return [
+			{
+				key: "context",
+				label: t("code.addToContext"),
+				icon: <ContextIcon />,
+				onSelect: () => void addToContext(path),
+			},
+			{
+				key: "rename",
+				label: t("code.renameFile"),
+				icon: <RenameIcon />,
+				onSelect: () => startRename(path),
+			},
+			{
+				key: "delete",
+				label: t("code.deleteFile"),
+				danger: true,
+				separatorBefore: true,
+				icon: <TrashIcon />,
+				onSelect: () => void deleteFile(path),
+			},
+		];
+	}
+}
+
+function FileContextMenu({
+	menu,
+	menuRef,
+	ariaLabel,
+	onClose,
+	items,
+}: {
+	menu: FileMenu;
+	menuRef: RefObject<HTMLDivElement | null>;
+	ariaLabel: string;
+	onClose: () => void;
+	items: ContextMenuItem[];
+}) {
+	return (
+		<div
+			ref={menuRef}
+			className="oc-context-menu"
+			role="menu"
+			aria-label={ariaLabel}
+			style={{ left: menu.x, top: menu.y }}
+		>
+			{items.map((item, index) => (
+				<Fragment key={item.key}>
+					{item.separatorBefore && index > 0 ? (
+						<div className="oc-context-menu-sep" role="separator" />
+					) : null}
+					<button
+						type="button"
+						role="menuitem"
+						className={`oc-context-menu-item${item.danger ? " is-danger" : ""}`}
+						onMouseDown={(event) => event.preventDefault()}
+						onClick={() => {
+							onClose();
+							item.onSelect();
+						}}
+					>
+						<span className="oc-context-menu-label">{item.label}</span>
+						<span className="oc-context-menu-icon" aria-hidden="true">
+							{item.icon}
+						</span>
+					</button>
+				</Fragment>
+			))}
 		</div>
 	);
 }
@@ -999,6 +1102,35 @@ function RenameIcon() {
 	return (
 		<svg viewBox="0 0 16 16" aria-hidden="true">
 			<path d="M9 3.5l3.5 3.5L6 13.5H2.5V10z" />
+		</svg>
+	);
+}
+
+function ContextIcon() {
+	return (
+		<svg
+			viewBox="0 0 16 16"
+			aria-hidden="true"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.3"
+		>
+			<path d="M4 2.5h5l3 3V13.5H4zM9 2.5V6h3.2" />
+			<path d="M6.2 9.5h3.6M8 7.7v3.6" />
+		</svg>
+	);
+}
+
+function TrashIcon() {
+	return (
+		<svg
+			viewBox="0 0 16 16"
+			aria-hidden="true"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.3"
+		>
+			<path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.6 8.2h5.8l.6-8.2M6.7 7v3.9M9.3 7v3.9" />
 		</svg>
 	);
 }

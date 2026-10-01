@@ -20,6 +20,7 @@ import {
 	debugAuthHeadersFromRequest,
 	FILES_LIST_PATH,
 	FILES_READ_PATH,
+	FILES_REMOVE_PATH,
 	FILES_RENAME_PATH,
 	FILES_WRITE_PATH,
 	FLASH_PATH,
@@ -56,8 +57,9 @@ import {
 	pairingCredentials,
 	parseBoardFileListPut,
 	parseBoardFileReadPut,
-	parseBoardFileWatchPath,
+	parseBoardFileRemovePut,
 	parseBoardFileRenamePut,
+	parseBoardFileWatchPath,
 	parseBoardFileWritePut,
 	parseDebugEventInput,
 	parseDeviceSecrets,
@@ -106,6 +108,7 @@ import {
 	createBoardFileHub,
 	listBoardFiles,
 	readBoardFile,
+	removeBoardFile,
 	renameBoardFile,
 	writeBoardFile,
 	writeBoardFileBytes,
@@ -1042,6 +1045,17 @@ export async function handleDeviceRequest(
 				put.name,
 				put.from,
 				put.to,
+			),
+		);
+	}
+
+	if (method === "POST" && path === FILES_REMOVE_PATH) {
+		const put = parseBoardFileRemovePut(parseJson(bodyText));
+		return json(
+			await removeBoardFile(
+				extras?.projectsDir ?? projectsRoot(),
+				put.name,
+				put.path,
 			),
 		);
 	}

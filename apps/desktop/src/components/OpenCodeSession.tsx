@@ -8,6 +8,7 @@ import {
 	codeMentionAt,
 	encodeBase64,
 	filterCodeMentions,
+	removeContextDrafts,
 	renameContextDrafts,
 	stageBoardContext,
 	stageCodeAttach,
@@ -1542,7 +1543,9 @@ export default function OpenCodeSession({
 														? {
 																...item,
 																use:
-																	item.use === "context" ? "project" : "context",
+																	item.use === "context"
+																		? "project"
+																		: "context",
 															}
 														: item,
 												),
@@ -1813,6 +1816,9 @@ export default function OpenCodeSession({
 					onAddContext={addBoardContext}
 					onContextRenamed={(from, to) =>
 						setFiles((current) => renameContextDrafts(current, from, to))
+					}
+					onContextRemoved={(path) =>
+						setFiles((current) => removeContextDrafts(current, path))
 					}
 				>
 					{error && mode === "home" ? (

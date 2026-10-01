@@ -62,6 +62,7 @@ import {
 	recoverOpencodePrompts,
 	releaseSettledPromptHolds,
 	rememberOpencodePrompt,
+	removeContextDrafts,
 	renameContextDrafts,
 	replaceCodeNav,
 	seedOpencodePrompts,
@@ -1490,7 +1491,9 @@ export default function OpenCodeSession({
 														? {
 																...item,
 																use:
-																	item.use === "context" ? "project" : "context",
+																	item.use === "context"
+																		? "project"
+																		: "context",
 															}
 														: item,
 												),
@@ -1716,6 +1719,9 @@ export default function OpenCodeSession({
 				onAddContext={addBoardContext}
 				onContextRenamed={(from, to) =>
 					setFiles((current) => renameContextDrafts(current, from, to))
+				}
+				onContextRemoved={(path) =>
+					setFiles((current) => removeContextDrafts(current, path))
 				}
 			>
 				{error && mode === "home" ? (

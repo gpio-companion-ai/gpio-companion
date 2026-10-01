@@ -7,11 +7,13 @@ import {
 	readFileSync,
 	realpathSync,
 	renameSync,
+	unlinkSync,
 	watch,
 	writeFileSync,
 } from "node:fs";
 import { dirname, join, relative, resolve, sep } from "node:path";
 import {
+	assertBoardUploadBinary,
 	BOARD_FILE_DEPTH_MAX,
 	BOARD_FILE_LIST_MAX,
 	BOARD_FILE_MODEL_MAX,
@@ -23,8 +25,8 @@ import {
 	type BoardFileKind,
 	type BoardFileList,
 	type BoardFileRead,
+	type BoardFileRemove,
 	type BoardFileWrite,
-	assertBoardUploadBinary,
 	boardFileKindFromName,
 	boardFileRelative,
 	decodeBase64,
@@ -154,6 +156,23 @@ export async function renameBoardFile(
 	mkdirSync(dirname(target), { recursive: true });
 	renameSync(source, target);
 	return { written: true, path: targetRel };
+}
+
+export async function removeBoardFile(
+	root: string,
+	name: string,
+	path: string,
+): Promise<BoardFileRemove> {
+	const rel = boardFileRelative(path);
+	const target = confinedFile(root, name, rel);
+	if (!existsSync(target) || lstatSync(target).isSymbolicLink()) {
+		throw new Error("file is missing");
+	}
+	if (lstatSync(target).isDirectory()) {
+		throw new Error("cannot remove a directory");
+	}
+	unlinkSync(target);
+	return { removed: true, path: rel };
 }
 
 export function createBoardFileHub(root: string): BoardFileHub {

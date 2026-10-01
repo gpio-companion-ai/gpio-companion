@@ -6,6 +6,7 @@ export const FILES_LIST_PATH = "/v1/files/list";
 export const FILES_READ_PATH = "/v1/files/read";
 export const FILES_WRITE_PATH = "/v1/files";
 export const FILES_RENAME_PATH = "/v1/files/rename";
+export const FILES_REMOVE_PATH = "/v1/files/remove";
 export const FILES_WATCH_PREFIX = "/v1/files/watch/";
 export const BOARD_FILE_LIST_MAX = 4000;
 export const BOARD_FILE_DEPTH_MAX = 12;
@@ -139,6 +140,16 @@ export type BoardFileRenamePut = {
 	to: string;
 };
 
+export type BoardFileRemove = {
+	removed: true;
+	path: string;
+};
+
+export type BoardFileRemovePut = {
+	name: string;
+	path: string;
+};
+
 export type BoardFileWritePut = {
 	name: string;
 	path: string;
@@ -197,7 +208,10 @@ export function filterBoardNodes(
 			const children = filterBoardNodes(node.children, needle);
 			const self = node.name.toLowerCase().includes(needle);
 			if (self || children.length > 0) {
-				out.push({ ...node, children: self && children.length === 0 ? node.children : children });
+				out.push({
+					...node,
+					children: self && children.length === 0 ? node.children : children,
+				});
 			}
 			continue;
 		}
@@ -447,6 +461,17 @@ export function parseBoardFileRenamePut(input: unknown): BoardFileRenamePut {
 		throw new Error("file already exists");
 	}
 	return { name: parseGithubRepoName(record.name), from, to };
+}
+
+export function parseBoardFileRemovePut(input: unknown): BoardFileRemovePut {
+	const record = objectBody(input);
+	if (typeof record.name !== "string" || typeof record.path !== "string") {
+		throw new Error("name and path are required");
+	}
+	return {
+		name: parseGithubRepoName(record.name),
+		path: boardFileRelative(record.path),
+	};
 }
 
 export function parseBoardFileWritePut(input: unknown): BoardFileWritePut {

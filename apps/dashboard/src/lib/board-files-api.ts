@@ -1,15 +1,18 @@
 import {
 	type BoardFileList,
 	type BoardFileRead,
+	type BoardFileRemove,
 	type BoardFileWrite,
 	boardFileWatchPath,
 	FILES_LIST_PATH,
 	FILES_READ_PATH,
+	FILES_REMOVE_PATH,
 	FILES_RENAME_PATH,
 	FILES_WRITE_PATH,
 	filesWsConnectUrl,
 	parseBoardFileListPut,
 	parseBoardFileReadPut,
+	parseBoardFileRemovePut,
 	parseBoardFileRenamePut,
 	parseBoardFileWritePut,
 	parseGithubRepoName,
@@ -125,6 +128,25 @@ export async function renameSignedBoardFile(
 			device.deviceUrl,
 			"POST",
 			FILES_RENAME_PATH,
+			put,
+			{ timeoutMs: 15_000 },
+		),
+	);
+}
+
+export async function removeSignedBoardFile(
+	env: SigningEnv,
+	userId: string,
+	input: { uuid: string; name: string; path: string },
+): Promise<BoardFileRemove> {
+	const device = await boardFileDevice(env, userId, input.uuid);
+	const put = parseBoardFileRemovePut(input);
+	return readDeviceJson<BoardFileRemove>(
+		await signedDeviceFetch(
+			env,
+			device.deviceUrl,
+			"POST",
+			FILES_REMOVE_PATH,
 			put,
 			{ timeoutMs: 15_000 },
 		),
