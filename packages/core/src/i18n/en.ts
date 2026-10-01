@@ -155,6 +155,12 @@ export const en = {
 			navigation: "Navigation",
 			resizeDock: "Resize dock",
 		},
+		ui: {
+			modalTitle: "Message from the board agent",
+			dismiss: "Dismiss",
+			toastLabel: "Board agent message",
+			replySent: "Reply sent to the board agent.",
+		},
 	},
 	mode: {
 		easy: "Easy",
@@ -1100,6 +1106,8 @@ export const en = {
 		files: "Files",
 		viewJson: "JSON",
 		viewBreadboard: "Breadboard",
+		viewParsed: "Parsed",
+		viewRaw: "Raw",
 		branch: "Branch",
 		saveBoard: "Save on board",
 		savingBoard: "Saving…",

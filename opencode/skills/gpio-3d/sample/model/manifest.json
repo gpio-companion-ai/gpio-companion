@@ -27,7 +27,8 @@
 			"units": "mm",
 			"fits": [
 				"companion-header"
-			]
+			],
+			"color": "#22cc88"
 		}
 	]
 }

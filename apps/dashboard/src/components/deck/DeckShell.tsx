@@ -16,8 +16,16 @@ import { navigate } from "@next/client";
 import BottomNavigation, {
 	BottomNavigationAction,
 } from "@shpaw415/mui-lite/BottomNavigation";
+import Button from "@shpaw415/mui-lite/Button";
+import Dialog, {
+	DialogActions,
+	DialogContent,
+	DialogTitle,
+} from "@shpaw415/mui-lite/Dialog";
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Paper from "@shpaw415/mui-lite/Paper";
+import Snackbar from "@shpaw415/mui-lite/Snackbar";
+import type { UiModalCommand, UiNavigateTarget } from "gpio-companion";
 import type {
 	ComponentType,
 	ReactNode,
@@ -31,6 +39,7 @@ import { useDashboardMode } from "../../hooks/useDashboardMode.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
 import useMobile from "../../hooks/useMobile.ts";
 import { usePathname } from "../../hooks/usePathname.tsx";
+import { useUiSocket } from "../../hooks/useUiSocket.ts";
 import {
 	type BoardAction,
 	type FleetBoard,
@@ -61,6 +70,22 @@ const DOCK_TABS: Array<[DockTab, ComponentType]> = [
 	["flash", BuildIcon],
 	["problems", WarningIcon],
 ];
+
+const UI_NAVIGATE_HREF: Record<UiNavigateTarget, string> = {
+	project: "/project",
+	code: "/devices/code",
+	docs: "/devices/docs",
+	devices: "/devices",
+	pair: "/devices/pair",
+	wifi: "/devices/wifi",
+	keys: "/keys",
+	requests: "/devices/notifications",
+	debug: "/devices/debug",
+	admin: "/devices/admin",
+	profile: "/profile",
+	github: "/profile/github",
+	credits: "/profile/credits",
+};
 
 const DOCK_STORAGE_KEY = "b6-dockH";
 const CONTEXT_STORAGE_KEY = "b6-contextOpen";
@@ -173,6 +198,60 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	const selectedBoard = boards.find(
 		(board) => board.uuid === selectedBoardUuid,
 	);
+	const [uiToast, setUiToast] = useState<string | null>(null);
+	const [uiModal, setUiModal] = useState<UiModalCommand | null>(null);
+	const uiToastTimer = useRef(0);
+
+	const uiSocket = useUiSocket({
+		surface: "web",
+		enabled: Boolean(session.data?.id && selectedBoardUuid),
+		uuid: selectedBoardUuid,
+		isFocused: () =>
+			typeof document === "undefined" ||
+			(document.visibilityState === "visible" && document.hasFocus()),
+		onCommand: (command) => {
+			switch (command.type) {
+				case "navigate": {
+					const href = UI_NAVIGATE_HREF[command.target];
+					if (
+						!href ||
+						((command.target === "debug" || command.target === "admin") &&
+							(mode !== "expert" || !admin))
+					) {
+						return;
+					}
+					navigate(href);
+					return;
+				}
+				case "dock":
+					setDockOpen(true);
+					setDockTab(command.tab);
+					return;
+				case "palette":
+					setPaletteOpen(command.open);
+					return;
+				case "toast":
+					setUiToast(command.text);
+					window.clearTimeout(uiToastTimer.current);
+					uiToastTimer.current = window.setTimeout(
+						() => setUiToast(null),
+						4000,
+					);
+					return;
+				case "modal":
+					setUiModal(command);
+					return;
+			}
+		},
+	});
+
+	function closeUiModal(action: string) {
+		if (!uiModal) {
+			return;
+		}
+		uiSocket.reply(uiModal.id, action);
+		setUiModal(null);
+	}
 
 	const rail = [
 		{ href: "/project", label: t("deck.rail.work"), icon: <FolderIcon /> },
@@ -671,9 +750,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				</IconButton>
 			</header>
 
-			<div
-				className={`b6-body${contextOpen ? "" : " is-context-collapsed"}`}
-			>
+			<div className={`b6-body${contextOpen ? "" : " is-context-collapsed"}`}>
 				<nav className="b6-rail" aria-label={t("deck.rail.label")}>
 					{rail.map((item) => {
 						const active =
@@ -978,6 +1055,50 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 					</div>
 				</div>
 			) : null}
+
+			<Snackbar
+				open={Boolean(uiToast)}
+				autoHideDuration={4000}
+				onClose={() => setUiToast(null)}
+				message={uiToast ?? ""}
+				position="top-center"
+			/>
+
+			<Dialog
+				open={Boolean(uiModal)}
+				onClose={() => closeUiModal("dismiss")}
+				fullWidth
+				fullScreen={mobile}
+				scroll="paper"
+				sx={{ zIndex: 1400 }}
+				slotProps={{ paper: { className: "max-w-xl w-full" } }}
+			>
+				<DialogTitle>{uiModal?.title ?? ""}</DialogTitle>
+				<DialogContent>
+					<p style={{ whiteSpace: "pre-wrap", margin: 0 }}>
+						{uiModal?.body ?? ""}
+					</p>
+				</DialogContent>
+				<DialogActions>
+					{(uiModal?.buttons ?? []).map((label) => (
+						<Button
+							key={label}
+							type="button"
+							variant="text"
+							onClick={() => closeUiModal(label)}
+						>
+							{label}
+						</Button>
+					))}
+					<Button
+						type="button"
+						variant="text"
+						onClick={() => closeUiModal("dismiss")}
+					>
+						{t("deck.ui.dismiss")}
+					</Button>
+				</DialogActions>
+			</Dialog>
 		</div>
 	);
 }

@@ -48,10 +48,11 @@ def add_header(parser):
     parser.add_argument("--rows", required=True, type=int)
     parser.add_argument("--fits", action="append", required=True)
     parser.add_argument("--dir", required=True)
+    parser.add_argument("--color")
 
 
 def run_clip(args):
-    write_part(clip_mesh(args.cols, args.rows, args.thickness), args.name, args.fits, args.dir)
+    write_part(clip_mesh(args.cols, args.rows, args.thickness), args.name, args.fits, args.dir, args.color)
 
 
 def run_spacer(args):
@@ -60,6 +61,7 @@ def run_spacer(args):
         args.name,
         args.fits,
         args.dir,
+        args.color,
     )
 
 
@@ -69,10 +71,11 @@ def run_shroud(args):
         args.name,
         args.fits,
         args.dir,
+        args.color,
     )
 
 
 def run_build(args):
     directory = model_dir(args.dir)
-    name, fits, mesh = load_recipe(args.recipe, directory)
-    write_part(mesh, name, fits, directory)
+    name, fits, color, mesh = load_recipe(args.recipe, directory)
+    write_part(mesh, name, fits, directory, color)

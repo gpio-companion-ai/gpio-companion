@@ -1,0 +1,280 @@
+import { debugAuthQuery } from "./debug.ts";
+import type { DeviceAuthHeaders } from "./device-auth.ts";
+
+export const UI_PATH = "/v1/ui";
+export const UI_REPLY_PREFIX = "/v1/ui/reply/";
+export const UI_MAX_SOCKETS = 8;
+export const UI_TITLE_MAX = 80;
+export const UI_BODY_MAX = 500;
+export const UI_BUTTON_LABEL_MAX = 40;
+export const UI_BUTTONS_MAX = 3;
+export const UI_TOAST_MAX = 160;
+export const UI_REPLY_TTL_MS = 120_000;
+export const UI_REPLY_POLL_MS = 25_000;
+export const UI_REPLY_TICK_MS = 250;
+
+export type UiSurface = "web" | "desktop" | "mobile";
+
+export type UiNavigateTarget =
+	| "project"
+	| "code"
+	| "docs"
+	| "devices"
+	| "pair"
+	| "wifi"
+	| "keys"
+	| "requests"
+	| "debug"
+	| "admin"
+	| "profile"
+	| "github"
+	| "credits";
+
+export type UiDockTab = "console" | "gpio" | "flash" | "problems";
+
+export type UiNavigateCommand = { type: "navigate"; target: UiNavigateTarget };
+export type UiDockCommand = { type: "dock"; tab: UiDockTab };
+export type UiPaletteCommand = { type: "palette"; open: boolean };
+export type UiToastCommand = { type: "toast"; text: string };
+export type UiModalCommand = {
+	type: "modal";
+	id: string;
+	title: string;
+	body: string;
+	buttons: string[];
+};
+
+export type UiCommand =
+	| UiNavigateCommand
+	| UiDockCommand
+	| UiPaletteCommand
+	| UiToastCommand
+	| UiModalCommand;
+
+export const UI_NAVIGATE_TARGETS = [
+	"project",
+	"code",
+	"docs",
+	"devices",
+	"pair",
+	"wifi",
+	"keys",
+	"requests",
+	"debug",
+	"admin",
+	"profile",
+	"github",
+	"credits",
+] as const satisfies readonly UiNavigateTarget[];
+
+export const UI_DOCK_TABS = [
+	"console",
+	"gpio",
+	"flash",
+	"problems",
+] as const satisfies readonly UiDockTab[];
+
+export const UI_SURFACES = [
+	"web",
+	"desktop",
+	"mobile",
+] as const satisfies readonly UiSurface[];
+
+export type UiSocketHello = {
+	op: "hello";
+	surface: UiSurface;
+	focused: boolean;
+};
+
+export type UiSocketReply = {
+	op: "reply";
+	id: string;
+	action: string;
+};
+
+export type UiSocketClientMessage = UiSocketHello | UiSocketReply;
+
+export type UiSocketInfo = {
+	id: string;
+	surface: UiSurface;
+	focused: boolean;
+	connectedAt: number;
+};
+
+export type UiCommandResult = {
+	delivered: number;
+	fallback: boolean;
+};
+
+export class UiError extends Error {
+	readonly status: 400 | 403;
+
+	constructor(message: string, status: 400 | 403 = 400) {
+		super(message);
+		this.name = "UiError";
+		this.status = status;
+	}
+}
+
+export function isUiPath(path: string): boolean {
+	const normalized = path.replace(/\/+$/, "") || "/";
+	if (normalized === UI_PATH) {
+		return true;
+	}
+	if (!normalized.startsWith(UI_REPLY_PREFIX)) {
+		return false;
+	}
+	const id = normalized.slice(UI_REPLY_PREFIX.length);
+	return id.length > 0 && !id.includes("/");
+}
+
+export function uiReplyIdFromPath(path: string): string {
+	const normalized = path.replace(/\/+$/, "");
+	if (!normalized.startsWith(UI_REPLY_PREFIX)) {
+		return "";
+	}
+	return normalized.slice(UI_REPLY_PREFIX.length);
+}
+
+export function uiWsUrl(deviceUrl: string): string {
+	const origin = deviceUrl.replace(/\/+$/, "");
+	if (origin.startsWith("https://")) {
+		return `wss://${origin.slice("https://".length)}${UI_PATH}`;
+	}
+	if (origin.startsWith("http://")) {
+		return `ws://${origin.slice("http://".length)}${UI_PATH}`;
+	}
+	return `wss://${origin}${UI_PATH}`;
+}
+
+export function uiWsConnectUrl(
+	deviceUrl: string,
+	headers: DeviceAuthHeaders,
+): string {
+	return `${uiWsUrl(deviceUrl)}?${debugAuthQuery(headers)}`;
+}
+
+export function parseUiCommand(input: unknown): UiCommand {
+	if (input === null || typeof input !== "object" || Array.isArray(input)) {
+		throw new UiError("ui command must be an object");
+	}
+	const record = input as Record<string, unknown>;
+	switch (record.type) {
+		case "navigate":
+			return { type: "navigate", target: parseTarget(record.target) };
+		case "dock":
+			return { type: "dock", tab: parseDockTab(record.tab) };
+		case "palette":
+			if (typeof record.open !== "boolean") {
+				throw new UiError("palette open must be a boolean");
+			}
+			return { type: "palette", open: record.open };
+		case "toast":
+			return {
+				type: "toast",
+				text: capText(record.text, UI_TOAST_MAX, "toast"),
+			};
+		case "modal":
+			return parseModal(record);
+		default:
+			throw new UiError("unknown ui command");
+	}
+}
+
+export function parseUiSocketMessage(input: unknown): UiSocketClientMessage {
+	if (input === null || typeof input !== "object" || Array.isArray(input)) {
+		throw new UiError("ui message must be an object");
+	}
+	const record = input as Record<string, unknown>;
+	if (record.op === "hello") {
+		return {
+			op: "hello",
+			surface: parseSurface(record.surface),
+			focused: record.focused === true,
+		};
+	}
+	if (record.op === "reply") {
+		const id = typeof record.id === "string" ? record.id.trim() : "";
+		if (!id || id.length > 128) {
+			throw new UiError("reply id is required");
+		}
+		const action =
+			typeof record.action === "string"
+				? record.action.trim().slice(0, 160)
+				: "";
+		if (!action) {
+			throw new UiError("reply action is required");
+		}
+		return { op: "reply", id, action };
+	}
+	throw new UiError("unknown ui message");
+}
+
+export function newUiModalId(): string {
+	return crypto.randomUUID();
+}
+
+export function isUiReplyFresh(at: number, now: number): boolean {
+	return now - at <= UI_REPLY_TTL_MS;
+}
+
+function parseTarget(value: unknown): UiNavigateTarget {
+	if (
+		typeof value === "string" &&
+		(UI_NAVIGATE_TARGETS as readonly string[]).includes(value)
+	) {
+		return value as UiNavigateTarget;
+	}
+	throw new UiError("unknown navigate target");
+}
+
+function parseDockTab(value: unknown): UiDockTab {
+	if (
+		typeof value === "string" &&
+		(UI_DOCK_TABS as readonly string[]).includes(value)
+	) {
+		return value as UiDockTab;
+	}
+	throw new UiError("unknown dock tab");
+}
+
+function parseSurface(value: unknown): UiSurface {
+	if (
+		typeof value === "string" &&
+		(UI_SURFACES as readonly string[]).includes(value)
+	) {
+		return value as UiSurface;
+	}
+	throw new UiError("unknown ui surface");
+}
+
+function capText(value: unknown, max: number, label: string): string {
+	if (typeof value !== "string" || !value.trim()) {
+		throw new UiError(`${label} text is required`);
+	}
+	return value.slice(0, max);
+}
+
+function parseModal(record: Record<string, unknown>): UiModalCommand {
+	const id = typeof record.id === "string" ? record.id.trim() : "";
+	if (!id || id.length > 128) {
+		throw new UiError("modal id is required");
+	}
+	const buttons = record.buttons;
+	if (
+		!Array.isArray(buttons) ||
+		buttons.length === 0 ||
+		buttons.length > UI_BUTTONS_MAX
+	) {
+		throw new UiError(`modal needs 1 to ${UI_BUTTONS_MAX} buttons`);
+	}
+	return {
+		type: "modal",
+		id,
+		title: capText(record.title, UI_TITLE_MAX, "title"),
+		body: capText(record.body, UI_BODY_MAX, "body"),
+		buttons: buttons.map((label) =>
+			capText(label, UI_BUTTON_LABEL_MAX, "button"),
+		),
+	};
+}

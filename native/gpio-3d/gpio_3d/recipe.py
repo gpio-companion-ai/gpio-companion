@@ -4,7 +4,7 @@ from pathlib import Path
 
 from gpio_3d.constants import UNITS
 from gpio_3d.errors import Gpio3dError
-from gpio_3d.export import part_fits, part_name
+from gpio_3d.export import part_color, part_fits, part_name
 from gpio_3d.mesh import apply_ops
 
 
@@ -27,7 +27,7 @@ def load_recipe(source, directory):
         raise Gpio3dError("recipe is not valid JSON") from exc
     if not isinstance(data, dict):
         raise Gpio3dError("recipe must be an object")
-    allowed = {"name", "fits", "units", "ops"}
+    allowed = {"name", "fits", "units", "ops", "color"}
     for key in data:
         if key not in allowed:
             raise Gpio3dError(f"recipe has unknown field {key}")
@@ -35,6 +35,7 @@ def load_recipe(source, directory):
         raise Gpio3dError("recipe units must be mm")
     name = part_name(data.get("name"))
     fits = part_fits(data.get("fits"))
+    color = part_color(data.get("color"))
     ops = data.get("ops")
     if not isinstance(ops, list) or len(ops) == 0:
         raise Gpio3dError("recipe needs ops")
@@ -43,4 +44,4 @@ def load_recipe(source, directory):
         if not isinstance(op, dict) or not isinstance(op.get("op"), str):
             raise Gpio3dError(f"ops[{index}] must be an object with op")
         parsed.append(op)
-    return name, fits, apply_ops(parsed)
+    return name, fits, color, apply_ops(parsed)

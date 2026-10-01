@@ -27,6 +27,8 @@ gpio-3d spacer --name header-spacer --cols 8 --rows 1 --height 3 --hole 1.0 --fi
 gpio-3d shroud --name header-shroud --cols 20 --rows 2 --height 8 --wall 1.6 --fits companion-header --dir ~/projects/<repo>/model
 ```
 
+The presets also take an optional `--color #rrggbb`.
+
 `--cols` and `--rows` size the part: length is `cols × 2.54`, width is `rows × 2.54`. Repeat `--fits` when the same geometry fits more than one board. `--hole` must be under 2.54 mm.
 
 Use `clip`, `spacer`, or `shroud` first. Use `build` when those three cannot express the part — brackets, knobs, rings, combs, engraved labels, anything else. The recipe is stdin, not a file in `model/`:
@@ -48,6 +50,8 @@ EOF
 ## Recipe ops
 
 `units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center) and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). A recipe has at most 100 ops total.
+
+The recipe may also set `color`: a `#rrggbb` hex string that tints the part in the 3D viewer only. It never changes the printable STL — pick a color that makes the part easy to tell apart on screen, not for printing. The presets set it with `--color`.
 
 Solids (the first one starts the part; later ones union onto it):
 
@@ -80,6 +84,7 @@ gpio-3d build - --dir ~/projects/<repo>/model <<'EOF'
   "name": "knob",
   "units": "mm",
   "fits": ["companion-header"],
+  "color": "#22cc88",
   "ops": [
     {"op": "revolve", "profile": [[0, 0], [9, 0], [9, 2], [4, 2], [4, 8], [0, 8]]},
     {"op": "pattern", "count": 12, "around": [0, 0], "degrees": 30, "ops": [{"op": "box", "size": [1.6, 3, 6], "at": [4.2, 0, 4]}]},
@@ -132,7 +137,8 @@ No other files in `model/`. Do not put the recipe there.
       "name": "header-clip",
       "file": "header-clip.glb",
       "units": "mm",
-      "fits": ["companion-header"]
+      "fits": ["companion-header"],
+      "color": "#22cc88"
     },
     {
       "name": "arduino-header-clip",
@@ -149,6 +155,7 @@ No other files in `model/`. Do not put the recipe there.
 - `units` is `mm` only, on the manifest and on every part.
 - `file` is one basename, kebab-case, ending in `.glb`. The print file is that stem with `.stl`. The command names the file from `--name`.
 - `fits` is one or more of `companion-header`, `arduino-uno`, `arduino-nano`, `arduino-mega`.
+- `color` is optional, `#rrggbb`, viewer tint only.
 - `name` is unique. `file` is unique. Each `.glb` contains one mesh. Several parts may share one `model/` on one branch. A new `feat/` branch is allowed when you decide the model needs one.
 - Pitch is 2.54 mm. Size from the loaded pinout. Do not guess unpublished hole coordinates.
 - Companion header is 3.3 V. Do not design a part that ties header 5 V into a GPIO.

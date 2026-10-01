@@ -48,6 +48,7 @@ export async function mountModelScene(
 			color: 0xffffff,
 			metalness: 0.04,
 			roughness: 0.78,
+			vertexColors: Boolean(obj.geometry.getAttribute("color")),
 		});
 	});
 	if (meshes === 0) {

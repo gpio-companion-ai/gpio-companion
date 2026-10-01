@@ -16,3 +16,4 @@ MAX_PATTERN_COPIES = 200
 MAX_TEXT_CHARS = 40
 MAX_POINTS = 200
 NAME = r"^[a-z0-9]+(?:-[a-z0-9]+)*$"
+COLOR = r"^#[0-9a-fA-F]{6}$"

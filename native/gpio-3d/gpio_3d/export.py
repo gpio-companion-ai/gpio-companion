@@ -2,7 +2,7 @@ import json
 import re
 from pathlib import Path
 
-from gpio_3d.constants import FITS, MANIFEST, NAME, TOOL, UNITS
+from gpio_3d.constants import COLOR, FITS, MANIFEST, NAME, TOOL, UNITS
 from gpio_3d.errors import Gpio3dError
 
 
@@ -10,6 +10,14 @@ def part_name(value):
     if not isinstance(value, str) or not re.fullmatch(NAME, value) or len(value) > 80:
         raise Gpio3dError("name must be kebab-case")
     return value
+
+
+def part_color(value):
+    if value is None:
+        return None
+    if not isinstance(value, str) or not re.fullmatch(COLOR, value):
+        raise Gpio3dError("color must be a #rrggbb hex color")
+    return value.lower()
 
 
 def part_fits(value):
@@ -37,30 +45,45 @@ def model_dir(value):
     return directory
 
 
-def write_part(mesh, name, fits, directory):
+def tint(mesh, color):
+    if not color:
+        return mesh
+    red = int(color[1:3], 16)
+    green = int(color[3:5], 16)
+    blue = int(color[5:7], 16)
+    mesh.visual.vertex_colors = [red, green, blue, 255]
+    return mesh
+
+
+def write_part(mesh, name, fits, directory, color=None):
     name = part_name(name)
     fits = part_fits(fits)
+    color = part_color(color)
     directory = model_dir(directory)
     if len(mesh.faces) == 0:
         raise Gpio3dError("mesh is empty")
     glb_name = f"{name}.glb"
     stl_name = f"{name}.stl"
-    glb = mesh.export(file_type="glb")
+    glb = tint(mesh, color).export(file_type="glb")
     stl = mesh.export(file_type="stl")
     if not isinstance(glb, bytes) or not glb.startswith(b"glTF") or b"mikedh/trimesh" not in glb:
         raise Gpio3dError("export did not write a trimesh glb")
+    if color and b"COLOR_0" not in glb:
+        raise Gpio3dError("export did not write the tint")
     if not isinstance(stl, bytes) or len(stl) < 84:
         raise Gpio3dError("export did not write an stl")
     (directory / glb_name).write_bytes(glb)
     (directory / stl_name).write_bytes(stl)
-    upsert_manifest(directory, name, glb_name, fits)
+    upsert_manifest(directory, name, glb_name, fits, color)
     print(f"{name} {glb_name} {stl_name}")
 
 
-def upsert_manifest(directory, name, glb_name, fits):
+def upsert_manifest(directory, name, glb_name, fits, color=None):
     path = directory / MANIFEST
     manifest = load_manifest(path)
     entry = {"name": name, "file": glb_name, "units": UNITS, "fits": fits}
+    if color:
+        entry["color"] = color
     parts = manifest["parts"]
     replaced = False
     for index, part in enumerate(parts):

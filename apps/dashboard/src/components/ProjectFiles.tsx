@@ -21,6 +21,7 @@ import {
 	type ExplorerPick,
 	explorerCreateDir,
 	filterBoardNodes,
+	isMarkdownPath,
 	OC_EDITOR_SPLIT_KEY,
 	parseBoardFileEvent,
 	stageExplorerFile,
@@ -41,6 +42,7 @@ import { useWorkbench } from "../hooks/useWorkbench.tsx";
 import { unwrapAction } from "../lib/action.ts";
 import BreadboardViewer from "./BreadboardViewer.tsx";
 import ModelViewer from "./ModelViewer.tsx";
+import { MarkdownView } from "./OcMarkdown.tsx";
 
 export type CodeFilesBridge = {
 	textFor: (path: string) => Promise<string>;
@@ -101,6 +103,7 @@ export default function ProjectFiles({
 	const [file, setFile] = useState<OpenFile | null>(null);
 	const [draft, setDraft] = useState("");
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
+	const [mdView, setMdView] = useState<"parsed" | "raw">("parsed");
 	const [stale, setStale] = useState(false);
 	const [note, setNote] = useState("");
 	const [saved, setSaved] = useState("");
@@ -149,6 +152,7 @@ export default function ProjectFiles({
 		setOpenDirs(new Set());
 		setFileFilter("");
 		setDiagramView("board");
+		setMdView("parsed");
 		openedPath.current = "";
 	}, [uuid, name]);
 
@@ -349,6 +353,7 @@ export default function ProjectFiles({
 		if (openedPath.current !== path) {
 			openedPath.current = path;
 			setDiagramView(path === BREADBOARD_DIAGRAM_JSON ? "board" : "json");
+			setMdView(isMarkdownPath(path) ? "parsed" : "raw");
 		}
 		setStale(false);
 		setNote("");
@@ -906,6 +911,26 @@ export default function ProjectFiles({
 									</button>
 								</span>
 							) : null}
+							{file.kind === "text" && isMarkdownPath(file.path) ? (
+								<span className="oc-view-toggle">
+									<button
+										type="button"
+										className={`oc-mini${mdView === "parsed" ? " is-on" : ""}`}
+										aria-pressed={mdView === "parsed"}
+										onClick={() => setMdView("parsed")}
+									>
+										{t("code.viewParsed")}
+									</button>
+									<button
+										type="button"
+										className={`oc-mini${mdView === "raw" ? " is-on" : ""}`}
+										aria-pressed={mdView === "raw"}
+										onClick={() => setMdView("raw")}
+									>
+										{t("code.viewRaw")}
+									</button>
+								</span>
+							) : null}
 							{file.kind === "text" ? (
 								<button
 									type="button"
@@ -932,6 +957,12 @@ export default function ProjectFiles({
 								<ModelViewer glbBase64={file.base64} fill />
 							) : file.kind === "binary" ? (
 								<p className="oc-editor-note">{t("code.binary")}</p>
+							) : file.kind === "text" &&
+								isMarkdownPath(file.path) &&
+								mdView === "parsed" ? (
+								<div className="oc-md-preview">
+									<MarkdownView text={draft} />
+								</div>
 							) : (
 								<CodeEditor
 									path={file.path}

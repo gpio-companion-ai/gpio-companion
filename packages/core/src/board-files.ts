@@ -300,6 +300,11 @@ export function boardFileKindFromName(path: string): BoardFileKind | "unknown" {
 	return "unknown";
 }
 
+export function isMarkdownPath(path: string): boolean {
+	const ext = boardFileExtension(path);
+	return ext === "md" || ext === "markdown";
+}
+
 export function boardFileLanguage(path: string): string {
 	switch (boardFileExtension(path)) {
 		case "c":

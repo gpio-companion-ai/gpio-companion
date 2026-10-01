@@ -7,6 +7,7 @@ import {
 	boardFileRelative,
 	boardFileTree,
 	boardFileWatchPath,
+	isMarkdownPath,
 	parseBoardFileEvent,
 	parseBoardFileRemovePut,
 	parseBoardFileRenamePut,
@@ -41,6 +42,14 @@ describe("board file kinds", () => {
 		expect(boardFileLanguage("src/main.c")).toBe("c");
 		expect(boardFileLanguage("app.tsx")).toBe("typescript");
 		expect(boardFileLanguage("readme.md")).toBe("markdown");
+	});
+
+	test("detects markdown paths", () => {
+		expect(isMarkdownPath("README.md")).toBe(true);
+		expect(isMarkdownPath("docs/notes.markdown")).toBe(true);
+		expect(isMarkdownPath("src/main.c")).toBe(false);
+		expect(isMarkdownPath("docs")).toBe(false);
+		expect(isMarkdownPath(".md")).toBe(false);
 	});
 
 	test("refuses binary writes", () => {

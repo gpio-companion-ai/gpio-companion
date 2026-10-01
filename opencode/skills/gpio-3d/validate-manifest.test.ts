@@ -53,6 +53,7 @@ describe("gpio-3d manifest", () => {
 		]);
 		expect(manifest.parts[2]?.fits).toEqual(["companion-header"]);
 		expect(manifest.parts.every((part) => part.units === "mm")).toBe(true);
+		expect(manifest.parts[2]?.color).toBe("#22cc88");
 		const glb = readFileSync(join(sampleDir, "header-clip.glb"));
 		expect(glb.subarray(0, 4).toString()).toBe("glTF");
 		expect(glb.includes(Buffer.from("mikedh/trimesh"))).toBe(true);

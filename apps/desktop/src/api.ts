@@ -1257,6 +1257,12 @@ export function connectConsoleLive(uuid: string) {
 	});
 }
 
+export function connectUiLive(uuid: string) {
+	return apiRequest<{ wsUrl: string }>("POST", "/api/mobile/ui-live", {
+		uuid,
+	});
+}
+
 export function startUsbConsole(input: {
 	uuid: string;
 	port: string;

@@ -279,6 +279,46 @@ class RecipeOpsTest(unittest.TestCase):
             apply_ops([{"op": "pattern", "count": 2, "axis": "x", "step": 1, "ops": nested}])
 
 
+class TintTest(unittest.TestCase):
+    def test_color_tints_the_viewer_and_the_manifest(self):
+        from gpio_3d.export import write_part
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "model"
+            write_part(clip_mesh(4, 1, 2), "tinted-clip", ["companion-header"], model, "#22CC88")
+            manifest = json.loads((model / "manifest.json").read_text())
+            self.assertEqual(manifest["parts"][0]["color"], "#22cc88")
+            glb = (model / "tinted-clip.glb").read_bytes()
+            self.assertIn(b"COLOR_0", glb)
+            plain_dir = Path(tmp) / "plain"
+            write_part(clip_mesh(4, 1, 2), "plain-clip", ["companion-header"], plain_dir)
+            plain = json.loads((plain_dir / "manifest.json").read_text())
+            self.assertNotIn("color", plain["parts"][0])
+            self.assertNotIn(b"COLOR_0", (plain_dir / "plain-clip.glb").read_bytes())
+
+    def test_color_is_replaced_when_the_same_name_is_rewritten(self):
+        from gpio_3d.export import write_part
+
+        with tempfile.TemporaryDirectory() as tmp:
+            model = Path(tmp) / "model"
+            write_part(clip_mesh(4, 1, 2), "part", ["companion-header"], model, "#ff0000")
+            write_part(clip_mesh(4, 1, 2), "part", ["companion-header"], model)
+            manifest = json.loads((model / "manifest.json").read_text())
+            self.assertNotIn("color", manifest["parts"][0])
+            self.assertNotIn(b"COLOR_0", (model / "part.glb").read_bytes())
+
+    def test_color_must_be_rrggbb(self):
+        from gpio_3d.export import part_color
+
+        self.assertEqual(part_color("#22CC88"), "#22cc88")
+        with self.assertRaises(Gpio3dError):
+            part_color("22cc88")
+        with self.assertRaises(Gpio3dError):
+            part_color("#22cc8")
+        with self.assertRaises(Gpio3dError):
+            part_color("#22cc8g")
+
+
 class CliTest(unittest.TestCase):
     def test_clip_writes_manifest_and_replaces_the_same_name(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -449,6 +489,58 @@ class CliTest(unittest.TestCase):
             )
             self.assertEqual(piped.returncode, 0, piped.stderr)
             self.assertTrue((model / "custom-clip.glb").is_file())
+
+    def test_cli_accepts_a_color_and_a_colored_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            clip = run_cli(
+                [
+                    "clip",
+                    "--name",
+                    "tinted",
+                    "--cols",
+                    "4",
+                    "--rows",
+                    "1",
+                    "--thickness",
+                    "2",
+                    "--fits",
+                    "companion-header",
+                    "--color",
+                    "#22CC88",
+                    "--dir",
+                    str(model),
+                ],
+                parent,
+            )
+            self.assertEqual(clip.returncode, 0, clip.stderr)
+            manifest = json.loads((model / "manifest.json").read_text())
+            self.assertEqual(manifest["parts"][0]["color"], "#22cc88")
+            self.assertIn(b"COLOR_0", (model / "tinted.glb").read_bytes())
+            recipe = parent / "recipe.json"
+            recipe.write_text(
+                json.dumps(
+                    {
+                        "name": "tinted-build",
+                        "units": "mm",
+                        "fits": ["companion-header"],
+                        "color": "#3355ff",
+                        "ops": [{"op": "box", "size": [10, 5, 2]}],
+                    }
+                )
+            )
+            build = run_cli(["build", str(recipe), "--dir", str(model)], parent)
+            self.assertEqual(build.returncode, 0, build.stderr)
+            manifest = json.loads((model / "manifest.json").read_text())
+            self.assertEqual(manifest["parts"][1]["color"], "#3355ff")
+            bad = dict(json.loads(recipe.read_text()))
+            bad["name"] = "bad-color"
+            bad["color"] = "red"
+            recipe.write_text(json.dumps(bad))
+            failed = run_cli(["build", str(recipe), "--dir", str(model)], parent)
+            self.assertNotEqual(failed.returncode, 0)
+            self.assertIn("color", failed.stderr)
 
     def test_build_writes_a_complex_recipe(self):
         with tempfile.TemporaryDirectory() as tmp:

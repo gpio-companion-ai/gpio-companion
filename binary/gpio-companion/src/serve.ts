@@ -43,6 +43,7 @@ import {
 	isGpioWsRefresh,
 	isOpencodeProxyPath,
 	isRunPath,
+	isUiPath,
 	isUsbArduinoPort,
 	isVerifyPath,
 	LOGS_PATH,
@@ -86,7 +87,11 @@ import {
 	redactLogText,
 	scopeOpencodeSearch,
 	secretsStatus,
+	UI_PATH,
+	UI_REPLY_POLL_MS,
+	UiError,
 	UPDATE_PATH,
+	uiReplyIdFromPath,
 	VERIFY_PATH,
 	VERIFY_STOP_PATH,
 	VERSION,
@@ -164,6 +169,7 @@ import type { SecretsStore } from "./secrets.ts";
 import { listBoardSketches } from "./sketches.ts";
 import { type ConfigStore, DEFAULT_PORT } from "./store.ts";
 import type { ApplyTunnel } from "./tunnel.ts";
+import { createUiHub, type UiHub } from "./ui.ts";
 import type { ApplyUpdate } from "./update.ts";
 import { createCircuitVerify, type VerifyController } from "./verify.ts";
 import type { ApplyWifi } from "./wifi.ts";
@@ -214,6 +220,8 @@ export type ServeOptions = {
 	verify?: VerifyController;
 	proxy?: ArduinoProxyController;
 	console?: ConsoleHub;
+	ui?: UiHub;
+	uiReplyPollMs?: number;
 	projectsDir?: string;
 };
 
@@ -229,6 +237,8 @@ export type DeviceRequestExtras = {
 	verify?: VerifyController;
 	proxy?: ArduinoProxyController;
 	console?: ConsoleHub;
+	ui?: UiHub;
+	uiReplyPollMs?: number;
 	projectsDir?: string;
 	applyUpdate?: ApplyUpdate;
 	applyProjects?: ApplyProjects;
@@ -248,7 +258,7 @@ export type DeviceRequestExtras = {
 };
 
 type TunnelWsData = {
-	stream: "debug" | "gpio" | "console" | "files" | "opencode";
+	stream: "debug" | "gpio" | "console" | "files" | "opencode" | "ui";
 	repo?: string;
 	lastEventId?: string;
 };
@@ -277,6 +287,7 @@ export function startDeviceApi(options: ServeOptions) {
 		hardware: async () => (await options.store.read()).hardware,
 	});
 	const consoleHub = options.console ?? createConsoleHub();
+	const uiHub = options.ui ?? createUiHub();
 	const fileHub = createBoardFileHub(options.projectsDir ?? projectsRoot());
 	const opencodeStops = new WeakMap<object, AbortController>();
 	const opencodeEnvPath =
@@ -358,6 +369,8 @@ export function startDeviceApi(options: ServeOptions) {
 		gpioStream,
 		proxy,
 		console: consoleHub,
+		ui: uiHub,
+		uiReplyPollMs: options.uiReplyPollMs,
 		files: fileHub,
 		flash:
 			options.flash ??
@@ -477,6 +490,7 @@ export function startDeviceApi(options: ServeOptions) {
 				path !== DEBUG_PATH &&
 				path !== GPIO_PATH &&
 				path !== CONSOLE_PATH &&
+				path !== UI_PATH &&
 				!watchRepo &&
 				!eventRepo
 			) {
@@ -529,6 +543,23 @@ export function startDeviceApi(options: ServeOptions) {
 					})) ?? (undefined as never)
 				);
 			}
+			if (
+				request.method === "GET" &&
+				path === UI_PATH &&
+				upgrade === "websocket"
+			) {
+				return (
+					(await acceptSignedUpgrade(request, server, {
+						path: UI_PATH,
+						stream: "ui",
+						label: "ui",
+						allowOrigin: (origin) => isAllowedDebugOrigin(origin, dashboardUrl),
+						deviceAuth: options.deviceAuth,
+						clock,
+						nonces,
+					})) ?? (undefined as never)
+				);
+			}
 			let response: Response;
 			try {
 				response = await handleDeviceRequest(
@@ -561,6 +592,7 @@ export function startDeviceApi(options: ServeOptions) {
 					error instanceof AgentError ||
 					error instanceof VerifyError ||
 					error instanceof ConsoleError ||
+					error instanceof UiError ||
 					error instanceof ArduinoProxyError
 				) {
 					response = Response.json(
@@ -592,6 +624,10 @@ export function startDeviceApi(options: ServeOptions) {
 					consoleHub.add(ws);
 					return;
 				}
+				if (ws.data.stream === "ui") {
+					uiHub.add(ws);
+					return;
+				}
 				if (ws.data.stream === "files") {
 					if (ws.data.repo) {
 						fileHub.add(ws, ws.data.repo);
@@ -615,6 +651,10 @@ export function startDeviceApi(options: ServeOptions) {
 				}
 				if (ws.data.stream === "console") {
 					consoleHub.handle(ws, text);
+					return;
+				}
+				if (ws.data.stream === "ui") {
+					uiHub.handle(ws, text);
 				}
 			},
 			close(ws) {
@@ -624,6 +664,10 @@ export function startDeviceApi(options: ServeOptions) {
 				}
 				if (ws.data.stream === "console") {
 					consoleHub.remove(ws);
+					return;
+				}
+				if (ws.data.stream === "ui") {
+					uiHub.remove(ws);
 					return;
 				}
 				if (ws.data.stream === "files") {
@@ -735,6 +779,7 @@ export async function handleDeviceRequest(
 			isAgentPath(path) ||
 			isVerifyPath(path) ||
 			isConsolePath(path) ||
+			isUiPath(path) ||
 			isArduinoProxyPath(path)) &&
 		isLoopback(url) &&
 		!hasDeviceSignature(request.headers)
@@ -760,6 +805,9 @@ export async function handleDeviceRequest(
 		}
 		if (isConsolePath(path)) {
 			return handleConsole(method, path, bodyText, extras);
+		}
+		if (isUiPath(path)) {
+			return await handleUi(method, path, bodyText, extras);
 		}
 		if (isArduinoProxyPath(path) && path === ARDUINO_PROXY_PATH) {
 			return handleArduinoProxy(method, extras);
@@ -1122,6 +1170,10 @@ export async function handleDeviceRequest(
 
 	if (isConsolePath(path)) {
 		return handleConsole(method, path, bodyText, extras);
+	}
+
+	if (isUiPath(path)) {
+		return await handleUi(method, path, bodyText, extras);
 	}
 
 	if (method === "GET" && path === "/v1/status") {
@@ -1619,6 +1671,36 @@ function handleConsole(
 	}
 	if (method === "POST" && path === CONSOLE_USB_STOP_PATH) {
 		return json(hub.stopUsb());
+	}
+	return json({ error: "method not allowed" }, 405);
+}
+
+async function handleUi(
+	method: string,
+	path: string,
+	bodyText: string,
+	extras: DeviceRequestExtras | undefined,
+): Promise<Response> {
+	const hub = extras?.ui;
+	if (!hub) {
+		return json({ error: "ui is unavailable" }, 503);
+	}
+	if (method === "GET" && path === UI_PATH) {
+		return json({ sockets: hub.list() });
+	}
+	if (method === "POST" && path === UI_PATH) {
+		return json(hub.command(parseJson(bodyText)));
+	}
+	const replyId = uiReplyIdFromPath(path);
+	if (method === "GET" && replyId) {
+		const reply = await hub.waitReply(
+			replyId,
+			extras?.uiReplyPollMs ?? UI_REPLY_POLL_MS,
+		);
+		if (!reply) {
+			return json({ error: "no reply" }, 404);
+		}
+		return json({ action: reply.action });
 	}
 	return json({ error: "method not allowed" }, 405);
 }

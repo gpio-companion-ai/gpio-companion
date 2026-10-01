@@ -8,6 +8,7 @@ config.watchFolders = [...(config.watchFolders ?? []), i18nRoot, coreSrc];
 config.resolver.extraNodeModules = {
 	...(config.resolver.extraNodeModules ?? {}),
 	"gpio-companion-i18n": i18nRoot,
+	"gpio-companion-ui": path.join(coreSrc, "ui.ts"),
 	"gpio-companion-embed": path.join(coreSrc, "breadboard-embed.ts"),
 	"gpio-companion-model": path.join(coreSrc, "model-view.ts"),
 	"gpio-companion-wifi": path.join(coreSrc, "wifi.ts"),

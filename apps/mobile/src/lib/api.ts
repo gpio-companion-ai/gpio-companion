@@ -919,6 +919,13 @@ export function connectConsoleLive(token: string, uuid: string) {
 	});
 }
 
+export function connectUiLive(token: string, uuid: string) {
+	return request<{ wsUrl: string }>(token, "/api/mobile/ui-live", {
+		method: "POST",
+		body: JSON.stringify({ uuid }),
+	});
+}
+
 export function startUsbConsole(
 	token: string,
 	input: { uuid: string; port: string; baud?: number },

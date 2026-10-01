@@ -1,6 +1,13 @@
 import Button from "@shpaw415/mui-lite/Button";
+import Dialog, {
+	DialogActions,
+	DialogContent,
+	DialogTitle,
+} from "@shpaw415/mui-lite/Dialog";
 import IconButton from "@shpaw415/mui-lite/IconButton";
+import Snackbar from "@shpaw415/mui-lite/Snackbar";
 import Typography from "@shpaw415/mui-lite/Typography";
+import type { UiModalCommand } from "gpio-companion-ui";
 import {
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
@@ -13,6 +20,7 @@ import { useUserBoards } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useConsoleTunnel } from "../hooks/useConsoleTunnel";
 import { useDashboardMode } from "../hooks/useDashboardMode";
+import { useUiSocket } from "../hooks/useUiSocket";
 import {
 	type DeviceTabId,
 	deviceTabs,
@@ -112,6 +120,76 @@ export default function DeckShell({
 	const [dockHeight, setDockHeight] = useState(readDockHeight);
 	const [profileSection, setProfileSection] =
 		useState<ProfileSection>("account");
+	const [uiToast, setUiToast] = useState<string | null>(null);
+	const [uiModal, setUiModal] = useState<UiModalCommand | null>(null);
+	const uiToastTimer = useRef(0);
+
+	const uiSocket = useUiSocket({
+		surface: "desktop",
+		enabled: Boolean(uuid),
+		uuid,
+		isFocused: () => document.hasFocus(),
+		onCommand: (command) => {
+			switch (command.type) {
+				case "navigate": {
+					const target = command.target;
+					if (
+						(target === "debug" || target === "admin") &&
+						(isEasy || !admin)
+					) {
+						return;
+					}
+					if (target === "project") {
+						onNavigate("project");
+						return;
+					}
+					if (target === "devices") {
+						onNavigate("devices");
+						onDeviceTab("overview");
+						return;
+					}
+					if (
+						target === "profile" ||
+						target === "keys" ||
+						target === "credits" ||
+						target === "github"
+					) {
+						onNavigate("profile");
+						return;
+					}
+					onNavigate("devices");
+					onDeviceTab(target);
+					return;
+				}
+				case "dock":
+					setDockOpen(true);
+					setDockTab(command.tab);
+					return;
+				case "palette":
+					setPaletteOpen(command.open);
+					return;
+				case "toast":
+					setUiToast(command.text);
+					window.clearTimeout(uiToastTimer.current);
+					uiToastTimer.current = window.setTimeout(
+						() => setUiToast(null),
+						4000,
+					);
+					return;
+				case "modal":
+					setUiModal(command);
+					return;
+			}
+		},
+	});
+
+	function closeUiModal(action: string) {
+		if (!uiModal) {
+			return;
+		}
+		uiSocket.reply(uiModal.id, action);
+		setUiModal(null);
+	}
 
 	useEffect(() => {
 		function onAddress() {
@@ -611,6 +689,49 @@ export default function DeckShell({
 					</div>
 				</div>
 			) : null}
+
+			<Snackbar
+				open={Boolean(uiToast)}
+				autoHideDuration={4000}
+				onClose={() => setUiToast(null)}
+				message={uiToast ?? ""}
+				position="top-center"
+			/>
+
+			<Dialog
+				open={Boolean(uiModal)}
+				onClose={() => closeUiModal("dismiss")}
+				fullWidth
+				scroll="paper"
+				sx={{ zIndex: 1400 }}
+				slotProps={{ paper: { className: "max-w-xl w-full" } }}
+			>
+				<DialogTitle>{uiModal?.title ?? ""}</DialogTitle>
+				<DialogContent>
+					<Typography sx={{ whiteSpace: "pre-wrap" }}>
+						{uiModal?.body ?? ""}
+					</Typography>
+				</DialogContent>
+				<DialogActions>
+					{(uiModal?.buttons ?? []).map((label) => (
+						<Button
+							key={label}
+							type="button"
+							variant="text"
+							onClick={() => closeUiModal(label)}
+						>
+							{label}
+						</Button>
+					))}
+					<Button
+						type="button"
+						variant="text"
+						onClick={() => closeUiModal("dismiss")}
+					>
+						{t("deck.ui.dismiss")}
+					</Button>
+				</DialogActions>
+			</Dialog>
 		</div>
 	);
 }

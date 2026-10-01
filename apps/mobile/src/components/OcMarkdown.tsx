@@ -1,0 +1,246 @@
+import {
+	type OpencodeInline,
+	type OpencodeMarkdown,
+	parseOpencodeMarkdown,
+} from "gpio-companion-opencode";
+import { Fragment, type ReactNode } from "react";
+import { Linking, ScrollView, Text, View } from "react-native";
+import { useColors } from "../lib/color-mode.tsx";
+
+export function MarkdownView({ text, color }: { text: string; color: string }) {
+	return <Blocks text={text} color={color} />;
+}
+
+function at<T>(
+	items: readonly T[],
+	render: (item: T, index: number) => ReactNode,
+) {
+	return items.map((item, index) => (
+		// biome-ignore lint/suspicious/noArrayIndexKey: markdown nodes stay in source order
+		<Fragment key={index}>{render(item, index)}</Fragment>
+	));
+}
+
+export function Blocks({ text, color }: { text: string; color: string }) {
+	const colors = useColors();
+	const blocks = parseOpencodeMarkdown(text);
+	if (blocks.length === 0 && text) {
+		return <Text style={{ color }}>{text}</Text>;
+	}
+	return (
+		<View style={{ gap: 8 }}>
+			{at(blocks, (block) => (
+				<MdBlock block={block} color={color} colors={colors} />
+			))}
+		</View>
+	);
+}
+
+function Inlines({
+	inlines,
+	color,
+	link,
+}: {
+	inlines: OpencodeInline[];
+	color: string;
+	link: string;
+}) {
+	return at(inlines, (node) => (
+		<Inline node={node} color={color} link={link} />
+	));
+}
+
+function Inline({
+	node,
+	color,
+	link,
+}: {
+	node: OpencodeInline;
+	color: string;
+	link: string;
+}) {
+	if (node.type === "text") {
+		return node.text;
+	}
+	if (node.type === "break") {
+		return "\n";
+	}
+	if (node.type === "code") {
+		return (
+			<Text
+				style={{
+					color,
+					fontFamily: "monospace",
+					backgroundColor: "rgba(127,127,127,0.12)",
+				}}
+			>
+				{node.text}
+			</Text>
+		);
+	}
+	if (node.type === "strong") {
+		return (
+			<Text style={{ fontWeight: "700" }}>
+				<Inlines inlines={node.inlines} color={color} link={link} />
+			</Text>
+		);
+	}
+	if (node.type === "em") {
+		return (
+			<Text style={{ fontStyle: "italic" }}>
+				<Inlines inlines={node.inlines} color={color} link={link} />
+			</Text>
+		);
+	}
+	if (node.type === "strike") {
+		return (
+			<Text style={{ textDecorationLine: "line-through" }}>
+				<Inlines inlines={node.inlines} color={color} link={link} />
+			</Text>
+		);
+	}
+	return (
+		<Text
+			style={{ color: link, textDecorationLine: "underline" }}
+			onPress={() => {
+				if (/^https?:\/\//i.test(node.href)) {
+					void Linking.openURL(node.href);
+				}
+			}}
+		>
+			<Inlines inlines={node.inlines} color={link} link={link} />
+		</Text>
+	);
+}
+
+function MdBlock({
+	block,
+	color,
+	colors,
+}: {
+	block: OpencodeMarkdown;
+	color: string;
+	colors: ReturnType<typeof useColors>;
+}) {
+	if (block.type === "heading") {
+		const size = block.level === 1 ? 20 : block.level === 2 ? 17 : 15;
+		return (
+			<Text style={{ color, fontWeight: "700", fontSize: size }}>
+				<Inlines inlines={block.inlines} color={color} link={colors.primary} />
+			</Text>
+		);
+	}
+	if (block.type === "code") {
+		return (
+			<ScrollView horizontal nestedScrollEnabled>
+				<Text
+					style={{
+						color,
+						fontFamily: "monospace",
+						fontSize: 12,
+						backgroundColor: colors.chipBg,
+						padding: 8,
+						borderRadius: 8,
+					}}
+				>
+					{block.lang ? `${block.lang}\n` : ""}
+					{block.text}
+				</Text>
+			</ScrollView>
+		);
+	}
+	if (block.type === "list") {
+		return (
+			<View style={{ gap: 4 }}>
+				{at(block.items, (item, index) => (
+					<View style={{ flexDirection: "row", gap: 6 }}>
+						<Text style={{ color }}>
+							{block.ordered ? `${block.start + index}.` : "•"}
+						</Text>
+						<View style={{ flex: 1, gap: 4 }}>
+							<Text style={{ color }}>
+								<Inlines
+									inlines={item.inlines}
+									color={color}
+									link={colors.primary}
+								/>
+							</Text>
+							{at(item.blocks, (child) => (
+								<MdBlock block={child} color={color} colors={colors} />
+							))}
+						</View>
+					</View>
+				))}
+			</View>
+		);
+	}
+	if (block.type === "quote") {
+		return (
+			<View
+				style={{
+					borderLeftWidth: 2,
+					borderLeftColor: colors.border,
+					paddingLeft: 10,
+					gap: 4,
+				}}
+			>
+				{at(block.blocks, (child) => (
+					<MdBlock block={child} color={colors.muted} colors={colors} />
+				))}
+			</View>
+		);
+	}
+	if (block.type === "table") {
+		return (
+			<ScrollView horizontal nestedScrollEnabled>
+				<View>
+					<View style={{ flexDirection: "row" }}>
+						{at(block.header, (cell) => (
+							<Text
+								style={{
+									color,
+									fontWeight: "700",
+									minWidth: 72,
+									padding: 6,
+									borderWidth: 1,
+									borderColor: colors.border,
+								}}
+							>
+								<Inlines inlines={cell} color={color} link={colors.primary} />
+							</Text>
+						))}
+					</View>
+					{at(block.rows, (row) => (
+						<View style={{ flexDirection: "row" }}>
+							{at(row, (cell) => (
+								<Text
+									style={{
+										color,
+										minWidth: 72,
+										padding: 6,
+										borderWidth: 1,
+										borderColor: colors.border,
+									}}
+								>
+									<Inlines inlines={cell} color={color} link={colors.primary} />
+								</Text>
+							))}
+						</View>
+					))}
+				</View>
+			</ScrollView>
+		);
+	}
+	if (block.type === "hr") {
+		return (
+			<View
+				style={{ height: 1, backgroundColor: colors.border, marginVertical: 4 }}
+			/>
+		);
+	}
+	return (
+		<Text style={{ color }}>
+			<Inlines inlines={block.inlines} color={color} link={colors.primary} />
+		</Text>
+	);
+}

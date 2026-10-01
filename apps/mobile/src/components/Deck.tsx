@@ -1,5 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePathname, useRouter } from "expo-router";
+import type { UiModalCommand } from "gpio-companion-ui";
 import {
 	type ReactNode,
 	useCallback,
@@ -10,6 +11,8 @@ import {
 } from "react";
 import {
 	Animated,
+	AppState,
+	DeviceEventEmitter,
 	Image,
 	Modal,
 	PanResponder,
@@ -56,6 +59,7 @@ import { storageGet, storageSet } from "../lib/storage.ts";
 import { useConsoleTunnel } from "../lib/use-console-tunnel.ts";
 import { useDeviceHub as useLiveHub } from "../lib/use-device-hub.ts";
 import { useGpioTunnel } from "../lib/use-gpio-tunnel.ts";
+import { useUiSocket } from "../lib/use-ui-socket.ts";
 import { ErrorText, PrimaryButton, TextButton } from "./ui.tsx";
 
 const logo = require("../../assets/logo.png");
@@ -139,6 +143,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 	const { isDark, toggleMode: toggleTheme } = useColorMode();
 	const { mode, isEasy, toggleMode } = useDashboardMode();
 	const { tab, setTab } = useDeviceHub();
+	const tCore = useT();
 	const auth = useAuth();
 	const router = useRouter();
 	const pathname = usePathname();
@@ -169,6 +174,93 @@ function DeckFrame({ children }: { children: ReactNode }) {
 		},
 		[router, setProfileSection],
 	);
+
+	const [uiToast, setUiToast] = useState<string | null>(null);
+	const [uiModal, setUiModal] = useState<UiModalCommand | null>(null);
+	const uiToastTimer = useRef(0);
+	const admin = auth.session?.role === "admin";
+
+	const uiSocket = useUiSocket({
+		surface: "mobile",
+		enabled: Boolean(auth.token && selectedBoardUuid),
+		uuid: selectedBoardUuid,
+		authToken: auth.token ?? "",
+		isFocused: () => AppState.currentState === "active",
+		onCommand: (command) => {
+			switch (command.type) {
+				case "navigate": {
+					const target = command.target;
+					if (
+						(target === "debug" || target === "admin") &&
+						(isEasy || !admin)
+					) {
+						return;
+					}
+					if (target === "project") {
+						navigate("/project");
+						return;
+					}
+					if (target === "devices") {
+						setTab("overview");
+						navigate("/");
+						return;
+					}
+					if (target === "profile") {
+						jumpProfile("account");
+						router.navigate("/profile");
+						return;
+					}
+					if (target === "github" || target === "credits") {
+						jumpProfile(target);
+						router.navigate("/profile");
+						return;
+					}
+					if (
+						target === "code" ||
+						target === "docs" ||
+						target === "pair" ||
+						target === "wifi" ||
+						target === "requests"
+					) {
+						setTab(target);
+						navigate("/");
+					}
+					return;
+				}
+				case "dock": {
+					DeviceEventEmitter.emit("gpio-ui-dock", { tab: command.tab });
+					if (pathname.includes("profile")) {
+						router.navigate("/project");
+					}
+					return;
+				}
+				case "palette":
+					setPaletteOpen(command.open);
+					return;
+				case "toast":
+					setUiToast(command.text);
+					if (uiToastTimer.current) {
+						clearTimeout(uiToastTimer.current);
+					}
+					uiToastTimer.current = setTimeout(
+						() => setUiToast(null),
+						4000,
+					) as unknown as number;
+					return;
+				case "modal":
+					setUiModal(command);
+					return;
+			}
+		},
+	});
+
+	function closeUiModal(action: string) {
+		if (!uiModal) {
+			return;
+		}
+		uiSocket.reply(uiModal.id, action);
+		setUiModal(null);
+	}
 	const commands = useMemo<Command[]>(() => {
 		const base: Command[] = [
 			{
@@ -508,6 +600,99 @@ function DeckFrame({ children }: { children: ReactNode }) {
 									{t("deck.noResults")}
 								</Text>
 							)}
+						</View>
+					</Pressable>
+				</Pressable>
+			</Modal>
+
+			{uiToast ? (
+				<View
+					pointerEvents="none"
+					accessibilityLiveRegion="polite"
+					accessibilityLabel={tCore("deck.ui.toastLabel")}
+					style={{
+						position: "absolute",
+						left: 16,
+						right: 16,
+						bottom: 140,
+						backgroundColor: colors.surface,
+						borderWidth: 1,
+						borderColor: colors.border,
+						borderRadius: 10,
+						paddingVertical: 10,
+						paddingHorizontal: 14,
+					}}
+				>
+					<Text style={{ color: colors.text, fontSize: 13 }}>{uiToast}</Text>
+				</View>
+			) : null}
+
+			<Modal
+				visible={Boolean(uiModal)}
+				transparent
+				animationType="fade"
+				onRequestClose={() => closeUiModal("dismiss")}
+			>
+				<Pressable
+					onPress={() => closeUiModal("dismiss")}
+					style={{
+						flex: 1,
+						alignItems: "center",
+						justifyContent: "center",
+						padding: 24,
+						backgroundColor: "rgba(0,0,0,0.6)",
+					}}
+				>
+					<Pressable
+						onPress={() => undefined}
+						accessibilityRole="alert"
+						accessibilityLabel={`${tCore("deck.ui.modalTitle")}: ${uiModal?.title ?? ""}`}
+						style={{
+							width: "100%",
+							maxWidth: 420,
+							backgroundColor: colors.surface,
+							borderRadius: 14,
+							padding: 16,
+						}}
+					>
+						<Text
+							style={{
+								color: colors.text,
+								fontSize: 17,
+								fontWeight: "700",
+							}}
+						>
+							{uiModal?.title ?? ""}
+						</Text>
+						<Text
+							style={{
+								color: colors.text,
+								fontSize: 14,
+								marginTop: 10,
+							}}
+						>
+							{uiModal?.body ?? ""}
+						</Text>
+						<View
+							style={{
+								flexDirection: "row",
+								justifyContent: "flex-end",
+								flexWrap: "wrap",
+								gap: 8,
+								marginTop: 16,
+							}}
+						>
+							{(uiModal?.buttons ?? []).map((label) => (
+								<TextButton
+									key={label}
+									label={label}
+									onPress={() => closeUiModal(label)}
+								/>
+							))}
+							<TextButton
+								label={tCore("deck.ui.dismiss")}
+								onPress={() => closeUiModal("dismiss")}
+							/>
 						</View>
 					</Pressable>
 				</Pressable>
@@ -1164,6 +1349,28 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 	const [height, setHeight] = useState(DOCK_DEFAULT);
 	const [tab, setTab] = useState<DockTab>("console");
 	const [collapsed, setCollapsed] = useState(false);
+
+	useEffect(() => {
+		const subscription = DeviceEventEmitter.addListener(
+			"gpio-ui-dock",
+			(payload: unknown) => {
+				const next =
+					payload && typeof payload === "object"
+						? (payload as { tab?: unknown }).tab
+						: undefined;
+				if (
+					next === "console" ||
+					next === "gpio" ||
+					next === "flash" ||
+					next === "problems"
+				) {
+					setTab(next);
+					setCollapsed(false);
+				}
+			},
+		);
+		return () => subscription.remove();
+	}, []);
 	const [gpioHeader, setGpioHeader] = useState<GpioSnapshot | null>(null);
 	const [gpioProxy, setGpioProxy] = useState<GpioSnapshot | null>(null);
 	const [proxyStatus, setProxyStatus] = useState<ArduinoProxyStatus | null>(

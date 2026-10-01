@@ -159,6 +159,12 @@ export const fr = {
 			navigation: "Navigation",
 			resizeDock: "Redimensionner le dock",
 		},
+		ui: {
+			modalTitle: "Message de l’agent de la carte",
+			dismiss: "Fermer",
+			toastLabel: "Message de l’agent de la carte",
+			replySent: "Réponse envoyée à l’agent de la carte.",
+		},
 	},
 	mode: {
 		easy: "Facile",
@@ -1127,6 +1133,8 @@ export const fr = {
 		files: "Fichiers",
 		viewJson: "JSON",
 		viewBreadboard: "Breadboard",
+		viewParsed: "Interprété",
+		viewRaw: "Brut",
 		branch: "Branche",
 		saveBoard: "Enregistrer sur la carte",
 		savingBoard: "Enregistrement…",

@@ -13,7 +13,8 @@ export const MODEL_FITS = [
 ] as const;
 
 const PART_FILE = /^[a-z0-9]+(?:-[a-z0-9]+)*\.glb$/;
-const PART_KEYS = ["name", "file", "units", "fits"] as const;
+const PART_COLOR = /^#[0-9a-f]{6}$/;
+const PART_KEYS = ["name", "file", "units", "fits", "color"] as const;
 const MANIFEST_KEYS = ["version", "units", "tool", "parts"] as const;
 
 export type ModelFit = (typeof MODEL_FITS)[number];
@@ -23,6 +24,7 @@ export type ModelPart = {
 	file: string;
 	units: typeof MODEL_UNITS;
 	fits: ModelFit[];
+	color?: string;
 };
 
 export type ModelManifest = {
@@ -134,12 +136,21 @@ export function parseModelManifest(input: unknown): ModelManifest {
 		if (part.units !== MODEL_UNITS) {
 			throw new ModelManifestError(`parts[${index}].units must be mm`);
 		}
-		return {
+		const parsed: ModelPart = {
 			name: part.name,
 			file: part.file,
 			units: MODEL_UNITS,
 			fits: parseFits(part.fits, index),
 		};
+		if (part.color != null) {
+			if (typeof part.color !== "string" || !PART_COLOR.test(part.color)) {
+				throw new ModelManifestError(
+					`parts[${index}].color must be a #rrggbb hex color`,
+				);
+			}
+			parsed.color = part.color;
+		}
+		return parsed;
 	});
 	return {
 		version: 1,

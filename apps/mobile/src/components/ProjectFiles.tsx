@@ -24,6 +24,7 @@ import {
 	editorEmbedUrl,
 	filterBoardNodes,
 	isEditorEmbedSave,
+	isMarkdownPath,
 	parseBoardFileEvent,
 	parseEditorEmbedChange,
 } from "gpio-companion-files";
@@ -55,6 +56,7 @@ import { useLocale, useT } from "../lib/locale.tsx";
 import type { Colors } from "../lib/theme.ts";
 import BreadboardWebView from "./BreadboardWebView.tsx";
 import ModelWebView from "./ModelWebView.tsx";
+import { MarkdownView } from "./OcMarkdown.tsx";
 
 type Props = {
 	token: string;
@@ -99,6 +101,7 @@ export default function ProjectFiles({
 	const [file, setFile] = useState<OpenFile | null>(null);
 	const [draft, setDraft] = useState("");
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
+	const [mdView, setMdView] = useState<"parsed" | "raw">("parsed");
 	const [rev, setRev] = useState(0);
 	const [stale, setStale] = useState(false);
 	const [note, setNote] = useState("");
@@ -147,6 +150,7 @@ export default function ProjectFiles({
 		setOpenDirs(new Set());
 		setFileFilter("");
 		setDiagramView("board");
+		setMdView("parsed");
 		openedPath.current = "";
 	}, [uuid, name]);
 
@@ -290,6 +294,7 @@ export default function ProjectFiles({
 			if (openedPath.current !== path) {
 				openedPath.current = path;
 				setDiagramView(path === BREADBOARD_DIAGRAM_JSON ? "board" : "json");
+				setMdView(isMarkdownPath(path) ? "parsed" : "raw");
 			}
 			setRev((value) => value + 1);
 			setStale(false);
@@ -804,6 +809,31 @@ export default function ProjectFiles({
 								</Pressable>
 							</View>
 						) : null}
+						{file.kind === "text" && isMarkdownPath(file.path) ? (
+							<View style={{ flexDirection: "row", gap: 8 }}>
+								<Pressable onPress={() => setMdView("parsed")}>
+									<Text
+										style={{
+											color:
+												mdView === "parsed" ? colors.primary : colors.muted,
+											fontWeight: "600",
+										}}
+									>
+										{t("code.viewParsed")}
+									</Text>
+								</Pressable>
+								<Pressable onPress={() => setMdView("raw")}>
+									<Text
+										style={{
+											color: mdView === "raw" ? colors.primary : colors.muted,
+											fontWeight: "600",
+										}}
+									>
+										{t("code.viewRaw")}
+									</Text>
+								</Pressable>
+							</View>
+						) : null}
 						{file.kind === "text" ? (
 							<Pressable
 								disabled={!dirty || busy === "board"}
@@ -835,6 +865,15 @@ export default function ProjectFiles({
 						<Text style={{ color: colors.muted, padding: 12 }}>
 							{t("code.binary")}
 						</Text>
+					) : file.kind === "text" &&
+						isMarkdownPath(file.path) &&
+						mdView === "parsed" ? (
+						<ScrollView
+							style={{ flex: 1 }}
+							contentContainerStyle={{ padding: 12 }}
+						>
+							<MarkdownView text={draft} color={colors.text} />
+						</ScrollView>
 					) : (
 						<EditorFrame
 							locale={locale}
