@@ -865,6 +865,7 @@ export function opencodeCall(body: {
 	response?: "once" | "always" | "reject";
 	answers?: string[][];
 	reject?: boolean;
+	mode?: "ask" | "full";
 }) {
 	return apiRequest<unknown>("POST", "/api/mobile/opencode", body);
 }

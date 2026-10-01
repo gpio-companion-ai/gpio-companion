@@ -26,6 +26,7 @@ import {
 	opencodeSessions,
 	opencodeStoredEffort,
 	opencodeStoredModel,
+	opencodeStoredPermissionMode,
 	opencodeToolStacks,
 	opencodeTurns,
 	parseOpencodeEventFrame,
@@ -130,7 +131,7 @@ describe("opencode session client", () => {
 		).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/question")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/permission")).toBe(true);
-		expect(opencodeProxyAllows("/v1/opencode/question/req_1")).toBe(false);
+		expect(opencodeProxyAllows("/v1/opencode/permission-mode")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/permission/per_1")).toBe(false);
 		expect(opencodeProxyAllows("/v1/opencode/question/req_1/reply")).toBe(true);
 		expect(opencodeProxyAllows("/v1/opencode/file")).toBe(false);
@@ -229,6 +230,9 @@ describe("opencode session client", () => {
 			variant: "medium",
 		});
 		expect(opencodeStoredEffort("nope")).toBe("medium");
+		expect(opencodeStoredPermissionMode("full")).toBe("full");
+		expect(opencodeStoredPermissionMode("nope")).toBe("ask");
+		expect(opencodeStoredPermissionMode(null)).toBe("ask");
 		expect(opencodePromptFields(DEFAULT_AI_MODEL, "low")).toEqual({
 			model: DEFAULT_AI_MODEL,
 			variant: "low",
@@ -270,6 +274,33 @@ describe("opencode session client", () => {
 				op: "permissions",
 			}),
 		).toEqual({ method: "GET", path: "/permission" });
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "permission-mode",
+			}),
+		).toEqual({ method: "GET", path: "/permission-mode" });
+		expect(
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "permission-mode",
+				mode: "full",
+			}),
+		).toEqual({
+			method: "POST",
+			path: "/permission-mode",
+			body: { mode: "full" },
+		});
+		expect(() =>
+			opencodeClientRequest({
+				uuid: "board",
+				repo: "blink-led",
+				op: "permission-mode",
+				mode: "once" as never,
+			}),
+		).toThrow("invalid permission mode");
 		expect(
 			opencodeClientRequest({
 				uuid: "board",

@@ -135,8 +135,10 @@ import {
 import { proxyJlcpcbRequest } from "./jlcpcb-proxy.ts";
 import { readJournalLogs } from "./logs.ts";
 import { readNetworkStatus } from "./network.ts";
-import { handleOpencodePermissionMode } from "./opencode-permission-mode.ts";
-import { OPENCODE_PERMISSION_MODE_PATH } from "./opencode-permission-mode.ts";
+import {
+	handleOpencodePermissionMode,
+	OPENCODE_PERMISSION_MODE_PATH,
+} from "./opencode-permission-mode.ts";
 import {
 	assertOpencodeProxyGranted,
 	bridgeOpencodeEvents,
@@ -237,6 +239,7 @@ export type DeviceRequestExtras = {
 	opencodeFetch?: FetchLike;
 	opencodeEnvPath?: string;
 	opencodeUpstream?: string;
+	opencodeJsonPath?: string;
 	revokeOpencode?: () => Promise<void>;
 	debug?: { publish(event: DebugEvent): void };
 	gpioStream?: { publish(): void };
@@ -395,6 +398,7 @@ export function startDeviceApi(options: ServeOptions) {
 		opencodeFetch: options.opencodeFetch,
 		opencodeEnvPath: options.opencodeEnvPath,
 		opencodeUpstream: options.opencodeUpstream,
+		opencodeJsonPath: options.opencodeJsonPath,
 		revokeOpencode: options.revokeOpencode,
 		debug,
 	};
@@ -1690,6 +1694,7 @@ async function proxySignedOpencode(
 				method: request.method.toUpperCase(),
 				bodyText,
 				store,
+				opencodeJsonPath: extras?.opencodeJsonPath,
 			});
 		} catch (error) {
 			const message =

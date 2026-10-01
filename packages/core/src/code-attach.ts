@@ -21,7 +21,34 @@ export const CODE_TTS_MAX_CHARS = 4000;
 export const CODE_TTS_XAI_ENDPOINT = "https://api.x.ai/v1/tts";
 export const CODE_TTS_XAI_DEFAULT_VOICE = "eve";
 export const CODE_TTS_XAI_USD_PER_MILLION_CHARS = 15;
-export const CODE_TTS_XAI_VOICES = ["ara", "eve", "leo", "rex", "sal"] as const;
+export const CODE_TTS_XAI_VOICES = [
+	"altair",
+	"ara",
+	"atlas",
+	"carina",
+	"castor",
+	"celeste",
+	"cosmo",
+	"eve",
+	"helios",
+	"helix",
+	"iris",
+	"kepler",
+	"leo",
+	"lumen",
+	"luna",
+	"lux",
+	"naksh",
+	"orion",
+	"perseus",
+	"rex",
+	"rigel",
+	"sirius",
+	"sal",
+	"ursa",
+	"zenith",
+	"zagan",
+] as const;
 export const CODE_VOICE_PRICE_WORKERS_AI = "$0.0002/min";
 export const CODE_VOICE_PRICE_XAI = "$15/1M chars";
 export type CodeVoiceProvider = "workers-ai" | "xai";

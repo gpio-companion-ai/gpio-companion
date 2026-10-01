@@ -1,10 +1,11 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
 	debugAuthQuery,
 	generateDeviceKeyPair,
+	OPENCODE_REPO_HEADER,
 	opencodeEventPath,
 	signDeviceRequest,
 } from "gpio-companion";
@@ -70,6 +71,7 @@ const server = startDeviceApi({
 	clockTrusted: () => false,
 	dashboardUrl: "https://gpio-companion.com",
 	opencodeEnvPath: envPath,
+	opencodeJsonPath: join(dir, "opencode.json"),
 	projectsDir: "/home/companion/projects",
 	revokeOpencode: async () => {
 		revoked += 1;
@@ -311,5 +313,33 @@ describe("signed opencode proxy", () => {
 		expect(again.status).toBe(200);
 		expect(seen[0]?.authorization).toBe(opencodeBasicAuthorization(rotated));
 		expect(seen[0]?.url.startsWith("http://127.0.0.1:4096/")).toBe(true);
+	});
+
+	test("permission mode stays on the board", async () => {
+		seen.length = 0;
+		const got = await signed("v1/opencode/permission-mode", {
+			headers: { [OPENCODE_REPO_HEADER]: "blink-led" },
+		});
+		expect(got.status).toBe(200);
+		expect(await got.json()).toEqual({ mode: "ask" });
+		expect(seen).toHaveLength(0);
+		const set = await signed("v1/opencode/permission-mode", {
+			method: "POST",
+			body: JSON.stringify({ mode: "full" }),
+			headers: { [OPENCODE_REPO_HEADER]: "blink-led" },
+		});
+		expect(set.status).toBe(200);
+		expect(await set.json()).toEqual({ mode: "full" });
+		const config = JSON.parse(await readFile(join(dir, "config.json"), "utf8"));
+		expect(config.opencodePermission).toBe("full");
+		const written = JSON.parse(
+			await readFile(join(dir, "opencode.json"), "utf8"),
+		);
+		expect(written.permission).toEqual({
+			edit: "allow",
+			bash: "allow",
+			webfetch: "allow",
+		});
+		expect(seen).toHaveLength(0);
 	});
 });

@@ -58,16 +58,20 @@ import {
 	noteOpencodePrompt,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
+	OPENCODE_PERMISSION_MODE_KEY,
+	OPENCODE_PERMISSION_MODES,
 	type OpencodeClientCall,
 	type OpencodeInline,
 	type OpencodeMarkdown,
 	type OpencodePart,
+	type OpencodePermissionMode,
 	type OpencodePermissionResponse,
 	type OpencodePromptEpoch,
 	type OpencodeTurn,
 	type OpencodeView,
 	opencodeEventResumeUrl,
 	opencodeModelChoices,
+	opencodePermissionMode,
 	opencodePromptFields,
 	opencodeQuestions,
 	opencodeReplyAccepted,
@@ -75,6 +79,7 @@ import {
 	opencodeSessions,
 	opencodeStoredEffort,
 	opencodeStoredModel,
+	opencodeStoredPermissionMode,
 	opencodeToolStacks,
 	opencodeTurns,
 	parseOpencodeEventFrame,
@@ -489,8 +494,10 @@ export default function Code() {
 	const [composerFocused, setComposerFocused] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
+	const [permissionMode, setPermissionMode] =
+		useState<OpencodePermissionMode>("ask");
 	const [picker, setPicker] = useState<
-		"" | "model" | "effort" | "project" | "board"
+		"" | "model" | "effort" | "permission" | "project" | "board"
 	>("");
 	const [replyBusy, setReplyBusy] = useState(false);
 	const [pane, setPane] = useState<"chat" | "files">("chat");
@@ -546,7 +553,35 @@ export default function Code() {
 		void storageGet(OPENCODE_EFFORT_KEY).then((value) => {
 			setEffort(opencodeStoredEffort(value));
 		});
+		void storageGet(OPENCODE_PERMISSION_MODE_KEY).then((value) => {
+			setPermissionMode(opencodeStoredPermissionMode(value));
+		});
 	}, []);
+
+	useEffect(() => {
+		if (!token || !selected || !repo) {
+			return;
+		}
+		let cancelled = false;
+		void opencodeCall(token, {
+			uuid: selected,
+			repo,
+			op: "permission-mode",
+		})
+			.then((result) => {
+				if (cancelled) {
+					return;
+				}
+				const record = result as { mode?: unknown } | null;
+				const mode = opencodePermissionMode(record?.mode);
+				setPermissionMode(mode);
+				void storageSet(OPENCODE_PERMISSION_MODE_KEY, mode);
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [token, selected, repo]);
 
 	useEffect(() => {
 		if (mode !== "session" || !view.sessionID) {
@@ -938,6 +973,30 @@ export default function Code() {
 			setError(caught instanceof Error ? caught.message : "request failed");
 			return null;
 		}
+	}
+
+	function permissionModeLabel(value: OpencodePermissionMode) {
+		return value === "full"
+			? t("code.permissionFull")
+			: t("code.permissionAsk");
+	}
+
+	function selectPermissionMode(id: string) {
+		const next = opencodeStoredPermissionMode(id);
+		if (next === permissionMode) {
+			return;
+		}
+		const previous = permissionMode;
+		setPermissionMode(next);
+		void storageSet(OPENCODE_PERMISSION_MODE_KEY, next);
+		void run({ repo, op: "permission-mode", mode: next }).then((data) => {
+			const record = data as { mode?: unknown } | null;
+			if (!record || opencodePermissionMode(record.mode) !== next) {
+				setPermissionMode(previous);
+				return;
+			}
+			setPermissionMode(next);
+		});
 	}
 
 	function shownError(message: string): string {
@@ -3037,6 +3096,30 @@ export default function Code() {
 							) : null}
 							<Pressable
 								accessibilityRole="button"
+								accessibilityLabel={t("code.permissionMode")}
+								onPress={() => setPicker("permission")}
+								style={({ pressed }) => ({
+									flexDirection: "row",
+									alignItems: "center",
+									gap: 6,
+									borderRadius: 8,
+									borderWidth: 1,
+									borderColor:
+										pressed || picker === "permission"
+											? colors.text
+											: colors.border,
+									paddingHorizontal: 10,
+									paddingVertical: 6,
+									backgroundColor: pressed ? colors.border : colors.chipBg,
+								})}
+							>
+								<Text style={{ color: colors.text, fontSize: 12 }}>
+									{permissionModeLabel(permissionMode)}
+								</Text>
+								<Text style={{ color: colors.text, fontSize: 10 }}>▾</Text>
+							</Pressable>
+							<Pressable
+								accessibilityRole="button"
 								accessibilityLabel={t("code.model")}
 								onPress={() => setPicker("model")}
 								style={({ pressed }) => ({
@@ -3097,6 +3180,7 @@ export default function Code() {
 							visible={
 								picker === "model" ||
 								picker === "effort" ||
+								picker === "permission" ||
 								picker === "project"
 							}
 							transparent
@@ -3125,9 +3209,11 @@ export default function Code() {
 									<Text style={[ink, { fontWeight: "600", marginBottom: 8 }]}>
 										{picker === "effort"
 											? t("code.effort")
-											: picker === "project"
-												? t("code.project")
-												: t("code.model")}
+											: picker === "permission"
+												? t("code.permissionMode")
+												: picker === "project"
+													? t("code.project")
+													: t("code.model")}
 									</Text>
 									<ScrollView
 										style={{ maxHeight: 360 }}
@@ -3183,38 +3269,58 @@ export default function Code() {
 															</Text>
 														</Pressable>
 													))
-												: modelChoices.map((item) => (
-														<Pressable
-															key={item.id}
-															onPress={() => {
-																const next = opencodeStoredModel(item.id);
-																setModel(next);
-																void storageSet(OPENCODE_MODEL_KEY, next);
-																setPicker("");
-															}}
-															style={({ pressed }) => ({
-																flexDirection: "row",
-																alignItems: "center",
-																gap: 12,
-																paddingVertical: 12,
-																paddingHorizontal: 8,
-																borderRadius: 8,
-																backgroundColor: pressed
-																	? colors.chipBg
-																	: "transparent",
-															})}
-														>
-															<Text
-																style={[ink, { flex: 1 }]}
-																numberOfLines={1}
+												: picker === "permission"
+													? OPENCODE_PERMISSION_MODES.map((item) => (
+															<Pressable
+																key={item}
+																onPress={() => {
+																	selectPermissionMode(item);
+																	setPicker("");
+																}}
+																style={{ paddingVertical: 12 }}
 															>
-																{item.name}
-															</Text>
-															<Text style={[muted, { fontSize: 12 }]}>
-																{item.provider}
-															</Text>
-														</Pressable>
-													))}
+																<Text style={ink}>
+																	{permissionModeLabel(item)}
+																</Text>
+																{item === "full" ? (
+																	<Text style={[muted, { fontSize: 12 }]}>
+																		{t("code.permissionFullHint")}
+																	</Text>
+																) : null}
+															</Pressable>
+														))
+													: modelChoices.map((item) => (
+															<Pressable
+																key={item.id}
+																onPress={() => {
+																	const next = opencodeStoredModel(item.id);
+																	setModel(next);
+																	void storageSet(OPENCODE_MODEL_KEY, next);
+																	setPicker("");
+																}}
+																style={({ pressed }) => ({
+																	flexDirection: "row",
+																	alignItems: "center",
+																	gap: 12,
+																	paddingVertical: 12,
+																	paddingHorizontal: 8,
+																	borderRadius: 8,
+																	backgroundColor: pressed
+																		? colors.chipBg
+																		: "transparent",
+																})}
+															>
+																<Text
+																	style={[ink, { flex: 1 }]}
+																	numberOfLines={1}
+																>
+																	{item.name}
+																</Text>
+																<Text style={[muted, { fontSize: 12 }]}>
+																	{item.provider}
+																</Text>
+															</Pressable>
+														))}
 									</ScrollView>
 								</Pressable>
 							</Pressable>

@@ -126,9 +126,7 @@ export const OPENCODE_PERMISSION_MODES: readonly OpencodePermissionMode[] = [
 	"full",
 ];
 
-export function opencodePermissionMode(
-	value: unknown,
-): OpencodePermissionMode {
+export function opencodePermissionMode(value: unknown): OpencodePermissionMode {
 	return value === "full" ? "full" : "ask";
 }
 

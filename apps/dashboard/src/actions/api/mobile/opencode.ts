@@ -41,6 +41,7 @@ export async function onRequestPost(ctx: MobileContext) {
 				? (body.answers as string[][])
 				: undefined,
 			reject: body.reject === true,
+			mode: body.mode === "ask" || body.mode === "full" ? body.mode : undefined,
 		};
 		const device = await ownedOpencodeDevice(ctx.env, identity, call.uuid);
 		return jsonOk(await callOpencode(ctx.env, device.deviceUrl, call));

@@ -435,6 +435,7 @@ export function opencodeCall(
 		response?: "once" | "always" | "reject";
 		answers?: string[][];
 		reject?: boolean;
+		mode?: "ask" | "full";
 	},
 ) {
 	return request<unknown>(token, "/api/mobile/opencode", {

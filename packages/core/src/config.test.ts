@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+	deviceOpencodePermissionMode,
 	emptyDeviceConfig,
 	parseDeviceConfig,
 	parseTunnelConfig,
@@ -35,6 +36,32 @@ describe("device config", () => {
 		});
 		expect(config.hardware).toBe("orangepi");
 		expect(redactDeviceConfig(config).tunnel.token).toBe("***");
+	});
+
+	test("parses opencode permission mode with ask default", () => {
+		expect(
+			parseDeviceConfig({
+				hardware: "raspberrypi",
+				tunnel: { token: "", hostname: "" },
+				opencodePermission: "full",
+			}).opencodePermission,
+		).toBe("full");
+		expect(
+			parseDeviceConfig({
+				hardware: "raspberrypi",
+				tunnel: { token: "", hostname: "" },
+				opencodePermission: "once",
+			}).opencodePermission,
+		).toBeUndefined();
+		expect(
+			deviceOpencodePermissionMode(
+				parseDeviceConfig({
+					hardware: "raspberrypi",
+					tunnel: { token: "", hostname: "" },
+				}),
+			),
+		).toBe("ask");
+		expect(deviceOpencodePermissionMode(undefined)).toBe("ask");
 	});
 
 	test("rejects unknown hardware", () => {

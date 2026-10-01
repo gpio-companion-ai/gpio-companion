@@ -1,9 +1,9 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
-	OPENCODE_PROXY_PATH,
-	deviceOpencodePermissionMode,
 	type DeviceConfig,
+	deviceOpencodePermissionMode,
+	OPENCODE_PROXY_PATH,
 	type OpencodePermissionMode,
 } from "gpio-companion";
 import { restartOpencodeUserService } from "./opencode-proxy.ts";
@@ -99,12 +99,15 @@ export async function handleOpencodePermissionMode(options: {
 			{ status: 400 },
 		);
 	}
-	const path = options.opencodeJsonPath ?? defaultOpencodePermissionConfigPath();
+	const path =
+		options.opencodeJsonPath?.trim() || defaultOpencodePermissionConfigPath();
 	const changed = await writeOpencodePermissionConfig(path, mode);
 	const next: DeviceConfig = { ...config, opencodePermission: mode };
 	await options.store.write(next);
 	if (changed === "changed" || current !== mode) {
-		await (options.restart ?? restartOpencodeUserService)();
+		await (options.restart ?? restartOpencodeUserService)().catch(
+			() => undefined,
+		);
 	}
 	return Response.json({ mode });
 }

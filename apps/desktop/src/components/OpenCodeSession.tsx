@@ -19,9 +19,9 @@ import {
 	codeMentionAt,
 	codeSpeechBlocks,
 	codeSpokenText,
+	codeVoiceProvider,
 	codeVoiceUtterance,
 	encodeBase64,
-	codeVoiceProvider,
 	filterCodeMentions,
 	removeContextDrafts,
 	renameContextDrafts,
@@ -48,16 +48,20 @@ import {
 	noteOpencodePrompt,
 	OPENCODE_EFFORT_KEY,
 	OPENCODE_MODEL_KEY,
+	OPENCODE_PERMISSION_MODE_KEY,
+	OPENCODE_PERMISSION_MODES,
 	type OpencodeClientCall,
 	type OpencodeInline,
 	type OpencodeMarkdown,
 	type OpencodePart,
+	type OpencodePermissionMode,
 	type OpencodePermissionResponse,
 	type OpencodePromptEpoch,
 	type OpencodeTurn,
 	type OpencodeView,
 	opencodeEventResumeUrl,
 	opencodeModelChoices,
+	opencodePermissionMode,
 	opencodePromptFields,
 	opencodeQuestions,
 	opencodeReplyAccepted,
@@ -65,6 +69,7 @@ import {
 	opencodeSessions,
 	opencodeStoredEffort,
 	opencodeStoredModel,
+	opencodeStoredPermissionMode,
 	opencodeToolStacks,
 	opencodeTurns,
 	parseOpencodeEventFrame,
@@ -94,6 +99,7 @@ import {
 	useState,
 } from "react";
 import {
+	getVoiceSettings,
 	listProjects,
 	opencodeCall,
 	openExternal,
@@ -101,7 +107,6 @@ import {
 	speakCode,
 	transcribeCode,
 	uploadBoardFile,
-	getVoiceSettings,
 } from "../api";
 import { useUserBoards } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
@@ -112,7 +117,7 @@ const PROJECT_KEY = "gpio-companion-selected-project";
 
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
-type ChipMenuId = "model" | "effort" | "project" | "board";
+type ChipMenuId = "model" | "effort" | "permission" | "project" | "board";
 
 function ChipMenu({
 	open,
@@ -587,9 +592,8 @@ export default function OpenCodeSession({
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [voiceMode, setVoiceMode] = useState(false);
-	const [voiceProvider, setVoiceProvider] = useState<CodeVoiceProvider>(
-		"workers-ai",
-	);
+	const [voiceProvider, setVoiceProvider] =
+		useState<CodeVoiceProvider>("workers-ai");
 	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
@@ -607,6 +611,8 @@ export default function OpenCodeSession({
 	const [showCustom, setShowCustom] = useState(false);
 	const [model, setModel] = useState(CODE_DEFAULT_MODEL);
 	const [effort, setEffort] = useState<ReasoningEffort>("medium");
+	const [permissionMode, setPermissionMode] =
+		useState<OpencodePermissionMode>("ask");
 	const [menu, setMenu] = useState<ChipMenuId | "">("");
 	const [replyBusy, setReplyBusy] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
@@ -687,11 +693,45 @@ export default function OpenCodeSession({
 			setEffort(
 				opencodeStoredEffort(window.localStorage.getItem(OPENCODE_EFFORT_KEY)),
 			);
+			setPermissionMode(
+				opencodeStoredPermissionMode(
+					window.localStorage.getItem(OPENCODE_PERMISSION_MODE_KEY),
+				),
+			);
 		} catch {
 			setModel(CODE_DEFAULT_MODEL);
 			setEffort("medium");
 		}
 	}, []);
+
+	useEffect(() => {
+		if (!selected || !repo) {
+			return;
+		}
+		let cancelled = false;
+		void opencodeCall({
+			uuid: selected,
+			repo,
+			op: "permission-mode",
+		})
+			.then((result) => {
+				if (cancelled) {
+					return;
+				}
+				const record = result as { mode?: unknown } | null;
+				const mode = opencodePermissionMode(record?.mode);
+				setPermissionMode(mode);
+				try {
+					window.localStorage.setItem(OPENCODE_PERMISSION_MODE_KEY, mode);
+				} catch {
+					return;
+				}
+			})
+			.catch(() => undefined);
+		return () => {
+			cancelled = true;
+		};
+	}, [selected, repo]);
 
 	useEffect(() => {
 		let stored = "";
@@ -825,6 +865,28 @@ export default function OpenCodeSession({
 		} catch {
 			return;
 		}
+	}
+
+	function selectPermissionMode(id: string) {
+		const next = opencodeStoredPermissionMode(id);
+		if (next === permissionMode) {
+			return;
+		}
+		const previous = permissionMode;
+		setPermissionMode(next);
+		try {
+			window.localStorage.setItem(OPENCODE_PERMISSION_MODE_KEY, next);
+		} catch {
+			return;
+		}
+		void run({ repo, op: "permission-mode", mode: next }).then((data) => {
+			const record = data as { mode?: unknown } | null;
+			if (!record || opencodePermissionMode(record.mode) !== next) {
+				setPermissionMode(previous);
+				return;
+			}
+			setPermissionMode(next);
+		});
 	}
 
 	function toggleMenu(id: ChipMenuId) {
@@ -2060,6 +2122,30 @@ export default function OpenCodeSession({
 		const reasoning = chosen?.reasoning === true;
 		return (
 			<>
+				<ChipMenu
+					open={menu === "permission"}
+					label={t("code.permissionMode")}
+					value={
+						permissionMode === "full"
+							? t("code.permissionFull")
+							: t("code.permissionAsk")
+					}
+					selected={permissionMode}
+					options={OPENCODE_PERMISSION_MODES.map((id) => ({
+						id,
+						name:
+							id === "full"
+								? t("code.permissionFull")
+								: t("code.permissionAsk"),
+						hint: id === "full" ? t("code.permissionFullHint") : undefined,
+					}))}
+					menuRef={menuRef}
+					onOpen={() => toggleMenu("permission")}
+					onPick={(id) => {
+						selectPermissionMode(id);
+						setMenu("");
+					}}
+				/>
 				<ChipMenu
 					open={menu === "model"}
 					label={t("code.model")}
