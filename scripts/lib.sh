@@ -1319,6 +1319,19 @@ PY
 	fi
 }
 
+GPIO_COMPANION_OPENVIKING_DEFAULT_VERSION="0.4.21"
+
+openviking_pinned_version() {
+	echo "${GPIO_COMPANION_OPENVIKING_VERSION:-$GPIO_COMPANION_OPENVIKING_DEFAULT_VERSION}"
+}
+
+openviking_installed_version() {
+	local venv
+	venv="$(openviking_venv_dir)"
+	[[ -x "$venv/bin/pip" ]] || return 1
+	"$venv/bin/pip" show openviking 2>/dev/null | awk '/^Version:/ {print $2}'
+}
+
 openviking_venv_dir() {
 	echo "${GPIO_COMPANION_OPENVIKING_VENV:-$LIB_DIR/openviking}"
 }

@@ -16,7 +16,7 @@ if [[ "${1:-}" == "--yes" || "${GPIO_COMPANION_OPENVIKING_YES:-}" == "1" ]]; the
 	ASSUME_YES=1
 fi
 
-OPENVIKING_VERSION="${GPIO_COMPANION_OPENVIKING_VERSION:-0.4.21}"
+OPENVIKING_VERSION="$(openviking_pinned_version)"
 OPENVIKING_VENV="${GPIO_COMPANION_OPENVIKING_VENV:-$LIB_DIR/openviking}"
 OPENVIKING_MIN_FREE_MB="${GPIO_COMPANION_OPENVIKING_MIN_FREE_MB:-1536}"
 OPENVIKING_PORT="${GPIO_COMPANION_OPENVIKING_PORT:-1933}"
@@ -59,16 +59,21 @@ if [[ "$available" -lt "$OPENVIKING_MIN_FREE_MB" ]]; then
 	die "not enough free storage: ${available}MB on / (need ${OPENVIKING_MIN_FREE_MB}MB)"
 fi
 
-echo "creating python venv..."
-install -d -m 0755 "$(dirname "$OPENVIKING_VENV")"
-if [[ ! -x "$OPENVIKING_VENV/bin/python3" ]]; then
-	python3 -m venv "$OPENVIKING_VENV"
-fi
+installed_version="$(openviking_installed_version || true)"
+if [[ "$installed_version" == "$OPENVIKING_VERSION" && -x "$OPENVIKING_VENV/bin/openviking-server" ]]; then
+	echo "openviking ${OPENVIKING_VERSION} already installed; skipping pip install"
+else
+	echo "creating python venv..."
+	install -d -m 0755 "$(dirname "$OPENVIKING_VENV")"
+	if [[ ! -x "$OPENVIKING_VENV/bin/python3" ]]; then
+		python3 -m venv "$OPENVIKING_VENV"
+	fi
 
-echo "installing openviking==${OPENVIKING_VERSION} (pinned, no cache)..."
-"$OPENVIKING_VENV/bin/pip" install --no-cache-dir --quiet "openviking==$OPENVIKING_VERSION"
-if [[ ! -x "$OPENVIKING_VENV/bin/openviking-server" ]]; then
-	die "openviking-server not present in venv after install"
+	echo "installing openviking==${OPENVIKING_VERSION} (pinned, no cache)..."
+	"$OPENVIKING_VENV/bin/pip" install --no-cache-dir --quiet "openviking==$OPENVIKING_VERSION"
+	if [[ ! -x "$OPENVIKING_VENV/bin/openviking-server" ]]; then
+		die "openviking-server not present in venv after install"
+	fi
 fi
 
 OV_HOME="$(gpio_user_home)/.openviking"
