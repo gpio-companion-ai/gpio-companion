@@ -396,12 +396,8 @@ export function codeSpokenText(text: string): string {
 }
 
 export const CODE_SPEECH_DIRECTIVE = [
-	"Speech mode is on: the user listens to your reply by voice.",
-	"Read the speech-mode skill first and follow it.",
-	"Narrate what you are doing in short plain sentences as you work.",
-	"Wrap every part meant to be spoken aloud in <speech>...</speech> tags -",
-	"one short spoken idea per tag, no code or file paths inside.",
-	"Keep technical detail outside the tags; the client reads only the tagged parts aloud.",
+	"Speech mode is on: the user listens to your reply by voice and only hears what is inside <speech>...</speech> tags.",
+	"Read the speech-mode skill first and follow it fully; it is the source of truth for how to talk in speech mode.",
 ].join(" ");
 
 export function codeAppendSpeechDirective(
