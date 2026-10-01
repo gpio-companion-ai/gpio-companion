@@ -269,7 +269,14 @@ type OpencodeSocket = {
 	data: TunnelWsData;
 };
 
-export function startDeviceApi(options: ServeOptions) {
+export type DeviceApiServer = ReturnType<typeof Bun.serve<TunnelWsData>> & {
+	run: RunController;
+	flash: FlashController;
+	verify: VerifyController;
+	console: ConsoleHub;
+};
+
+export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 	const port = options.port ?? DEFAULT_PORT;
 	const hostname = options.hostname ?? "0.0.0.0";
 	const clock = createClockGate(options);
@@ -360,6 +367,27 @@ export function startDeviceApi(options: ServeOptions) {
 		});
 	jobs.run = run;
 	jobs.verify = verify;
+	const flash =
+		options.flash ??
+		(() => {
+			const upload = proxyUploadHooks(proxy);
+			return createArduinoFlash({
+				beforeUpload: async (job) => {
+					consoleHub.stopUsb();
+					await upload.beforeUpload(job);
+				},
+				afterUpload: async (job, result) => {
+					if (!result.ok || job.dir === resolveArduinoProxyDir()) {
+						await upload.afterUpload(job, result);
+						return;
+					}
+					proxy.hold(false);
+					if (job.port) {
+						consoleHub.scheduleUsb(job.port);
+					}
+				},
+			});
+		})();
 	const extras: DeviceRequestExtras = {
 		readDisk: options.readDisk ?? readDiskStats,
 		readLogs: options.readLogs ?? readJournalLogs,
@@ -372,27 +400,7 @@ export function startDeviceApi(options: ServeOptions) {
 		ui: uiHub,
 		uiReplyPollMs: options.uiReplyPollMs,
 		files: fileHub,
-		flash:
-			options.flash ??
-			(() => {
-				const upload = proxyUploadHooks(proxy);
-				return createArduinoFlash({
-					beforeUpload: async (job) => {
-						consoleHub.stopUsb();
-						await upload.beforeUpload(job);
-					},
-					afterUpload: async (job, result) => {
-						if (!result.ok || job.dir === resolveArduinoProxyDir()) {
-							await upload.afterUpload(job, result);
-							return;
-						}
-						proxy.hold(false);
-						if (job.port) {
-							consoleHub.scheduleUsb(job.port);
-						}
-					},
-				});
-			})(),
+		flash,
 		run,
 		agent:
 			options.agent ??
@@ -415,7 +423,7 @@ export function startDeviceApi(options: ServeOptions) {
 		revokeOpencode: options.revokeOpencode,
 		debug,
 	};
-	return Bun.serve<TunnelWsData>({
+	const server = Bun.serve<TunnelWsData>({
 		port,
 		hostname,
 		async fetch(request, server) {
@@ -681,6 +689,12 @@ export function startDeviceApi(options: ServeOptions) {
 				debug.remove(ws);
 			},
 		},
+	});
+	return Object.assign(server, {
+		run,
+		flash,
+		verify,
+		console: consoleHub,
 	});
 }
 

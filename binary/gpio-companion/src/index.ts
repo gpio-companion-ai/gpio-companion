@@ -8,13 +8,8 @@ import {
 	publicDeviceUrl,
 	VERSION,
 } from "gpio-companion";
-import {
-	createArduinoProxy,
-	proxyUploadHooks,
-	watchUsbSerialPorts,
-} from "./arduino-proxy.ts";
+import { createArduinoProxy, watchUsbSerialPorts } from "./arduino-proxy.ts";
 import { startBleBridge } from "./ble.ts";
-import { createArduinoFlash } from "./flash.ts";
 import {
 	fetchGithubCredentials,
 	loadGithubCreds,
@@ -31,7 +26,6 @@ import {
 	removeProject,
 	syncProjects,
 } from "./projects.ts";
-import { createHostRun } from "./run.ts";
 import { DEFAULT_SECRETS_PATH, fileSecretsStore } from "./secrets.ts";
 import { startDeviceApi } from "./serve.ts";
 import {
@@ -101,8 +95,6 @@ const deviceAuth = loadDeviceAuth();
 
 const gpio = createLibgpiodGpio();
 const proxy = createArduinoProxy();
-const flash = createArduinoFlash(proxyUploadHooks(proxy));
-const run = createHostRun({ hardware, gpio, proxy });
 const githubCredentials = async () => {
 	const state = await pairing.read();
 	const creds = await fetchGithubCredentials({
@@ -155,8 +147,6 @@ const server = startDeviceApi({
 			put,
 		),
 	gpio,
-	flash,
-	run,
 	proxy,
 	revokeOpencode: () =>
 		revokeOpencodeAccess({
@@ -204,6 +194,7 @@ const ble = startBleBridge({
 	port: server.port ?? 4150,
 	deviceUrl: readDeviceUrl(configPath),
 });
+const { run, flash } = server;
 const hub = hubEnabled
 	? startHubClient({
 			uuid: pairingUuid,

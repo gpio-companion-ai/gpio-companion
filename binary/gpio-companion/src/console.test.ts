@@ -1,4 +1,5 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -8,6 +9,7 @@ import {
 	generateDeviceKeyPair,
 	signDeviceRequest,
 } from "gpio-companion";
+import { memoryArduinoProxy } from "./arduino-proxy.ts";
 import { createConsoleHub } from "./console.ts";
 import { filePairingStore } from "./pairing.ts";
 import { memoryRun } from "./run.ts";
@@ -191,5 +193,77 @@ describe("console http", () => {
 				{ console: consoleHub },
 			),
 		).rejects.toThrow("missing device signature");
+	});
+});
+
+describe("serve run console wiring", () => {
+	const wiringDir = mkdtempSync(join(tmpdir(), "console-wiring-"));
+	const sketchDir = join(wiringDir, "arduino-proxy-blink");
+	const MARKER = "wired-console-chunk";
+	let wiringServer: ReturnType<typeof startDeviceApi>;
+
+	beforeAll(() => {
+		mkdirSync(sketchDir, { recursive: true });
+		writeFileSync(
+			join(sketchDir, "blink.c"),
+			`#include "Arduino.h"\nvoid setup() {\n\tSerial.begin(115200);\n\tSerial.println("${MARKER}");\n}\nvoid loop() {\n\tSerial.println("${MARKER}");\n\tdelay(200);\n}\n`,
+		);
+		wiringServer = startDeviceApi({
+			port: 0,
+			hostname: "127.0.0.1",
+			store: fileConfigStore(join(wiringDir, "config.json"), "raspberrypi"),
+			secrets: fileSecretsStore(join(wiringDir, "secrets.env")),
+			pairing: filePairingStore(
+				join(wiringDir, "pairing.json"),
+				"pair-uuid",
+				"pair-key",
+			),
+			applyTunnel: async () => undefined,
+			deviceAuth: { keyId: keys.keyId, publicKeyPem: keys.publicKeyPem },
+			proxy: memoryArduinoProxy({ connected: true, port: "/dev/null" }),
+		});
+	});
+
+	afterAll(() => {
+		wiringServer?.stop();
+		rmSync(wiringDir, { recursive: true, force: true });
+	});
+
+	test("fallback run streams host chunks to the console hub", async () => {
+		if (!Bun.which("gcc")) {
+			console.log("console wiring test: gcc missing, skipping");
+			return;
+		}
+		const start = await fetch(`${wiringServer.url}v1/run`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ dir: sketchDir }),
+		});
+		expect(start.status).toBe(200);
+		let sawRunning = false;
+		let sawChunk = false;
+		const deadline = Date.now() + 10_000;
+		while (Date.now() < deadline && (!sawChunk || !sawRunning)) {
+			await Bun.sleep(100);
+			const snap = (await (
+				await fetch(`${wiringServer.url}v1/console`)
+			).json()) as {
+				host: { running: boolean; log: string };
+			};
+			if (snap.host.running) {
+				sawRunning = true;
+			}
+			if (snap.host.log.includes(MARKER)) {
+				sawChunk = true;
+			}
+		}
+		await fetch(`${wiringServer.url}v1/run/stop`, { method: "POST" });
+		expect(sawRunning).toBe(true);
+		expect(sawChunk).toBe(true);
+	});
+
+	test("serves one shared run controller", () => {
+		expect(typeof wiringServer.run?.start).toBe("function");
+		expect(typeof wiringServer.flash?.status).toBe("function");
 	});
 });
