@@ -1171,6 +1171,7 @@ export const fr = {
 		ptt: "Pousser pour parler",
 		pttHint: "Maintenez pour parler — Espace",
 		voiceListening: "À l’écoute…",
+		voiceTranscribing: "Transcription…",
 		voiceThinking: "L’agent répond…",
 		voiceSpeaking: "Lecture de la réponse…",
 		voiceQueued: "{n} en attente",

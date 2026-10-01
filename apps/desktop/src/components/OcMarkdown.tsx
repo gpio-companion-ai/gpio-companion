@@ -1,9 +1,11 @@
 import {
+	htmlAttrValue,
+	type OpencodeHtmlAttr,
 	type OpencodeInline,
 	type OpencodeMarkdown,
 	parseOpencodeMarkdown,
 } from "gpio-companion-opencode";
-import { Fragment, type ReactNode } from "react";
+import { createElement, Fragment, type ReactNode } from "react";
 import { openExternal } from "../api";
 
 export function MarkdownView({ text }: { text: string }) {
@@ -63,6 +65,19 @@ function Inline({ node }: { node: OpencodeInline }) {
 			</s>
 		);
 	}
+	if (node.type === "image") {
+		return <img className="oc-img" src={node.href} alt={node.alt} />;
+	}
+	if (node.type === "html") {
+		return createElement(
+			node.tag,
+			{
+				...htmlProps(node.attrs),
+				...linkProps(htmlAttrValue(node.attrs, "href")),
+			},
+			<Inlines inlines={node.inlines} />,
+		);
+	}
 	return (
 		<a
 			href={node.href}
@@ -75,6 +90,68 @@ function Inline({ node }: { node: OpencodeInline }) {
 		>
 			<Inlines inlines={node.inlines} />
 		</a>
+	);
+}
+
+function htmlProps(attrs: OpencodeHtmlAttr[]): Record<string, unknown> {
+	const props: Record<string, unknown> = {};
+	for (const { name, value } of attrs) {
+		if (name === "class") {
+			props.className = value;
+		} else if (name === "style") {
+			const style = styleObject(value);
+			if (style) {
+				props.style = style;
+			}
+		} else if (name !== "href" && name !== "src") {
+			props[name] = value;
+		}
+	}
+	return props;
+}
+
+function linkProps(href: string | null): Record<string, unknown> {
+	if (!href) {
+		return {};
+	}
+	return {
+		href,
+		onClick: (event: { preventDefault(): void }) => {
+			event.preventDefault();
+			if (/^https?:\/\//i.test(href)) {
+				void openExternal(href);
+			}
+		},
+	};
+}
+
+function styleObject(raw: string): Record<string, string> | null {
+	const style: Record<string, string> = {};
+	for (const part of raw.split(";")) {
+		const index = part.indexOf(":");
+		if (index <= 0) {
+			continue;
+		}
+		const prop = part.slice(0, index).trim();
+		const value = part.slice(index + 1).trim();
+		if (!/^[a-zA-Z-]+$/.test(prop) || !value || /[<>"']/.test(value)) {
+			continue;
+		}
+		style[prop] = value;
+	}
+	return Object.keys(style).length > 0 ? style : null;
+}
+
+function ImageBlock({ attrs }: { attrs: OpencodeHtmlAttr[] }) {
+	return (
+		<img
+			className="oc-img oc-img-block"
+			src={htmlAttrValue(attrs, "src") ?? ""}
+			alt={htmlAttrValue(attrs, "alt") ?? ""}
+			width={htmlAttrValue(attrs, "width") ?? undefined}
+			height={htmlAttrValue(attrs, "height") ?? undefined}
+			loading="lazy"
+		/>
 	);
 }
 
@@ -149,6 +226,42 @@ function MdBlock({ block }: { block: OpencodeMarkdown }) {
 	}
 	if (block.type === "hr") {
 		return <hr />;
+	}
+	if (block.type === "html") {
+		if (block.tag === "img") {
+			return <ImageBlock attrs={block.attrs} />;
+		}
+		if (block.tag === "hr") {
+			return <hr />;
+		}
+		const props = htmlProps(block.attrs);
+		const className = [
+			typeof props.className === "string" ? props.className : "",
+			"oc-html",
+			`oc-html-${block.tag}`,
+		]
+			.filter(Boolean)
+			.join(" ");
+		return createElement(
+			block.tag,
+			{
+				...props,
+				className,
+				...linkProps(htmlAttrValue(block.attrs, "href")),
+			},
+			at(block.blocks, (child) => <MdBlock block={child} />),
+		);
+	}
+	if (block.inlines.length === 1 && block.inlines[0]?.type === "image") {
+		const image = block.inlines[0];
+		return (
+			<ImageBlock
+				attrs={[
+					{ name: "src", value: image.href },
+					{ name: "alt", value: image.alt },
+				]}
+			/>
+		);
 	}
 	return (
 		<p>

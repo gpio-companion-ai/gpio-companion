@@ -427,6 +427,7 @@ export default function OpenCodeSession({
 	const [voiceListening, setVoiceListening] = useState(false);
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
 	const [voiceQueued, setVoiceQueued] = useState(0);
+	const [voiceTranscribing, setVoiceTranscribing] = useState(false);
 	const [voiceReply, setVoiceReply] = useState(false);
 	const [voiceProvider, setVoiceProvider] =
 		useState<CodeVoiceProvider>("workers-ai");
@@ -482,11 +483,16 @@ export default function OpenCodeSession({
 	const voiceReplyRef = useRef(false);
 	const speechDirectiveSentRef = useRef<string | null>(null);
 	const pttRef = useRef(false);
+	const pttParts = useRef(new Map<number, string>());
+	const pttSeq = useRef(0);
+	const pttPending = useRef(0);
 	const voiceTickRef = useRef<() => void>(() => {});
 	const beginPttRef = useRef<() => void>(() => {});
 	const endPttRef = useRef<() => void>(() => {});
 	const stopVoiceEngineRef = useRef<() => void>(() => {});
-	const finishVoiceRef = useRef<(blob: Blob) => void>(() => {});
+	const finishVoiceRef = useRef<(blob: Blob, source?: "auto" | "ptt") => void>(
+		() => {},
+	);
 	const menuRef = useRef<HTMLDivElement>(null);
 	const prompts = useRef<OpencodePromptEpoch>({
 		epoch: 0,
@@ -1199,7 +1205,7 @@ export default function OpenCodeSession({
 					return;
 				}
 				const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-				void finishVoiceRef.current(blob);
+				void finishVoiceRef.current(blob, source);
 			};
 			voiceUtter.current = {
 				recorder: rec,
@@ -1281,6 +1287,7 @@ export default function OpenCodeSession({
 			return;
 		}
 		pttRef.current = true;
+		pttParts.current.clear();
 		setPttHeld(true);
 		voiceArm.current = 0;
 		if (voiceEngine.current) {
@@ -1330,14 +1337,55 @@ export default function OpenCodeSession({
 		const utter = voiceUtter.current;
 		if (utter?.source === "ptt") {
 			stopVoiceUtterance();
+			return;
 		}
+		if (pttPending.current > 0) {
+			return;
+		}
+		void flushPttParts();
 	}
 
 	beginPttRef.current = beginPtt;
 	endPttRef.current = endPtt;
 
-	async function finishVoice(blob: Blob) {
+	function pttSortedParts(): string[] {
+		return [...pttParts.current.entries()]
+			.sort((a, b) => a[0] - b[0])
+			.map((entry) => entry[1])
+			.filter(Boolean);
+	}
+
+	async function flushPttParts() {
+		const parts = pttSortedParts();
+		pttParts.current.clear();
+		const combined = parts.join(" ").trim();
+		if (combined) {
+			await send(combined);
+		}
+	}
+
+	async function settlePtt(heard: string, seq: number) {
+		if (heard) {
+			pttParts.current.set(seq, heard);
+		}
+		if (pttRef.current) {
+			pttPending.current -= 1;
+			return;
+		}
+		pttPending.current -= 1;
+		if (pttPending.current > 0) {
+			return;
+		}
+		await flushPttParts();
+	}
+
+	async function finishVoice(blob: Blob, source: "auto" | "ptt" = "auto") {
 		clearSpeechQueue();
+		setVoiceTranscribing(true);
+		const seq = source === "ptt" ? pttSeq.current++ : 0;
+		if (source === "ptt") {
+			pttPending.current += 1;
+		}
 		try {
 			const result = await transcribe({
 				audio: encodeBase64(new Uint8Array(await blob.arrayBuffer())),
@@ -1345,9 +1393,16 @@ export default function OpenCodeSession({
 			});
 			if (!result.ok) {
 				setError(shownError(result.error));
+				if (source === "ptt") {
+					await settlePtt("", seq);
+				}
 				return;
 			}
 			const heard = codeVoiceUtterance(result.data.text);
+			if (source === "ptt") {
+				await settlePtt(heard, seq);
+				return;
+			}
 			if (!heard) {
 				return;
 			}
@@ -1359,6 +1414,11 @@ export default function OpenCodeSession({
 			await send(heard);
 		} catch (caught) {
 			setError(shownError(caught instanceof Error ? caught.message : ""));
+			if (source === "ptt") {
+				await settlePtt("", seq);
+			}
+		} finally {
+			setVoiceTranscribing(false);
 		}
 	}
 
@@ -1556,7 +1616,9 @@ export default function OpenCodeSession({
 			const quiet = now - utter.voiceAt;
 			if (
 				elapsed > CODE_VOICE_MAX_MS ||
-				(elapsed > CODE_VOICE_MIN_MS && quiet > CODE_VOICE_SILENCE_MS)
+				(utter.source !== "ptt" &&
+					elapsed > CODE_VOICE_MIN_MS &&
+					quiet > CODE_VOICE_SILENCE_MS)
 			) {
 				stopVoiceUtterance();
 			}
@@ -2143,16 +2205,20 @@ export default function OpenCodeSession({
 		const voicePhase =
 			pttHeld || voiceListening
 				? "listening"
-				: voiceSpeakingNow
-					? "speaking"
-					: view.busy || uploading
-						? "waiting"
-						: "idle";
-		const voiceLabel = voiceSpeakingNow
-			? t("code.voiceSpeaking")
-			: voiceListening || voicePhase === "idle"
-				? t("code.voiceListening")
-				: t("code.voiceThinking");
+				: voiceTranscribing
+					? "processing"
+					: voiceSpeakingNow
+						? "speaking"
+						: view.busy || uploading
+							? "waiting"
+							: "idle";
+		const voiceLabel = voiceTranscribing
+			? t("code.voiceTranscribing")
+			: voiceSpeakingNow
+				? t("code.voiceSpeaking")
+				: voiceListening || voicePhase === "idle"
+					? t("code.voiceListening")
+					: t("code.voiceThinking");
 		return (
 			<div
 				className="oc-compose"
@@ -2249,14 +2315,14 @@ export default function OpenCodeSession({
 						))}
 					</div>
 				) : null}
-				{voiceMode ? (
+				{voiceMode || voiceTranscribing || pttHeld ? (
 					<div className={`oc-voice is-${voicePhase}`} aria-live="polite">
 						<span className="oc-voice-bars" aria-hidden="true">
 							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
 								<i
 									key={bar}
 									style={
-										voicePhase === "waiting"
+										voicePhase === "waiting" || voicePhase === "processing"
 											? undefined
 											: {
 													transform: `scaleY(${(

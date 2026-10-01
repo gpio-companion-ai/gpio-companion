@@ -1,3 +1,5 @@
+export type OpencodeHtmlAttr = { name: string; value: string };
+
 export type OpencodeInline =
 	| { type: "text"; text: string }
 	| { type: "code"; text: string }
@@ -5,6 +7,13 @@ export type OpencodeInline =
 	| { type: "em"; inlines: OpencodeInline[] }
 	| { type: "strike"; inlines: OpencodeInline[] }
 	| { type: "link"; href: string; inlines: OpencodeInline[] }
+	| { type: "image"; href: string; alt: string }
+	| {
+			type: "html";
+			tag: string;
+			attrs: OpencodeHtmlAttr[];
+			inlines: OpencodeInline[];
+	  }
 	| { type: "break" };
 
 export type OpencodeListItem = {
@@ -24,12 +33,51 @@ export type OpencodeMarkdown =
 			header: OpencodeInline[][];
 			rows: OpencodeInline[][][];
 	  }
-	| { type: "hr" };
+	| { type: "hr" }
+	| {
+			type: "html";
+			tag: string;
+			attrs: OpencodeHtmlAttr[];
+			blocks: OpencodeMarkdown[];
+	  };
 
 const LIST_RE = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/;
 const FENCE_RE = /^(\s{0,3})(`{3,}|~{3,})(.*)$/;
 const HR_RE = /^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,})$/;
 const ESCAPES = "\\`*_{}[]()#+-.!~";
+const HTML_OPEN_RE =
+	/^<([a-z][a-z0-9-]*)((?:\s+[^\s"'>/=]+(?:="[^"]*"|='[^']*'|=[^\s"'=<>`]+)?)*)\s*(\/?)>/;
+const ATTR_NAME_RE = /^[^\s"'>/=]+/;
+const ATTR_VALUE_RE = /^[^\s"'=<>`]+/;
+const DANGEROUS_TAGS = new Set([
+	"script",
+	"iframe",
+	"object",
+	"embed",
+	"style",
+	"link",
+	"meta",
+	"form",
+	"base",
+	"frame",
+	"frameset",
+	"applet",
+	"head",
+	"title",
+]);
+const ALLOWED_ATTRS = new Set([
+	"src",
+	"href",
+	"alt",
+	"title",
+	"width",
+	"height",
+	"class",
+	"style",
+	"start",
+	"align",
+]);
+const VOID_TAGS = new Set(["img", "br", "hr"]);
 
 export function parseOpencodeMarkdown(source: string): OpencodeMarkdown[] {
 	const text = source.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
@@ -91,6 +139,12 @@ function parseBlocks(
 			i = read.next;
 			continue;
 		}
+		const html = readHtmlBlock(lines, i, stop);
+		if (html) {
+			blocks.push(html.block);
+			i = html.next;
+			continue;
+		}
 		if (LIST_RE.test(line)) {
 			const read = readList(lines, i, stop);
 			blocks.push(read.block);
@@ -129,8 +183,38 @@ function isBlockStart(lines: string[], index: number, end: number): boolean {
 		/^(#{1,6})(\s|$)/.test(line) ||
 		/^ {0,3}>/.test(line) ||
 		isTableStart(lines, index, end) ||
+		isHtmlBlockStart(lines, index, end) ||
 		LIST_RE.test(line)
 	);
+}
+
+function isHtmlBlockStart(
+	lines: string[],
+	index: number,
+	end: number,
+): boolean {
+	const open = htmlOpenLine(lines[index] ?? "");
+	if (!open) {
+		return false;
+	}
+	if (open.tag === "hr") {
+		return true;
+	}
+	if (open.tag === "img") {
+		return Boolean(safeHref(htmlAttrValue(open.attrs, "src") ?? ""));
+	}
+	if (VOID_TAGS.has(open.tag)) {
+		return false;
+	}
+	if (findHtmlClose(open.rest, open.tag)) {
+		return true;
+	}
+	for (let j = index + 1; j < end; j += 1) {
+		if (findHtmlClose(lines[j] ?? "", open.tag)) {
+			return true;
+		}
+	}
+	return false;
 }
 
 function fenceOpen(line: string): { marker: string; lang: string } | null {
@@ -174,6 +258,265 @@ function isFenceClose(line: string, marker: string): boolean {
 	const match = /^(\s{0,3})(`{3,}|~{3,})\s*$/.exec(line);
 	const token = match?.[2] ?? "";
 	return token[0] === marker[0] && token.length >= marker.length;
+}
+
+type HtmlOpen = {
+	indent: number;
+	tag: string;
+	attrs: OpencodeHtmlAttr[];
+	rest: string;
+};
+
+function htmlOpenLine(line: string): HtmlOpen | null {
+	const match =
+		/^ {0,3}<([a-z][a-z0-9-]*)((?:\s+[^\s"'>/=]+(?:="[^"]*"|='[^']*'|=[^\s"'=<>`]+)?)*)\s*(\/?)>(.*)$/.exec(
+			line,
+		);
+	if (!match?.[1]) {
+		return null;
+	}
+	const tag = match[1];
+	if (DANGEROUS_TAGS.has(tag)) {
+		return null;
+	}
+	const attrs = parseAttrs(match[2] ?? "");
+	if (!attrs) {
+		return null;
+	}
+	return {
+		indent: leadingSpaces(line),
+		tag,
+		attrs: filterAttrs(attrs),
+		rest: match[4] ?? "",
+	};
+}
+
+function readHtmlBlock(
+	lines: string[],
+	index: number,
+	end: number,
+): { block: OpencodeMarkdown; next: number } | null {
+	const open = htmlOpenLine(lines[index] ?? "");
+	if (!open) {
+		return null;
+	}
+	if (open.tag === "hr") {
+		if (open.rest.trim()) {
+			lines[index] = open.rest;
+			return { block: { type: "hr" }, next: index };
+		}
+		return { block: { type: "hr" }, next: index + 1 };
+	}
+	if (open.tag === "img") {
+		const href = safeHref(htmlAttrValue(open.attrs, "src") ?? "");
+		if (!href) {
+			return null;
+		}
+		const attrs = [
+			...open.attrs.filter((attr) => attr.name !== "src"),
+			{ name: "src", value: href },
+		];
+		if (open.rest.trim()) {
+			lines[index] = open.rest;
+			return {
+				block: { type: "html", tag: "img", attrs, blocks: [] },
+				next: index,
+			};
+		}
+		return {
+			block: { type: "html", tag: "img", attrs, blocks: [] },
+			next: index + 1,
+		};
+	}
+	if (VOID_TAGS.has(open.tag)) {
+		return null;
+	}
+	const sameLine = findHtmlClose(open.rest, open.tag);
+	if (sameLine) {
+		const inner = sameLine.inner
+			? parseBlocks([sameLine.inner], 0, 1).blocks
+			: [];
+		const block: OpencodeMarkdown = {
+			type: "html",
+			tag: open.tag,
+			attrs: open.attrs,
+			blocks: inner,
+		};
+		if (sameLine.trailing.trim()) {
+			lines[index] = sameLine.trailing;
+			return { block, next: index };
+		}
+		return { block, next: index + 1 };
+	}
+	const body: string[] = open.rest.trim()
+		? [dedent(open.rest, open.indent)]
+		: [];
+	let j = index + 1;
+	let close: { inner: string; trailing: string } | null = null;
+	while (j < end) {
+		close = findHtmlClose(lines[j] ?? "", open.tag);
+		if (close) {
+			if (close.inner.trim()) {
+				body.push(close.inner);
+			}
+			break;
+		}
+		body.push(dedent(lines[j] ?? "", open.indent));
+		j += 1;
+	}
+	if (j >= end || !close) {
+		return null;
+	}
+	const block: OpencodeMarkdown = {
+		type: "html",
+		tag: open.tag,
+		attrs: open.attrs,
+		blocks: parseBlocks(body, 0, body.length).blocks,
+	};
+	if (close.trailing.trim()) {
+		lines[j] = close.trailing;
+		return { block, next: j };
+	}
+	return { block, next: j + 1 };
+}
+
+function findHtmlClose(
+	source: string,
+	tag: string,
+): { inner: string; raw: string; trailing: string } | null {
+	const match = new RegExp(`</${tag}\\s*>`, "i").exec(source);
+	if (!match) {
+		return null;
+	}
+	return {
+		inner: source.slice(0, match.index),
+		raw: match[0],
+		trailing: source.slice(match.index + match[0].length),
+	};
+}
+
+function readHtmlInline(
+	source: string,
+	index: number,
+): { node: OpencodeInline; end: number } | null {
+	const match = HTML_OPEN_RE.exec(source.slice(index));
+	if (!match?.[1]) {
+		return null;
+	}
+	const tag = match[1];
+	if (DANGEROUS_TAGS.has(tag)) {
+		return null;
+	}
+	const attrs = parseAttrs(match[2] ?? "");
+	if (!attrs) {
+		return null;
+	}
+	const safe = filterAttrs(attrs);
+	const after = index + match[0].length;
+	if (tag === "br") {
+		return { node: { type: "break" }, end: after };
+	}
+	if (tag === "img") {
+		const href = safeHref(htmlAttrValue(safe, "src") ?? "");
+		if (!href) {
+			return null;
+		}
+		return {
+			node: { type: "image", href, alt: htmlAttrValue(safe, "alt") ?? "" },
+			end: after,
+		};
+	}
+	if (match[3] === "/" || VOID_TAGS.has(tag)) {
+		return {
+			node: { type: "html", tag, attrs: safe, inlines: [] },
+			end: after,
+		};
+	}
+	const close = findHtmlClose(source.slice(after), tag);
+	if (!close) {
+		return null;
+	}
+	return {
+		node: {
+			type: "html",
+			tag,
+			attrs: safe,
+			inlines: parseInlines(close.inner),
+		},
+		end: after + close.inner.length + close.raw.length,
+	};
+}
+
+function parseAttrs(raw: string): OpencodeHtmlAttr[] | null {
+	const attrs: OpencodeHtmlAttr[] = [];
+	let i = 0;
+	while (i < raw.length) {
+		if (/\s/.test(raw[i] ?? "")) {
+			i += 1;
+			continue;
+		}
+		const name = ATTR_NAME_RE.exec(raw.slice(i))?.[0];
+		if (!name) {
+			return null;
+		}
+		i += name.length;
+		let value = "";
+		if ((raw[i] ?? "") === "=") {
+			i += 1;
+			const quote = raw[i] ?? "";
+			if (quote === '"' || quote === "'") {
+				const close = raw.indexOf(quote, i + 1);
+				if (close < 0) {
+					return null;
+				}
+				value = raw.slice(i + 1, close);
+				i = close + 1;
+			} else {
+				const match = ATTR_VALUE_RE.exec(raw.slice(i));
+				if (!match?.[0]) {
+					return null;
+				}
+				value = match[0];
+				i += match[0].length;
+			}
+		}
+		attrs.push({ name: name.toLowerCase(), value });
+	}
+	return attrs;
+}
+
+function filterAttrs(attrs: OpencodeHtmlAttr[]): OpencodeHtmlAttr[] {
+	return attrs.filter(
+		(attr) => ALLOWED_ATTRS.has(attr.name) && !/^on/i.test(attr.name),
+	);
+}
+
+export function htmlAttrValue(
+	attrs: OpencodeHtmlAttr[],
+	name: string,
+): string | null {
+	for (const attr of attrs) {
+		if (attr.name === name) {
+			return attr.value;
+		}
+	}
+	return null;
+}
+
+function inlineText(inlines: OpencodeInline[]): string {
+	let text = "";
+	for (const node of inlines) {
+		if (node.type === "text" || node.type === "code") {
+			text += node.text;
+		} else if (node.type === "image") {
+			text += node.alt;
+		} else if (node.type === "break") {
+			text += " ";
+		} else {
+			text += inlineText(node.inlines);
+		}
+	}
+	return text;
 }
 
 function readQuote(
@@ -331,6 +674,27 @@ function readList(
 			) {
 				break;
 			}
+			const body = dedent(next, strip);
+			const open = htmlOpenLine(body);
+			if (
+				open &&
+				open.tag !== "hr" &&
+				!VOID_TAGS.has(open.tag) &&
+				!findHtmlClose(open.rest, open.tag)
+			) {
+				nested.push(body);
+				i += 1;
+				while (i < end) {
+					const inner = dedent(lines[i] ?? "", strip);
+					nested.push(inner);
+					const closed = findHtmlClose(inner, open.tag);
+					i += 1;
+					if (closed) {
+						break;
+					}
+				}
+				continue;
+			}
 			if (isNestedBlock(next, strip) || !next.trim()) {
 				nested.push(dedent(next, strip));
 				i += 1;
@@ -350,6 +714,19 @@ function readList(
 
 function isNestedBlock(line: string, strip: number): boolean {
 	const body = dedent(line, strip);
+	const open = htmlOpenLine(body);
+	if (open) {
+		if (open.tag === "hr") {
+			return true;
+		}
+		if (open.tag === "img") {
+			return Boolean(safeHref(htmlAttrValue(open.attrs, "src") ?? ""));
+		}
+		if (VOID_TAGS.has(open.tag)) {
+			return false;
+		}
+		return true;
+	}
 	return (
 		Boolean(fenceOpen(body)) ||
 		HR_RE.test(body) ||
@@ -451,6 +828,17 @@ function parseInlines(source: string): OpencodeInline[] {
 			i += 1;
 			continue;
 		}
+		if (char === "<") {
+			const html = readHtmlInline(source, i);
+			if (html) {
+				out.push(html.node);
+				i = html.end;
+				continue;
+			}
+			pushText("<");
+			i += 1;
+			continue;
+		}
 		if (char === "`") {
 			const width = runLength(source, i, "`");
 			const close = findRun(source, i + width, "`", width);
@@ -491,15 +879,18 @@ function parseInlines(source: string): OpencodeInline[] {
 		if (char === "!" && source[i + 1] === "[") {
 			const image = readLink(source, i + 1);
 			if (image) {
-				const alt = parseInlines(image.label);
 				const href = safeHref(image.href);
 				if (href) {
 					out.push({
-						type: "link",
+						type: "image",
 						href,
-						inlines: alt.length > 0 ? alt : [{ type: "text", text: href }],
+						alt: inlineText(parseInlines(image.label)),
 					});
-				} else if (alt.length > 0) {
+					i = image.end;
+					continue;
+				}
+				const alt = parseInlines(image.label);
+				if (alt.length > 0) {
 					out.push(...alt);
 				} else {
 					pushText(image.label);
@@ -783,6 +1174,7 @@ function nextSpecial(source: string, index: number): number {
 			char === "~" ||
 			char === "[" ||
 			char === "!" ||
+			char === "<" ||
 			source.startsWith("http://", i) ||
 			source.startsWith("https://", i)
 		) {
@@ -790,4 +1182,125 @@ function nextSpecial(source: string, index: number): number {
 		}
 	}
 	return source.length;
+}
+
+export function serializeSafeHtml(blocks: OpencodeMarkdown[]): string {
+	return blocks.map(serializeBlock).join("");
+}
+
+function serializeBlock(block: OpencodeMarkdown): string {
+	if (block.type === "heading") {
+		return `<h${block.level}>${serializeInlines(block.inlines)}</h${block.level}>`;
+	}
+	if (block.type === "paragraph") {
+		return `<p>${serializeInlines(block.inlines)}</p>`;
+	}
+	if (block.type === "code") {
+		return `<pre><code>${escapeHtml(block.text)}</code></pre>`;
+	}
+	if (block.type === "list") {
+		const tag = block.ordered ? "ol" : "ul";
+		const start =
+			block.ordered && block.start !== 1 ? ` start="${block.start}"` : "";
+		const items = block.items
+			.map(
+				(item) =>
+					`<li>${serializeInlines(item.inlines)}${serializeSafeHtml(item.blocks)}</li>`,
+			)
+			.join("");
+		return `<${tag}${start}>${items}</${tag}>`;
+	}
+	if (block.type === "quote") {
+		return `<blockquote>${serializeSafeHtml(block.blocks)}</blockquote>`;
+	}
+	if (block.type === "table") {
+		const aligns = block.aligns
+			.map((align) => (align ? ` style="text-align: ${align}"` : ""))
+			.join("");
+		const head = block.header
+			.map(
+				(cell, index) =>
+					`<th${aligns[index] ?? ""}>${serializeInlines(cell)}</th>`,
+			)
+			.join("");
+		const body = block.rows
+			.map(
+				(row) =>
+					`<tr>${row
+						.map(
+							(cell, index) =>
+								`<td${aligns[index] ?? ""}>${serializeInlines(cell)}</td>`,
+						)
+						.join("")}</tr>`,
+			)
+			.join("");
+		return `<div class="oc-table"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`;
+	}
+	if (block.type === "hr") {
+		return "<hr />";
+	}
+	return serializeHtmlTag(
+		block.tag,
+		block.attrs,
+		serializeSafeHtml(block.blocks),
+	);
+}
+
+function serializeInlines(inlines: OpencodeInline[]): string {
+	let out = "";
+	for (const node of inlines) {
+		if (node.type === "text") {
+			out += escapeHtml(node.text);
+		} else if (node.type === "break") {
+			out += "<br />";
+		} else if (node.type === "code") {
+			out += `<code>${escapeHtml(node.text)}</code>`;
+		} else if (node.type === "strong") {
+			out += `<strong>${serializeInlines(node.inlines)}</strong>`;
+		} else if (node.type === "em") {
+			out += `<em>${serializeInlines(node.inlines)}</em>`;
+		} else if (node.type === "strike") {
+			out += `<s>${serializeInlines(node.inlines)}</s>`;
+		} else if (node.type === "link") {
+			out += `<a href="${escapeHtml(node.href)}">${serializeInlines(node.inlines)}</a>`;
+		} else if (node.type === "image") {
+			out += `<img src="${escapeHtml(node.href)}" alt="${escapeHtml(node.alt)}" />`;
+		} else {
+			out += serializeHtmlTag(
+				node.tag,
+				node.attrs,
+				serializeInlines(node.inlines),
+			);
+		}
+	}
+	return out;
+}
+
+function serializeHtmlTag(
+	tag: string,
+	attrs: OpencodeHtmlAttr[],
+	inner: string,
+): string {
+	if (tag === "img") {
+		const src = escapeHtml(htmlAttrValue(attrs, "src") ?? "");
+		const alt = escapeHtml(htmlAttrValue(attrs, "alt") ?? "");
+		return `<img src="${src}" alt="${alt}" />`;
+	}
+	if (tag === "hr") {
+		return "<hr />";
+	}
+	const safe = filterAttrs(attrs);
+	const rendered = safe
+		.map((attr) => ` ${attr.name}="${escapeHtml(attr.value)}"`)
+		.join("");
+	return `<${tag}${rendered}>${inner}</${tag}>`;
+}
+
+function escapeHtml(text: string): string {
+	return text
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#39;");
 }

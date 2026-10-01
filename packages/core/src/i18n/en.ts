@@ -1143,6 +1143,7 @@ export const en = {
 		ptt: "Push to talk",
 		pttHint: "Hold to talk — Space",
 		voiceListening: "Listening…",
+		voiceTranscribing: "Transcribing…",
 		voiceThinking: "The agent is answering…",
 		voiceSpeaking: "Reading the reply…",
 		voiceQueued: "{n} in queue",

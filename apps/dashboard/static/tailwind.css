@@ -1986,6 +1986,41 @@ mark {
 	white-space: pre-wrap;
 }
 
+.oc-img {
+	border-radius: 6px;
+	max-width: 100%;
+	height: auto;
+}
+
+.oc-img-block {
+	display: block;
+	margin: 0 0 8px;
+	max-height: 320px;
+	object-fit: contain;
+}
+
+.oc-html {
+	margin: 0 0 8px;
+	border: 1px solid rgba(var(--text-main), 0.15);
+	border-radius: 8px;
+	padding: 10px 12px;
+}
+
+.oc-html-board-note {
+	border-color: rgba(var(--text-main), 0.28);
+	background: rgba(var(--text-main), 0.05);
+}
+
+.oc-html-wiring-check {
+	border-color: rgba(250, 179, 63, 0.45);
+	background: rgba(250, 179, 63, 0.08);
+}
+
+.oc-html-step-guide {
+	border-color: rgba(99, 161, 244, 0.45);
+	background: rgba(99, 161, 244, 0.08);
+}
+
 .oc-tools {
 	margin: 0 0 8px;
 }
@@ -2600,7 +2635,8 @@ button.oc-chip,
 	opacity: 1;
 }
 
-.oc-voice.is-waiting .oc-voice-bars i {
+.oc-voice.is-waiting .oc-voice-bars i,
+.oc-voice.is-processing .oc-voice-bars i {
 	animation: oc-voice-pulse 1.2s ease-in-out infinite;
 }
 

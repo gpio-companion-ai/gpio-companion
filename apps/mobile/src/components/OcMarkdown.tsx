@@ -1,11 +1,25 @@
 import {
+	htmlAttrValue,
+	type OpencodeHtmlAttr,
 	type OpencodeInline,
 	type OpencodeMarkdown,
 	parseOpencodeMarkdown,
 } from "gpio-companion-opencode";
 import { Fragment, type ReactNode } from "react";
-import { Linking, ScrollView, Text, View } from "react-native";
+import { Image, Linking, ScrollView, Text, View } from "react-native";
 import { useColors } from "../lib/color-mode.tsx";
+
+const TAG_ACCENTS: Record<string, { border: string; bg: string }> = {
+	"board-note": {
+		border: "rgba(127,127,127,0.4)",
+		bg: "rgba(127,127,127,0.08)",
+	},
+	"wiring-check": {
+		border: "rgba(250,179,63,0.5)",
+		bg: "rgba(250,179,63,0.1)",
+	},
+	"step-guide": { border: "rgba(99,161,244,0.5)", bg: "rgba(99,161,244,0.1)" },
+};
 
 export function MarkdownView({ text, color }: { text: string; color: string }) {
 	return <Blocks text={text} color={color} />;
@@ -95,6 +109,21 @@ function Inline({
 	if (node.type === "strike") {
 		return (
 			<Text style={{ textDecorationLine: "line-through" }}>
+				<Inlines inlines={node.inlines} color={color} link={link} />
+			</Text>
+		);
+	}
+	if (node.type === "image") {
+		return (
+			<Image
+				source={{ uri: node.href }}
+				style={{ width: 14, height: 14, borderRadius: 3, resizeMode: "cover" }}
+			/>
+		);
+	}
+	if (node.type === "html") {
+		return (
+			<Text>
 				<Inlines inlines={node.inlines} color={color} link={link} />
 			</Text>
 		);
@@ -238,9 +267,79 @@ function MdBlock({
 			/>
 		);
 	}
+	if (block.type === "html") {
+		if (block.tag === "img") {
+			const width = numberAttr(block.attrs, "width");
+			const height = numberAttr(block.attrs, "height");
+			return (
+				<Image
+					source={{ uri: htmlAttrValue(block.attrs, "src") ?? "" }}
+					style={{
+						width: width ?? ("100%" as const),
+						height: height ?? 180,
+						borderRadius: 8,
+						resizeMode: "cover",
+					}}
+				/>
+			);
+		}
+		if (block.tag === "hr") {
+			return (
+				<View
+					style={{
+						height: 1,
+						backgroundColor: colors.border,
+						marginVertical: 4,
+					}}
+				/>
+			);
+		}
+		const accent = TAG_ACCENTS[block.tag] ?? {
+			border: colors.border,
+			bg: "rgba(127,127,127,0.05)",
+		};
+		return (
+			<View
+				style={{
+					borderWidth: 1,
+					borderColor: accent.border,
+					backgroundColor: accent.bg,
+					borderRadius: 8,
+					padding: 10,
+					gap: 4,
+				}}
+			>
+				{at(block.blocks, (child) => (
+					<MdBlock block={child} color={color} colors={colors} />
+				))}
+			</View>
+		);
+	}
+	if (block.inlines.length === 1 && block.inlines[0]?.type === "image") {
+		const image = block.inlines[0];
+		return (
+			<Image
+				source={{ uri: image.href }}
+				style={{
+					width: "100%",
+					height: 180,
+					borderRadius: 8,
+					resizeMode: "cover",
+				}}
+			/>
+		);
+	}
 	return (
 		<Text style={{ color }}>
 			<Inlines inlines={block.inlines} color={color} link={colors.primary} />
 		</Text>
 	);
+}
+
+function numberAttr(attrs: OpencodeHtmlAttr[], name: string): number | null {
+	const raw = htmlAttrValue(attrs, name);
+	if (!raw || !/^\d+$/.test(raw)) {
+		return null;
+	}
+	return Number(raw);
 }

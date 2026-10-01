@@ -762,6 +762,7 @@ export {
 	emptyOpencodeView,
 	filterCodeSessions,
 	holdOpencodePromptEvent,
+	htmlAttrValue,
 	matchCodeRepo,
 	matchOpencodeQuestionID,
 	mergeOpencodeQuestions,
@@ -773,6 +774,7 @@ export {
 	OPENCODE_PROVIDER_ID,
 	OPENCODE_REPO_HEADER,
 	type OpencodeClientCall,
+	type OpencodeHtmlAttr,
 	type OpencodeInline,
 	type OpencodeListItem,
 	type OpencodeMarkdown,
@@ -837,6 +839,7 @@ export {
 	restoreOpencodeViewPrompts,
 	scopeOpencodeSearch,
 	seedOpencodePrompts,
+	serializeSafeHtml,
 	settleOpencodeTurns,
 	storeOpencodePrompts,
 } from "./opencode-session.ts";

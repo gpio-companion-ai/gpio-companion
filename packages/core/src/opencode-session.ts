@@ -194,11 +194,16 @@ export type OpencodeTurn = {
 };
 
 export type {
+	OpencodeHtmlAttr,
 	OpencodeInline,
 	OpencodeListItem,
 	OpencodeMarkdown,
 } from "./opencode-markdown.ts";
-export { parseOpencodeMarkdown } from "./opencode-markdown.ts";
+export {
+	htmlAttrValue,
+	parseOpencodeMarkdown,
+	serializeSafeHtml,
+} from "./opencode-markdown.ts";
 
 export type OpencodeSessionBucket = "today" | "yesterday" | "earlier";
 

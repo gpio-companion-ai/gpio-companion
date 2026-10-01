@@ -194,6 +194,9 @@ export default function Code() {
 	const voiceFloorAt = useRef(0);
 	const voiceSource = useRef<"auto" | "ptt">("auto");
 	const pttRef = useRef(false);
+	const pttParts = useRef(new Map<number, string>());
+	const pttSeq = useRef(0);
+	const pttPending = useRef(0);
 	const beginPttRef = useRef<() => void>(() => {});
 	const endPttRef = useRef<() => void>(() => {});
 	const voiceLastVoice = useRef(0);
@@ -249,6 +252,7 @@ export default function Code() {
 	const [voiceListening, setVoiceListening] = useState(false);
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
 	const [voiceQueued, setVoiceQueued] = useState(0);
+	const [voiceTranscribing, setVoiceTranscribing] = useState(false);
 	const [voiceReply, setVoiceReply] = useState(false);
 	const [voicePulse, setVoicePulse] = useState(0);
 	const [query, setQuery] = useState("");
@@ -1001,8 +1005,45 @@ export default function Code() {
 		setVoiceLevel(0);
 	}
 
+	function pttSortedParts(): string[] {
+		return [...pttParts.current.entries()]
+			.sort((a, b) => a[0] - b[0])
+			.map((entry) => entry[1])
+			.filter(Boolean);
+	}
+
+	async function flushPttParts() {
+		const parts = pttSortedParts();
+		pttParts.current.clear();
+		const combined = parts.join(" ").trim();
+		if (combined) {
+			await send(combined);
+		}
+	}
+
+	async function settlePtt(heard: string, seq: number) {
+		if (heard) {
+			pttParts.current.set(seq, heard);
+		}
+		if (pttRef.current) {
+			pttPending.current -= 1;
+			return;
+		}
+		pttPending.current -= 1;
+		if (pttPending.current > 0) {
+			return;
+		}
+		await flushPttParts();
+	}
+
 	async function finishVoice(uri: string) {
 		clearSpeechQueue();
+		setVoiceTranscribing(true);
+		const source = voiceSource.current === "ptt" ? "ptt" : "auto";
+		const seq = source === "ptt" ? pttSeq.current++ : 0;
+		if (source === "ptt") {
+			pttPending.current += 1;
+		}
 		try {
 			const heard = codeVoiceUtterance(
 				(
@@ -1013,6 +1054,10 @@ export default function Code() {
 					)
 				).text,
 			);
+			if (source === "ptt") {
+				await settlePtt(heard, seq);
+				return;
+			}
 			if (heard) {
 				if (view.busy || uploading) {
 					voiceQueue.current.push(heard);
@@ -1023,7 +1068,11 @@ export default function Code() {
 			}
 		} catch (caught) {
 			setError(shownError(caught instanceof Error ? caught.message : ""));
+			if (source === "ptt") {
+				await settlePtt("", seq);
+			}
 		} finally {
+			setVoiceTranscribing(false);
 			voiceHandling.current = false;
 			if (voiceModeRef.current || pttRef.current) {
 				startVoiceCapture();
@@ -1042,6 +1091,7 @@ export default function Code() {
 			return;
 		}
 		pttRef.current = true;
+		pttParts.current.clear();
 		setPttHeld(true);
 		voiceArmAt.current = 0;
 		if (recorder.isRecording) {
@@ -1092,6 +1142,13 @@ export default function Code() {
 				voiceHandling.current = true;
 				voiceSpeech.current = false;
 				void finishVoiceRef.current(uri);
+				return;
+			}
+			if (pttPending.current > 0) {
+				return;
+			}
+			if (pttParts.current.size > 0) {
+				await flushPttParts();
 				return;
 			}
 			if (!voiceModeRef.current) {
@@ -1361,6 +1418,7 @@ export default function Code() {
 		if (
 			voiceSpeech.current &&
 			state.durationMillis > CODE_VOICE_MIN_MS &&
+			voiceSource.current !== "ptt" &&
 			now - voiceLastVoice.current > CODE_VOICE_SILENCE_MS
 		) {
 			void recorder.stop().catch(() => {});
@@ -1526,16 +1584,25 @@ export default function Code() {
 
 	useEffect(() => {
 		const waiting =
-			voiceMode &&
+			(voiceMode || voiceTranscribing) &&
 			!voiceListening &&
 			!voiceSpeakingNow &&
-			(view.busy || uploading);
+			!pttHeld &&
+			(view.busy || uploading || voiceTranscribing);
 		if (!waiting) {
 			return;
 		}
 		const timer = setInterval(() => setVoicePulse((n) => n + 1), 150);
 		return () => clearInterval(timer);
-	}, [voiceMode, voiceListening, voiceSpeakingNow, view.busy, uploading]);
+	}, [
+		voiceMode,
+		pttHeld,
+		voiceListening,
+		voiceSpeakingNow,
+		voiceTranscribing,
+		view.busy,
+		uploading,
+	]);
 
 	async function send(override?: string) {
 		const typed = (override ?? prompt).trim();
@@ -1878,20 +1945,24 @@ export default function Code() {
 		const voicePhase =
 			pttHeld || voiceListening
 				? "listening"
-				: voiceSpeakingNow
-					? "speaking"
-					: view.busy || uploading
-						? "waiting"
-						: "idle";
-		const voiceLabel = voiceSpeakingNow
-			? t("code.voiceSpeaking")
-			: voiceListening || voicePhase === "idle"
-				? t("code.voiceListening")
-				: t("code.voiceThinking");
+				: voiceTranscribing
+					? "processing"
+					: voiceSpeakingNow
+						? "speaking"
+						: view.busy || uploading
+							? "waiting"
+							: "idle";
+		const voiceLabel = voiceTranscribing
+			? t("code.voiceTranscribing")
+			: voiceSpeakingNow
+				? t("code.voiceSpeaking")
+				: voiceListening || voicePhase === "idle"
+					? t("code.voiceListening")
+					: t("code.voiceThinking");
 		const bars = [0, 1, 2, 3, 4, 5, 6];
 		return (
 			<View style={{ margin: 12, gap: 8 }}>
-				{voiceMode ? (
+				{voiceMode || voiceTranscribing || pttHeld ? (
 					<View
 						accessibilityLiveRegion="polite"
 						style={{
@@ -1917,10 +1988,11 @@ export default function Code() {
 						>
 							{bars.map((bar) => {
 								const gain = 1 - Math.abs(bar - 3) / 4;
-								const scale =
-									voicePhase === "waiting"
-										? 0.25 + 0.55 * Math.abs(Math.sin(voicePulse / 2))
-										: 0.2 + voiceLevel * gain * 0.8;
+								const pulsing =
+									voicePhase === "waiting" || voicePhase === "processing";
+								const scale = pulsing
+									? 0.25 + 0.55 * Math.abs(Math.sin(voicePulse / 2))
+									: 0.2 + voiceLevel * gain * 0.8;
 								return (
 									<View
 										key={bar}
@@ -1931,7 +2003,7 @@ export default function Code() {
 											backgroundColor:
 												voicePhase === "idle" ? colors.muted : colors.primary,
 											transform: [{ scaleY: scale }],
-											opacity: voicePhase === "waiting" ? 0.7 : 1,
+											opacity: pulsing ? 0.7 : 1,
 										}}
 									/>
 								);
