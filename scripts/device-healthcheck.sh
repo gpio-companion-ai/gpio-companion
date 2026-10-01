@@ -14,9 +14,11 @@
 #
 # Safe probes included (never drive hardware, never join wifi, never start a
 # job): PUT /v1/gpio physical pin 1 (must refuse power/GND before any drive),
-# PUT /v1/config/wifi with the probe SSID gpio-companion-ble-health-probe
-# (must answer ssid-not-found), and invalid-JSON POSTs to flash/run/verify
-# (must answer invalid json without starting anything).
+# and invalid-JSON POSTs to flash/run/verify (must answer invalid json without
+# starting anything). PUT /v1/config/wifi has no loopback bypass (it needs a
+# dashboard signature like the other signed routes), so it is checked with the
+# 401/403 negative gate and the over-the-air probe stays in the dashboard
+# Test Bluetooth runner.
 #
 # usage: bash scripts/device-healthcheck.sh [--json] [--port 4150]
 set -euo pipefail
@@ -24,6 +26,18 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib.sh
 source "$SCRIPT_DIR/lib.sh"
+
+# lib.sh defaults GPIO_USER to root (via SUDO_USER). Check the board as the
+# runtime user instead: prefer sudo's caller, else the current user. An
+# explicitly exported GPIO_USER is always respected.
+if [[ "${GPIO_USER:-root}" == "root" ]]; then
+	if [[ -n "${SUDO_USER:-}" && "$SUDO_USER" != "root" ]] && gpio_user_exists "$SUDO_USER"; then
+		GPIO_USER="$SUDO_USER"
+	elif [[ "$(id -u)" -ne 0 ]]; then
+		GPIO_USER="$(id -un)"
+	fi
+	export GPIO_USER
+fi
 
 PORT="${GPIO_COMPANION_PORT:-4150}"
 JSON=0
@@ -55,8 +69,6 @@ while [[ $i -lt ${#ARGS[@]} ]]; do
 done
 
 BASE="http://127.0.0.1:${PORT}"
-PROBE_SSID="gpio-companion-ble-health-probe"
-PROBE_PSK="xxxxxxxx"
 
 PASS_COUNT=0
 FAIL_COUNT=0
@@ -95,14 +107,16 @@ skip() { record SKIP "$@"; }
 
 # curl_api <method> <path> [body] -> prints "<http-code>\n<response-body>"
 # Never fails the script (curl exit folded into code 000).
+# Set CURL_TIMEOUT (seconds) for slow endpoints; default 4.
 curl_api() {
 	local method="$1" path="$2" body="${3:-}"
+	local timeout="${CURL_TIMEOUT:-4}"
 	local code raw
 	if [[ -n "$body" ]]; then
-		raw="$(curl -sS --max-time 4 -X "$method" -H 'content-type: application/json' \
+		raw="$(curl -sS --max-time "$timeout" -X "$method" -H 'content-type: application/json' \
 			--data "$body" -w '\n%{http_code}' "$BASE$path" 2>&1 || true)"
 	else
-		raw="$(curl -sS --max-time 4 -X "$method" \
+		raw="$(curl -sS --max-time "$timeout" -X "$method" \
 			-w '\n%{http_code}' "$BASE$path" 2>&1 || true)"
 	fi
 	code="$(printf '%s' "$raw" | tail -n1 | tr -d '[:space:]')"
@@ -245,7 +259,10 @@ else
 	skip "gpio-opencode.service (user)" "no systemd (emulator/CI)"
 fi
 if command -v ss >/dev/null 2>&1; then
-	listen="$(ss -ltn 2>/dev/null | awk '$4 ~ /:'"$PORT"'$/ {print $4; exit}')"
+	# Capture before matching: under `set -o pipefail` an early pipe close
+	# (head/awk exit) reports SIGPIPE instead of the match.
+	ss_out="$(ss -ltn 2>/dev/null || true)"
+	listen="$(awk '$4 ~ /:'"$PORT"'$/ {print $4; exit}' <<<"$ss_out")"
 	if [[ -n "$listen" ]]; then
 		pass "port $PORT listening" "$listen"
 	else
@@ -284,7 +301,8 @@ check_get_keys "GET /health" "/health" ok version
 check_get_keys "GET /v1/gpio" "/v1/gpio" pins
 check_get_keys "GET /v1/arduino-proxy" "/v1/arduino-proxy" connected
 check_get_keys "GET /v1/flash" "/v1/flash" running
-check_get_keys "GET /v1/flash/ports" "/v1/flash/ports" ports
+# flash/ports shells out to arduino-cli board list (~5s on real hardware).
+CURL_TIMEOUT=30 check_get_keys "GET /v1/flash/ports" "/v1/flash/ports" ports
 check_get_keys "GET /v1/flash/sketches" "/v1/flash/sketches" sketches
 check_get_keys "GET /v1/run" "/v1/run" running
 check_get_keys "GET /v1/run/sketches" "/v1/run/sketches" sketches
@@ -300,11 +318,12 @@ for job in run verify; do
 	fi
 done
 
-# signed-only routes: unsigned must 401/403 -> route live; anything else is news
+# signed-only routes: unsigned must 401/403 -> route live; anything else is news.
+# Method defaults to GET; auth is checked before method/body handling.
 check_signed_gate() {
-	local name="$1" path="$2"
+	local name="$1" path="$2" method="${3:-GET}"
 	local code
-	code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$BASE$path" 2>/dev/null || true)"
+	code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 -X "$method" "$BASE$path" 2>/dev/null || true)"
 	[[ "$code" =~ ^[0-9]{3}$ ]] || code="000"
 	case "$code" in
 	401 | 403) pass "$name" "HTTP $code signature required (route live; signed check stays in test:device)" ;;
@@ -332,22 +351,8 @@ else
 	fail "PUT /v1/gpio pin-1 refusal" "HTTP $gpio_code: ${gpio_body:0:200}"
 fi
 
-pair_uuid="$(pairing_uuid)"
-if [[ -z "$pair_uuid" ]]; then
-	fail "PUT /v1/config/wifi probe" "no pairing uuid, cannot build probe body"
-else
-	wifi_body="$(python3 -c 'import json; print(json.dumps({"ssid":"'"$PROBE_SSID"'","psk":"'"$PROBE_PSK"'","uuid":"'"$pair_uuid"'"}))')"
-	wifi_out="$(curl_api PUT "/v1/config/wifi" "$wifi_body")"
-	wifi_code="$(printf '%s' "$wifi_out" | head -n1)"
-	wifi_raw="$(printf '%s' "$wifi_out" | tail -n +2)"
-	if printf '%s' "$wifi_raw" | grep -qiE 'ssid-not-found|wifi network not found'; then
-		pass "PUT /v1/config/wifi probe" "handler ran, rejected probe SSID (${wifi_raw:0:160})"
-	elif printf '%s' "$wifi_raw" | grep -q '"connected"[[:space:]]*:[[:space:]]*true'; then
-		fail "PUT /v1/config/wifi probe" "probe SSID CONNECTED — healthcheck must never join a real network"
-	else
-		fail "PUT /v1/config/wifi probe" "HTTP $wifi_code: ${wifi_raw:0:200}"
-	fi
-fi
+check_signed_gate "gate PUT /v1/config/wifi" "/v1/config/wifi" "PUT"
+skip "PUT /v1/config/wifi probe" "no loopback bypass: needs a dashboard signature; probe runs over BLE in dashboard Test Bluetooth"
 
 for p in "/v1/flash" "/v1/run" "/v1/verify" "/v1/console/usb"; do
 	out="$(curl_api POST "$p" "{")"
@@ -375,14 +380,17 @@ if getent group gpio >/dev/null 2>&1; then
 else
 	fail "gpio group" "no gpio group (install_gpiochip_udev not applied)"
 fi
-if command -v gpioinfo >/dev/null 2>&1; then
-	if gpioinfo 2>/dev/null | head -n2 | grep -qi 'gpiochip'; then
+if ! command -v gpioinfo >/dev/null 2>&1; then
+	fail "gpio libgpiod" "gpioinfo not installed (gpiod package missing)"
+else
+	# Capture before matching: under `set -o pipefail` an early pipe close
+	# (head, grep -m1) reports SIGPIPE instead of the match.
+	gpio_info="$(gpioinfo 2>/dev/null || true)"
+	if [[ -n "$gpio_info" ]] && grep -qi 'gpiochip' <<<"$gpio_info"; then
 		pass "gpio libgpiod" "gpioinfo lists chips"
 	else
 		fail "gpio libgpiod" "gpioinfo found no chips"
 	fi
-else
-	fail "gpio libgpiod" "gpioinfo not installed (gpiod package missing)"
 fi
 if [[ -f /proc/device-tree/model ]]; then
 	model="$(tr -d '\0' </proc/device-tree/model)"
@@ -394,8 +402,10 @@ fi
 # ------------------------------------------------------------------------ BLE
 ble_script="${GPIO_COMPANION_BLE_SCRIPT:-$LIB_DIR/ble-gatt-server.py}"
 if [[ -f "$ble_script" ]]; then
-	if python3 -m py_compile "$ble_script" 2>/dev/null; then
-		pass "ble gatt script" "$ble_script compiles"
+	# ast.parse checks syntax without writing __pycache__ (py_compile fails
+	# with Permission denied for non-root users under /usr/local/lib).
+	if python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$ble_script" 2>/dev/null; then
+		pass "ble gatt script" "$ble_script parses"
 	else
 		fail "ble gatt script" "$ble_script has python syntax errors"
 	fi
@@ -412,7 +422,8 @@ else
 	skip "ble ControllerMode" "no /etc/bluetooth/main.conf (bluez not installed?)"
 fi
 if command -v hciconfig >/dev/null 2>&1; then
-	adapter="$(hciconfig 2>/dev/null | awk '/^hci/{name=$1} /UP RUNNING/{print name; exit}')"
+	hci_out="$(hciconfig 2>/dev/null || true)"
+	adapter="$(awk '/^hci/{name=$1} /UP RUNNING/{print name; exit}' <<<"$hci_out")"
 	adapter="${adapter%:}"
 	if [[ -n "$adapter" ]]; then
 		pass "ble adapter" "$adapter UP RUNNING"
@@ -420,7 +431,8 @@ if command -v hciconfig >/dev/null 2>&1; then
 		fail "ble adapter" "no hci UP RUNNING (bluetooth down or UART HCI missing)"
 	fi
 elif command -v bluetoothctl >/dev/null 2>&1; then
-	if bluetoothctl show 2>/dev/null | grep -q 'Powered: yes'; then
+	bt_out="$(bluetoothctl show 2>/dev/null || true)"
+	if grep -q 'Powered: yes' <<<"$bt_out"; then
 		pass "ble adapter" "controller powered (bluetoothctl)"
 	else
 		fail "ble adapter" "controller not powered (bluetoothctl)"
@@ -436,8 +448,10 @@ fi
 
 # ----------------------------------------------------------- network + tunnel
 if command -v nmcli >/dev/null 2>&1; then
-	ssid="$(nmcli -t -f active,ssid dev wifi 2>/dev/null | awk -F: '$1=="yes"{print $2; exit}')"
-	primary="$(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null | grep ':connected' | head -n1 || true)"
+	nm_wifi="$(nmcli -t -f active,ssid dev wifi 2>/dev/null || true)"
+	nm_devs="$(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null || true)"
+	ssid="$(awk -F: '$1=="yes"{print $2; exit}' <<<"$nm_wifi")"
+	primary="$(grep ':connected' <<<"$nm_devs" | head -n1 || true)"
 	if [[ -n "$primary" ]]; then
 		pass "network link" "$primary ssid=${ssid:-none}"
 	else
@@ -455,8 +469,10 @@ fi
 # ------------------------------------------------------------------ toolchain
 for tool in "bun --version" "node --version" "git --version" "gcc --version" "arduino-cli version" "python3 --version"; do
 	bin="${tool%% *}"
-	if out="$($tool 2>/dev/null | head -n1)"; then
-		pass "tool $bin" "$out"
+	# Capture before head: under `set -o pipefail` head's early pipe close
+	# can report SIGPIPE instead of the version string.
+	if tool_out="$($tool 2>/dev/null)"; then
+		pass "tool $bin" "$(head -n1 <<<"$tool_out")"
 	else
 		fail "tool $bin" "$bin not installed"
 	fi
@@ -547,8 +563,9 @@ if command -v df >/dev/null 2>&1; then
 	fi
 fi
 if have_systemd && command -v journalctl >/dev/null 2>&1; then
-	if journalctl --disk-usage 2>/dev/null | head -n1 | grep -q .; then
-		pass "journald" "$(journalctl --disk-usage 2>/dev/null | head -n1)"
+	journal_usage="$(journalctl --disk-usage 2>/dev/null || true)"
+	if [[ -n "$journal_usage" ]]; then
+		pass "journald" "$(head -n1 <<<"$journal_usage")"
 	else
 		skip "journald" "journalctl --disk-usage empty"
 	fi
@@ -576,10 +593,13 @@ else
 fi
 FIRST_REPO=""
 if [[ -d "$PROOT" ]]; then
-	FIRST_REPO="$(find "$PROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort | head -n1 || true)"
-	if [[ -z "$FIRST_REPO" ]]; then
-		FIRST_REPO="$(ls "$PROOT" 2>/dev/null | head -n1 || true)"
+	# Capture before picking: under `set -o pipefail` head's early pipe
+	# close can report SIGPIPE instead of the listing.
+	repo_list="$(find "$PROOT" -mindepth 1 -maxdepth 1 -type d -printf '%f\n' 2>/dev/null | sort || true)"
+	if [[ -z "$repo_list" ]]; then
+		repo_list="$(ls "$PROOT" 2>/dev/null || true)"
 	fi
+	FIRST_REPO="$(head -n1 <<<"$repo_list")"
 fi
 
 # ----------------------------------------------------------------- websockets
@@ -603,12 +623,17 @@ ws_check() {
 
 ws_plain="$(curl -s -o /dev/null -w '%{http_code}' --max-time 4 "$BASE/v1/debug" 2>/dev/null || true)"
 [[ "$ws_plain" =~ ^[0-9]{3}$ ]] || ws_plain="000"
-if [[ "$ws_plain" == "400" ]]; then
+# Unsigned plain GET hits the signature gate before upgrade handling, so 401
+# is the live signal here (same as the upgrade rows below); the signed 400 case
+# stays covered remotely by test:device.
+if [[ "$ws_plain" == "401" || "$ws_plain" == "403" ]]; then
+	pass "WS GET /v1/debug plain" "HTTP $ws_plain signature required (socket live)"
+elif [[ "$ws_plain" == "400" ]]; then
 	pass "WS GET /v1/debug plain" "HTTP 400 upgrade failed (debug-http probe ready)"
 elif [[ "$ws_plain" == "000" ]]; then
 	fail "WS GET /v1/debug plain" "connection refused (companion down)"
 else
-	fail "WS GET /v1/debug plain" "unexpected HTTP $ws_plain (want 400 upgrade failed)"
+	fail "WS GET /v1/debug plain" "unexpected HTTP $ws_plain (want 401 unsigned)"
 fi
 ws_check "WS /v1/debug upgrade" "/v1/debug"
 ws_check "WS /v1/gpio" "/v1/gpio"
