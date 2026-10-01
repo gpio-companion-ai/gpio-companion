@@ -1118,6 +1118,7 @@ export const fr = {
 		permissionAsk: "Demander",
 		permissionFull: "Contrôle total",
 		permissionFullHint: "L’agent approuve les actions sans demander",
+		permissionFailed: "Impossible de changer l’autorisation — vérifiez la connexion à la carte et réessayez.",
 		project: "Projet",
 		projects: "Projets",
 		board: "Carte",

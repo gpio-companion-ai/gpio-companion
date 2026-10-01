@@ -1091,6 +1091,7 @@ export const en = {
 		permissionAsk: "Ask",
 		permissionFull: "Full control",
 		permissionFullHint: "The agent approves actions without asking",
+		permissionFailed: "Could not change permission — check the board connection and try again.",
 		project: "Project",
 		projects: "Projects",
 		board: "Board",

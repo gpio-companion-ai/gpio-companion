@@ -11,11 +11,16 @@ import type { ConfigStore } from "./store.ts";
 
 export const OPENCODE_PERMISSION_MODE_PATH = `${OPENCODE_PROXY_PATH}/permission-mode`;
 
-export const OPENCODE_PERMISSION_ALLOW = {
-	edit: "allow",
-	bash: "allow",
-	webfetch: "allow",
-} as const;
+export const OPENCODE_PERMISSION_ALLOW = "allow" as const;
+export const OPENCODE_PERMISSION_ASK = "ask" as const;
+
+export const OPENCODE_PERMISSIONS_ALLOW_ALL = [
+	{ action: "*", resource: "*", effect: "allow" },
+] as const;
+
+export const OPENCODE_PERMISSIONS_ASK_ALL = [
+	{ action: "*", resource: "*", effect: "ask" },
+] as const;
 
 export function defaultOpencodePermissionConfigPath(): string {
 	const home = process.env.GPIO_COMPANION_OPENCODE_HOME?.trim() || homedir();
@@ -47,7 +52,11 @@ export async function writeOpencodePermissionConfig(
 	const data = await readOpencodePermissionConfig(path);
 	const next = {
 		...data,
-		permission: mode === "full" ? OPENCODE_PERMISSION_ALLOW : "ask",
+		permission: mode === "full" ? OPENCODE_PERMISSION_ALLOW : OPENCODE_PERMISSION_ASK,
+		permissions:
+			mode === "full"
+				? [...OPENCODE_PERMISSIONS_ALLOW_ALL.map((rule) => ({ ...rule }))]
+				: [...OPENCODE_PERMISSIONS_ASK_ALL.map((rule) => ({ ...rule }))],
 	};
 	const text = `${JSON.stringify(next, null, "\t")}\n`;
 	const file = Bun.file(path);
@@ -104,10 +113,16 @@ export async function handleOpencodePermissionMode(options: {
 	const changed = await writeOpencodePermissionConfig(path, mode);
 	const next: DeviceConfig = { ...config, opencodePermission: mode };
 	await options.store.write(next);
+	let restarted = false;
 	if (changed === "changed" || current !== mode) {
-		await (options.restart ?? restartOpencodeUserService)().catch(
-			() => undefined,
-		);
+		try {
+			await (options.restart ?? restartOpencodeUserService)();
+			restarted = true;
+		} catch {
+			restarted = false;
+		}
+	} else {
+		restarted = true;
 	}
-	return Response.json({ mode });
+	return Response.json({ mode, restarted });
 }

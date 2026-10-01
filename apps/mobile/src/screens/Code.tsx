@@ -774,6 +774,8 @@ export default function Code() {
 			const record = data as { mode?: unknown } | null;
 			if (!record || opencodePermissionMode(record.mode) !== next) {
 				setPermissionMode(previous);
+				void storageSet(OPENCODE_PERMISSION_MODE_KEY, previous);
+				setError(t("code.permissionFailed"));
 				return;
 			}
 			setPermissionMode(next);

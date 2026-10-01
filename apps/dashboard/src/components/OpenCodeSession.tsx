@@ -700,6 +700,12 @@ export default function OpenCodeSession({
 			const record = data as { mode?: unknown } | null;
 			if (!record || opencodePermissionMode(record.mode) !== next) {
 				setPermissionMode(previous);
+				try {
+					window.localStorage.setItem(OPENCODE_PERMISSION_MODE_KEY, previous);
+				} catch {
+					return;
+				}
+				setError(t("code.permissionFailed"));
 				return;
 			}
 			setPermissionMode(next);

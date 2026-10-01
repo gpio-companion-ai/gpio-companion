@@ -329,17 +329,16 @@ describe("signed opencode proxy", () => {
 			headers: { [OPENCODE_REPO_HEADER]: "blink-led" },
 		});
 		expect(set.status).toBe(200);
-		expect(await set.json()).toEqual({ mode: "full" });
+		expect(await set.json()).toEqual({ mode: "full", restarted: true });
 		const config = JSON.parse(await readFile(join(dir, "config.json"), "utf8"));
 		expect(config.opencodePermission).toBe("full");
 		const written = JSON.parse(
 			await readFile(join(dir, "opencode.json"), "utf8"),
 		);
-		expect(written.permission).toEqual({
-			edit: "allow",
-			bash: "allow",
-			webfetch: "allow",
-		});
+		expect(written.permission).toBe("allow");
+		expect(written.permissions).toEqual([
+			{ action: "*", resource: "*", effect: "allow" },
+		]);
 		expect(seen).toHaveLength(0);
 	});
 });

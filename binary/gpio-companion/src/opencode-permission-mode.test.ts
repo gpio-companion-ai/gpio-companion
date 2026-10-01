@@ -38,11 +38,10 @@ describe("opencode permission mode", () => {
 		);
 		expect(await writeOpencodePermissionConfig(path, "full")).toBe("changed");
 		const written = JSON.parse(await readFile(path, "utf8"));
-		expect(written.permission).toEqual({
-			edit: "allow",
-			bash: "allow",
-			webfetch: "allow",
-		});
+		expect(written.permission).toBe("allow");
+		expect(written.permissions).toEqual([
+			{ action: "*", resource: "*", effect: "allow" },
+		]);
 		expect(written.model).toBe("gpio-companion/@cf/zai-org/glm-5.3");
 		expect(written.provider["gpio-companion"].npm).toBe(
 			"@ai-sdk/openai-compatible",
@@ -97,13 +96,12 @@ describe("opencode permission mode", () => {
 			},
 		});
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ mode: "full" });
+		expect(await response.json()).toEqual({ mode: "full", restarted: true });
 		expect(store.value().opencodePermission).toBe("full");
-		expect(JSON.parse(await readFile(path, "utf8")).permission).toEqual({
-			edit: "allow",
-			bash: "allow",
-			webfetch: "allow",
-		});
+		expect(JSON.parse(await readFile(path, "utf8")).permission).toBe("allow");
+		expect(JSON.parse(await readFile(path, "utf8")).permissions).toEqual([
+			{ action: "*", resource: "*", effect: "allow" },
+		]);
 		expect(restarts).toBe(1);
 		const again = await handleOpencodePermissionMode({
 			method: "POST",
@@ -114,7 +112,7 @@ describe("opencode permission mode", () => {
 				restarts += 1;
 			},
 		});
-		expect(await again.json()).toEqual({ mode: "full" });
+		expect(await again.json()).toEqual({ mode: "full", restarted: true });
 		expect(restarts).toBe(1);
 	});
 
@@ -135,9 +133,12 @@ describe("opencode permission mode", () => {
 				restarts += 1;
 			},
 		});
-		expect(await response.json()).toEqual({ mode: "ask" });
+		expect(await response.json()).toEqual({ mode: "ask", restarted: true });
 		expect(store.value().opencodePermission).toBe("ask");
 		expect(JSON.parse(await readFile(path, "utf8")).permission).toBe("ask");
+		expect(JSON.parse(await readFile(path, "utf8")).permissions).toEqual([
+			{ action: "*", resource: "*", effect: "ask" },
+		]);
 		expect(restarts).toBe(1);
 	});
 
