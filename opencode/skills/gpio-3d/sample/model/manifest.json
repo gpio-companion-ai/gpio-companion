@@ -20,6 +20,14 @@
 				"arduino-nano",
 				"arduino-mega"
 			]
+		},
+		{
+			"name": "engraved-clip",
+			"file": "engraved-clip.glb",
+			"units": "mm",
+			"fits": [
+				"companion-header"
+			]
 		}
 	]
 }

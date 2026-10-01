@@ -171,6 +171,13 @@ function formatSessionTime(updated: number): string {
 
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
+type SpeechItem = {
+	text: string;
+	gen: number;
+	state: "queued" | "fetching" | "ready" | "failed";
+	promise: Promise<void>;
+	audio: string;
+};
 
 function at<T>(
 	items: readonly T[],
@@ -418,7 +425,10 @@ export default function Code() {
 	const voiceSpeaking = useRef<AudioPlayer | null>(null);
 	const voiceSpeechResolve = useRef<(() => void) | null>(null);
 	const speechSpoken = useRef(new Map<string, number>());
-	const speechChain = useRef<Promise<void>>(Promise.resolve());
+	const speechPrefetch = useRef<SpeechItem[]>([]);
+	const speechPlaying = useRef(false);
+	const speechFetching = useRef(false);
+	const speechFileIndex = useRef(0);
 	const speechGen = useRef(0);
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
@@ -1215,7 +1225,7 @@ export default function Code() {
 
 	function clearSpeechQueue() {
 		speechGen.current += 1;
-		speechChain.current = Promise.resolve();
+		speechPrefetch.current = [];
 		const resolve = voiceSpeechResolve.current;
 		voiceSpeechResolve.current = null;
 		resolve?.();
@@ -1337,75 +1347,188 @@ export default function Code() {
 	beginPttRef.current = beginPtt;
 	endPttRef.current = endPtt;
 
-	function speakReply(text: string, gen: number): Promise<void> {
-		if (gen !== speechGen.current) {
-			return Promise.resolve();
+	function makeSpeechItem(text: string, gen: number): SpeechItem {
+		return {
+			text,
+			gen,
+			state: "queued",
+			promise: Promise.resolve(),
+			audio: "",
+		};
+	}
+
+	async function fetchSpeech(item: SpeechItem): Promise<void> {
+		if (item.state !== "queued") {
+			return;
 		}
+		let settle = () => {};
+		item.promise = new Promise<void>((resolve) => {
+			settle = resolve;
+		});
+		item.state = "fetching";
+		try {
+			const audio = (await speakCode(token, item.text, locale)).audio;
+			if (!audio) {
+				item.state = "failed";
+				return;
+			}
+			if (item.gen !== speechGen.current) {
+				item.state = "failed";
+				return;
+			}
+			item.audio = audio;
+			item.state = "ready";
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+			item.state = "failed";
+		} finally {
+			settle();
+		}
+	}
+
+	async function prefetchSpeechQueue(): Promise<void> {
+		if (speechFetching.current) {
+			return;
+		}
+		speechFetching.current = true;
+		try {
+			while (speechPrefetch.current.length > 0) {
+				const item = speechPrefetch.current.find(
+					(entry) => entry.state === "queued",
+				);
+				if (!item) {
+					return;
+				}
+				await fetchSpeech(item);
+			}
+		} finally {
+			speechFetching.current = false;
+		}
+	}
+
+	function playSpeech(item: SpeechItem): Promise<void> {
 		return new Promise<void>((resolve) => {
-			void (async () => {
+			try {
+				stopVoiceSpeech();
+				speechFileIndex.current += 1;
+				let replyPath = "";
+				let file: File | null = null;
 				try {
-					const audio = (await speakCode(token, text, locale)).audio;
-					if (
-						!audio ||
-						gen !== speechGen.current ||
-						(!voiceModeRef.current && !voiceReplyRef.current)
-					) {
-						resolve();
+					const target = new File(
+						Paths.cache,
+						`code-reply-${speechFileIndex.current}.mp3`,
+					);
+					try {
+						target.delete();
+					} catch {
+						// absent
+					}
+					target.write(decodeBase64(item.audio));
+					replyPath = target.uri;
+					file = target;
+				} catch {
+					replyPath = "";
+					file = null;
+				}
+				const player = createAudioPlayer(
+					{ uri: replyPath || `data:audio/mpeg;base64,${item.audio}` },
+					{ updateInterval: 200 },
+				);
+				const done = () => {
+					const settle = voiceSpeechResolve.current;
+					voiceSpeechResolve.current = null;
+					if (voiceSpeaking.current === player) {
+						voiceSpeaking.current = null;
+						try {
+							player.remove();
+						} catch {
+							// released
+						}
+						if (file) {
+							try {
+								file.delete();
+							} catch {
+								// absent
+							}
+						}
+						setVoiceSpeakingNow(false);
+					}
+					settle?.();
+					resolve();
+				};
+				voiceSpeaking.current = player;
+				voiceSpeechResolve.current = done;
+				setVoiceSpeakingNow(true);
+				voiceFloor.current = -160;
+				voiceFloorAt.current = Date.now();
+				voiceBarge.current = 0;
+				const sub = player.addListener("playbackStatusUpdate", (status) => {
+					if (!status.didJustFinish) {
 						return;
 					}
-					stopVoiceSpeech();
-					let replyPath = "";
-					try {
-						const file = new File(Paths.cache, "code-reply.mp3");
-						try {
-							file.delete();
-						} catch {
-							// absent
-						}
-						file.write(decodeBase64(audio));
-						replyPath = file.uri;
-					} catch {
-						replyPath = "";
-					}
-					const player = createAudioPlayer(
-						{ uri: replyPath || `data:audio/mpeg;base64,${audio}` },
-						{ updateInterval: 200 },
-					);
-					const done = () => {
-						const settle = voiceSpeechResolve.current;
-						voiceSpeechResolve.current = null;
-						if (voiceSpeaking.current === player) {
-							voiceSpeaking.current = null;
-							try {
-								player.remove();
-							} catch {
-								// released
-							}
-							setVoiceSpeakingNow(false);
-						}
-						settle?.();
-						resolve();
-					};
-					voiceSpeaking.current = player;
-					voiceSpeechResolve.current = done;
-					setVoiceSpeakingNow(true);
-					voiceFloor.current = -160;
-					voiceFloorAt.current = Date.now();
-					voiceBarge.current = 0;
-					const sub = player.addListener("playbackStatusUpdate", (status) => {
-						if (!status.didJustFinish) {
-							return;
-						}
-						sub.remove();
-						done();
-					});
-					player.play();
-				} catch (caught) {
-					setError(shownError(caught instanceof Error ? caught.message : ""));
-					resolve();
-				}
-			})();
+					sub.remove();
+					done();
+				});
+				player.play();
+			} catch (caught) {
+				setError(shownError(caught instanceof Error ? caught.message : ""));
+				resolve();
+			}
 		});
+	}
+
+	function dropSpeechItem(item: SpeechItem) {
+		const index = speechPrefetch.current.indexOf(item);
+		if (index !== -1) {
+			speechPrefetch.current.splice(index, 1);
+		}
+	}
+
+	function pumpSpeech() {
+		if (speechPlaying.current) {
+			void prefetchSpeechQueue();
+			return;
+		}
+		if (speechPrefetch.current.length === 0) {
+			return;
+		}
+		speechPlaying.current = true;
+		void (async () => {
+			try {
+				while (speechPrefetch.current.length > 0) {
+					const item = speechPrefetch.current[0];
+					if (!item) {
+						break;
+					}
+					if (
+						item.gen !== speechGen.current ||
+						item.state === "failed" ||
+						(!voiceModeRef.current && !voiceReplyRef.current)
+					) {
+						dropSpeechItem(item);
+						continue;
+					}
+					if (item.state === "queued") {
+						await fetchSpeech(item);
+					} else if (item.state === "fetching") {
+						await item.promise;
+					}
+					if (
+						item.gen !== speechGen.current ||
+						item.state !== "ready" ||
+						(!voiceModeRef.current && !voiceReplyRef.current)
+					) {
+						dropSpeechItem(item);
+						continue;
+					}
+					void prefetchSpeechQueue();
+					await playSpeech(item);
+					dropSpeechItem(item);
+				}
+			} finally {
+				speechPlaying.current = false;
+			}
+		})();
 	}
 
 	function enqueueSpeech(text: string) {
@@ -1413,10 +1536,8 @@ export default function Code() {
 		if (!clean) {
 			return;
 		}
-		const gen = speechGen.current;
-		speechChain.current = speechChain.current
-			.then(() => speakReply(clean, gen))
-			.catch(() => {});
+		speechPrefetch.current.push(makeSpeechItem(clean, speechGen.current));
+		pumpSpeech();
 	}
 
 	function voiceTick() {
@@ -1586,7 +1707,7 @@ export default function Code() {
 		}
 	}, [voiceMode, view.turns]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
+	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and enqueueSpeech()
 	useEffect(() => {
 		if (!voiceMode && !voiceReply) {
 			clearSpeechQueue();

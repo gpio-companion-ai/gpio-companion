@@ -2,10 +2,11 @@
 name: gpio-3d
 description: >-
   Write printable parts for the current GitHub project. Use when the user
-  wants a 3D-printed clip, spacer, shroud, or other part that fits the
-  companion header and/or an Arduino Uno, Nano, or Mega. Run the gpio-3d
-  command. Output ~/projects/<repo>/model/ as one glTF (.glb) and one STL
-  per part, plus model/manifest.json. Meshes come from trimesh, not tscircuit.
+  wants a 3D-printed clip, spacer, shroud, bracket, knob, or other part —
+  simple or complex — that fits the companion header and/or an Arduino
+  Uno, Nano, or Mega. Run the gpio-3d command. Output
+  ~/projects/<repo>/model/ as one glTF (.glb) and one STL per part, plus
+  model/manifest.json. Meshes come from trimesh, not tscircuit.
 ---
 
 # gpio-3d
@@ -28,7 +29,7 @@ gpio-3d shroud --name header-shroud --cols 20 --rows 2 --height 8 --wall 1.6 --f
 
 `--cols` and `--rows` size the part: length is `cols × 2.54`, width is `rows × 2.54`. Repeat `--fits` when the same geometry fits more than one board. `--hole` must be under 2.54 mm.
 
-Use `clip`, `spacer`, or `shroud` first. Use `build` only when those three cannot express the part. The recipe is stdin, not a file in `model/`:
+Use `clip`, `spacer`, or `shroud` first. Use `build` when those three cannot express the part — brackets, knobs, rings, combs, engraved labels, anything else. The recipe is stdin, not a file in `model/`:
 
 ```sh
 gpio-3d build - --dir ~/projects/<repo>/model <<'EOF'
@@ -44,7 +45,50 @@ gpio-3d build - --dir ~/projects/<repo>/model <<'EOF'
 EOF
 ```
 
-Recipe ops are `box`, `cylinder`, `header-bar`, `hole-grid`, and `cut` (`shape` `box` or `cylinder`). `header-bar` and `hole-grid` sit on the 2.54 mm grid from the origin. Do not add `pitch`, a file path, or any other field. `units` is `mm` only.
+## Recipe ops
+
+`units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center) and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). A recipe has at most 100 ops total.
+
+Solids (the first one starts the part; later ones union onto it):
+
+- `box` — `size: [x, y, z]`. Without `at`, the minimum corner sits at the origin.
+- `cylinder` — `radius`, `height`; optional `axis` (`x`, `y`, or `z`, default `z`). Without `at`, the base sits on the floor.
+- `header-bar` — `cols`, `rows`, `thickness`; sits on the 2.54 mm grid from the origin.
+- `sphere` — `radius`, centered at the origin unless `at`.
+- `torus` — `radius` (ring) and `tube` (`tube` < `radius`); lies flat, hole along z.
+- `cone` — `radius`, `height`; base on the floor, apex up.
+- `capsule` — `radius`, `height`; `height` is the overall length including both rounded ends, so it must be at least `2 × radius`; stands on the floor along z.
+- `revolve` — `profile: [[radius, height], ...]` spun around the z axis; start and end the profile at radius `0` for a closed solid (a closed loop makes a ring). Optional `angle` (degrees, `0`–`360`) leaves a flat side.
+- `extrude` — `points: [[x, y], ...]` (3–200 points), optional `holes` (up to 20 rings of the same shape), `height`. Optional `twist` (degrees) and `taper` (top scale, `0`–`10`).
+
+Modifiers:
+
+- `cut` — `shape` plus that solid's fields; subtracts it. Any solid works as a shape, so `{"op": "cut", "shape": "cylinder", "radius": 2, "height": 10, "axis": "x", "at": [5, 5, 1]}` drills a sideways hole.
+- `intersect` — same fields as `cut`; keeps only the overlap. Needs a part first.
+- `hole-grid` — `cols`, `rows`, `diameter` (under 2.54 mm); punches the pin grid from the origin.
+- `pattern` — `count` (2–200) and `ops` (a list of solid ops only); repeats the group. Linear: `axis` (`x`, `y`, `z`) plus `step` (mm). Polar: `around: [x, y]` plus `degrees` per copy. Default `mode` is `add`; `"mode": "cut"` subtracts every copy instead (vent grids, slots).
+- `mirror` — `axis` (`x`, `y`, or `z`) and `ops` (solid ops only); adds the group plus its flip across that axis's plane through the origin. Build one half touching the origin, mirror the other. Also accepts `"mode": "cut"`.
+- `text` — `value` (1–40 characters, one line), `size` (mm cap height), `depth` (mm), and `at` (required). `mode` is `engrave` (default; `at` is the face and the text cuts `depth` below it) or `emboss` (`at` is the base and the text grows `depth` above it). Optional `align` (`left`, `center`, `right` — where `at` sits in x) and `bold`. DejaVu Sans is built in; accents work. Use one `text` op per part.
+
+Pitch is 2.54 mm. Do not add `pitch`, a file path, or any other field. Do not nest `pattern` or `mirror` inside another `pattern` or `mirror`; one level only.
+
+A knurled knob with an engraved label:
+
+```sh
+gpio-3d build - --dir ~/projects/<repo>/model <<'EOF'
+{
+  "name": "knob",
+  "units": "mm",
+  "fits": ["companion-header"],
+  "ops": [
+    {"op": "revolve", "profile": [[0, 0], [9, 0], [9, 2], [4, 2], [4, 8], [0, 8]]},
+    {"op": "pattern", "count": 12, "around": [0, 0], "degrees": 30, "ops": [{"op": "box", "size": [1.6, 3, 6], "at": [4.2, 0, 4]}]},
+    {"op": "cut", "shape": "box", "size": [1.6, 3.4, 3], "at": [9, 0, 1]},
+    {"op": "text", "value": "CH1", "size": 3, "depth": 0.8, "at": [0, 0, 8], "align": "center"}
+  ]
+}
+EOF
+```
 
 ## Which board
 
@@ -118,4 +162,4 @@ Then `git add model/`, commit, `git push` the feature branch. Do not merge `main
 
 ## Sample
 
-`sample/model/` in this skill is a valid manifest, written with `gpio-3d clip`: a 50.8 × 5.08 × 2.0 mm clip for a 40-pin companion header (20 × 2.54 mm) and a 20.32 × 2.54 × 2.0 mm clip for an 8-pin Arduino header (Uno, Nano, and Mega).
+`sample/model/` in this skill is a valid manifest: `header-clip` and `arduino-header-clip` written with `gpio-3d clip`, plus `engraved-clip` written with `gpio-3d build` (a `header-bar` with a pin-slot `pattern` cut and an engraved `GPIO` label).

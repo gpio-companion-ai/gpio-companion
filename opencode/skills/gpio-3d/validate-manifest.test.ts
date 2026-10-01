@@ -43,6 +43,7 @@ describe("gpio-3d manifest", () => {
 		expect(manifest.parts.map((part) => part.file)).toEqual([
 			"header-clip.glb",
 			"arduino-header-clip.glb",
+			"engraved-clip.glb",
 		]);
 		expect(manifest.parts[0]?.fits).toEqual(["companion-header"]);
 		expect(manifest.parts[1]?.fits).toEqual([
@@ -50,6 +51,7 @@ describe("gpio-3d manifest", () => {
 			"arduino-nano",
 			"arduino-mega",
 		]);
+		expect(manifest.parts[2]?.fits).toEqual(["companion-header"]);
 		expect(manifest.parts.every((part) => part.units === "mm")).toBe(true);
 		const glb = readFileSync(join(sampleDir, "header-clip.glb"));
 		expect(glb.subarray(0, 4).toString()).toBe("glTF");

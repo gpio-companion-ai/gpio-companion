@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import subprocess
 import sys
@@ -59,6 +60,223 @@ class MeshTest(unittest.TestCase):
             apply_ops([{"op": "glb", "file": "part.glb"}])
         with self.assertRaises(Gpio3dError):
             apply_ops([{"op": "header-bar", "cols": 2, "rows": 1, "thickness": 2, "pitch": 2.5}])
+
+
+class RecipeOpsTest(unittest.TestCase):
+    def test_sideways_cylinder_cuts_a_through_hole(self):
+        mesh = apply_ops(
+            [
+                {"op": "box", "size": [20, 10, 4]},
+                {"op": "cut", "shape": "cylinder", "radius": 1.5, "height": 30, "axis": "x", "at": [10, 5, 2]},
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertAlmostEqual(mesh.volume, 800 - math.pi * 1.5 * 1.5 * 20, delta=6.0)
+
+    def test_rotated_cut_changes_the_solid(self):
+        straight = apply_ops(
+            [
+                {"op": "box", "size": [10, 10, 2]},
+                {"op": "cut", "shape": "box", "size": [14, 1, 4], "at": [5, 5, 1]},
+            ]
+        )
+        angled = apply_ops(
+            [
+                {"op": "box", "size": [10, 10, 2]},
+                {"op": "cut", "shape": "box", "size": [14, 1, 4], "at": [5, 5, 1], "rotate": [0, 0, 45]},
+            ]
+        )
+        self.assertTrue(angled.is_watertight)
+        self.assertGreater(straight.volume - angled.volume, 2.0)
+
+    def test_extrude_supports_holes_twist_and_taper(self):
+        plain = apply_ops(
+            [
+                {
+                    "op": "extrude",
+                    "points": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                    "holes": [[[4, 4], [6, 4], [6, 6], [4, 6]]],
+                    "height": 3,
+                }
+            ]
+        )
+        self.assertTrue(plain.is_watertight)
+        self.assertAlmostEqual(plain.volume, (100 - 4) * 3, delta=3.0)
+        twisted = apply_ops(
+            [
+                {
+                    "op": "extrude",
+                    "points": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                    "height": 3,
+                    "twist": 90,
+                }
+            ]
+        )
+        self.assertTrue(twisted.is_watertight)
+        tapered = apply_ops(
+            [
+                {
+                    "op": "extrude",
+                    "points": [[0, 0], [10, 0], [10, 10], [0, 10]],
+                    "height": 3,
+                    "taper": 0.5,
+                }
+            ]
+        )
+        self.assertTrue(tapered.is_watertight)
+        self.assertLess(tapered.volume, plain.volume)
+
+    def test_new_primitives_have_expected_volumes(self):
+        sphere = apply_ops([{"op": "sphere", "radius": 3}])
+        self.assertAlmostEqual(sphere.volume, 4 / 3 * math.pi * 27, delta=4.0)
+        cone = apply_ops([{"op": "cone", "radius": 3, "height": 5}])
+        self.assertAlmostEqual(cone.volume, math.pi * 9 * 5 / 3, delta=2.0)
+        torus = apply_ops([{"op": "torus", "radius": 5, "tube": 1}])
+        self.assertAlmostEqual(torus.volume, 2 * math.pi * math.pi * 5, delta=4.0)
+        capsule = apply_ops([{"op": "capsule", "radius": 1, "height": 6}])
+        self.assertAlmostEqual(capsule.extents[2], 6.0, delta=0.1)
+        self.assertAlmostEqual(capsule.extents[0], 2.0, delta=0.1)
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "torus", "radius": 1, "tube": 2}])
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "capsule", "radius": 2, "height": 3}])
+
+    def test_revolve_builds_a_vase(self):
+        mesh = apply_ops(
+            [{"op": "revolve", "profile": [[0, 0], [3, 0], [3, 6], [1, 6], [1, 10], [0, 10]]}]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertAlmostEqual(mesh.volume, math.pi * 9 * 6 + math.pi * 1 * 4, delta=6.0)
+        partial = apply_ops(
+            [{"op": "revolve", "profile": [[0, 0], [3, 0], [3, 6], [0, 6]], "angle": 180}]
+        )
+        self.assertTrue(partial.is_watertight)
+        self.assertLess(partial.volume, math.pi * 9 * 6)
+
+    def test_pattern_cuts_a_vent_grid(self):
+        mesh = apply_ops(
+            [
+                {"op": "box", "size": [20, 10, 2]},
+                {
+                    "op": "pattern",
+                    "mode": "cut",
+                    "count": 4,
+                    "axis": "x",
+                    "step": 4,
+                    "ops": [{"op": "cylinder", "radius": 1, "height": 4, "at": [4, 5, 1]}],
+                },
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertAlmostEqual(mesh.volume, 400 - 4 * math.pi * 2, delta=3.0)
+
+    def test_pattern_places_polar_copies_and_rejects_bad_specs(self):
+        mesh = apply_ops(
+            [
+                {"op": "cylinder", "radius": 5, "height": 2},
+                {
+                    "op": "pattern",
+                    "count": 6,
+                    "around": [0, 0],
+                    "degrees": 60,
+                    "ops": [{"op": "sphere", "radius": 1, "at": [8, 0, 1]}],
+                },
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertAlmostEqual(mesh.volume, math.pi * 25 * 2 + 6 * 4 / 3 * math.pi, delta=6.0)
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [10, 10, 2]},
+                    {"op": "pattern", "count": 1, "axis": "x", "step": 2, "ops": [{"op": "sphere", "radius": 1}]},
+                ]
+            )
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [10, 10, 2]},
+                    {"op": "pattern", "count": 2, "axis": "x", "step": 2, "ops": [{"op": "cut", "shape": "box", "size": [1, 1, 1]}]},
+                ]
+            )
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [10, 10, 2]},
+                    {"op": "pattern", "count": 3, "axis": "x", "step": 2, "around": [0, 0], "degrees": 30, "ops": [{"op": "sphere", "radius": 1}]},
+                ]
+            )
+
+    def test_mirror_builds_symmetric_halves(self):
+        mesh = apply_ops(
+            [{"op": "mirror", "axis": "x", "ops": [{"op": "box", "size": [3, 4, 2], "at": [1.5, 0, 1]}]}]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertAlmostEqual(mesh.bounds[0][0], -3.0, places=3)
+        self.assertAlmostEqual(mesh.bounds[1][0], 3.0, places=3)
+        self.assertAlmostEqual(mesh.volume, 48.0, delta=0.5)
+
+    def test_intersect_keeps_the_overlap(self):
+        mesh = apply_ops(
+            [
+                {"op": "box", "size": [10, 10, 2]},
+                {"op": "intersect", "shape": "sphere", "radius": 5, "at": [5, 5, 1]},
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertGreater(mesh.volume, 0)
+        self.assertLess(mesh.volume, 200)
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "intersect", "shape": "sphere", "radius": 5}])
+
+    def test_text_engraves_and_embosses(self):
+        engraved = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 3]},
+                {"op": "text", "value": "HI", "size": 6, "depth": 1, "at": [20, 5, 3]},
+            ]
+        )
+        self.assertTrue(engraved.is_watertight)
+        self.assertLess(engraved.volume, 1200)
+        embossed = apply_ops(
+            [{"op": "text", "value": "A", "size": 8, "depth": 2, "at": [0, 0, 0], "mode": "emboss"}]
+        )
+        self.assertTrue(embossed.is_watertight)
+        self.assertGreater(embossed.volume, 0)
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [40, 10, 3]},
+                    {"op": "text", "value": "H\u0378", "size": 6, "depth": 1, "at": [20, 5, 3]},
+                ]
+            )
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [40, 10, 3]},
+                    {"op": "text", "value": "line\nbreak", "size": 6, "depth": 1, "at": [20, 5, 3]},
+                ]
+            )
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [40, 10, 3]},
+                    {"op": "text", "value": "x" * 41, "size": 6, "depth": 1, "at": [20, 5, 3]},
+                ]
+            )
+        accented = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 3]},
+                {"op": "text", "value": "É", "size": 6, "depth": 1, "at": [20, 5, 3]},
+            ]
+        )
+        self.assertTrue(accented.is_watertight)
+        self.assertLess(accented.volume, 1200)
+
+    def test_recipe_caps_total_ops(self):
+        nested = [{"op": "sphere", "radius": 1, "at": [i, 0, 0]} for i in range(101)]
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "pattern", "count": 2, "axis": "x", "step": 1, "ops": nested}])
 
 
 class CliTest(unittest.TestCase):
@@ -231,6 +449,46 @@ class CliTest(unittest.TestCase):
             )
             self.assertEqual(piped.returncode, 0, piped.stderr)
             self.assertTrue((model / "custom-clip.glb").is_file())
+
+    def test_build_writes_a_complex_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            recipe = parent / "recipe.json"
+            recipe.write_text(
+                json.dumps(
+                    {
+                        "name": "labeled-plate",
+                        "units": "mm",
+                        "fits": ["companion-header"],
+                        "ops": [
+                            {"op": "box", "size": [40, 10, 3]},
+                            {
+                                "op": "pattern",
+                                "mode": "cut",
+                                "count": 4,
+                                "axis": "x",
+                                "step": 8,
+                                "ops": [{"op": "cylinder", "radius": 1.5, "height": 6, "at": [8, 5, 1.5]}],
+                            },
+                            {"op": "text", "value": "GPIO", "size": 5, "depth": 1, "at": [30, 5, 3]},
+                        ],
+                    }
+                )
+            )
+            piped = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", str(recipe), "--dir", str(model)],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(piped.returncode, 0, piped.stderr)
+            manifest = json.loads((model / "manifest.json").read_text())
+            self.assertEqual(manifest["parts"][0]["name"], "labeled-plate")
+            glb = (model / "labeled-plate.glb").read_bytes()
+            self.assertTrue(glb.startswith(b"glTF"))
 
 
 if __name__ == "__main__":

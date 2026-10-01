@@ -112,6 +112,13 @@ const PROJECT_KEY = "gpio-companion-selected-project";
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
 type ChipMenuId = "model" | "effort" | "permission" | "project";
+type SpeechItem = {
+	text: string;
+	gen: number;
+	state: "queued" | "fetching" | "ready" | "failed";
+	promise: Promise<void>;
+	audio: string;
+};
 
 export function ChipMenu({
 	open,
@@ -603,7 +610,9 @@ export default function OpenCodeSession({
 	const voiceSpeaking = useRef<HTMLAudioElement | null>(null);
 	const voiceSpeechResolve = useRef<(() => void) | null>(null);
 	const speechSpoken = useRef(new Map<string, number>());
-	const speechChain = useRef<Promise<void>>(Promise.resolve());
+	const speechPrefetch = useRef<SpeechItem[]>([]);
+	const speechPlaying = useRef(false);
+	const speechFetching = useRef(false);
 	const speechGen = useRef(0);
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
@@ -619,6 +628,7 @@ export default function OpenCodeSession({
 	const voiceTickRef = useRef<() => void>(() => {});
 	const beginPttRef = useRef<() => void>(() => {});
 	const endPttRef = useRef<() => void>(() => {});
+	const stopVoiceEngineRef = useRef<() => void>(() => {});
 	const finishVoiceRef = useRef<(blob: Blob) => void>(() => {});
 	const menuRef = useRef<HTMLDivElement>(null);
 	const prompts = useRef<OpencodePromptEpoch>({
@@ -1333,9 +1343,6 @@ export default function OpenCodeSession({
 				}
 				const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
 				void finishVoiceRef.current(blob);
-				if (!voiceModeRef.current && !pttRef.current) {
-					stopVoiceEngine();
-				}
 			};
 			voiceUtter.current = {
 				recorder: rec,
@@ -1387,7 +1394,7 @@ export default function OpenCodeSession({
 
 	function clearSpeechQueue() {
 		speechGen.current += 1;
-		speechChain.current = Promise.resolve();
+		speechPrefetch.current = [];
 		const resolve = voiceSpeechResolve.current;
 		voiceSpeechResolve.current = null;
 		resolve?.();
@@ -1420,6 +1427,7 @@ export default function OpenCodeSession({
 		setPttHeld(true);
 		voiceArm.current = 0;
 		if (voiceEngine.current) {
+			startVoiceUtterance("ptt");
 			return;
 		}
 		void (async () => {
@@ -1439,6 +1447,9 @@ export default function OpenCodeSession({
 				const data = new Float32Array(analyser.fftSize);
 				const engine = { stream, context, analyser, data, raf: 0 };
 				voiceEngine.current = engine;
+				if (pttRef.current) {
+					startVoiceUtterance("ptt");
+				}
 				const tick = () => {
 					if (voiceEngine.current !== engine) {
 						return;
@@ -1462,10 +1473,6 @@ export default function OpenCodeSession({
 		const utter = voiceUtter.current;
 		if (utter?.source === "ptt") {
 			stopVoiceUtterance();
-			return;
-		}
-		if (!voiceModeRef.current && !voiceUtter.current) {
-			stopVoiceEngine();
 		}
 	}
 
@@ -1499,55 +1506,159 @@ export default function OpenCodeSession({
 	}
 
 	finishVoiceRef.current = finishVoice;
+	stopVoiceEngineRef.current = stopVoiceEngine;
 
-	function speakReply(text: string, gen: number): Promise<void> {
-		if (gen !== speechGen.current) {
-			return Promise.resolve();
+	// biome-ignore lint/correctness/useExhaustiveDependencies: tears the mic engine down on unmount through refs
+	useEffect(() => {
+		return () => {
+			stopVoiceEngineRef.current();
+		};
+	}, []);
+
+	function makeSpeechItem(text: string, gen: number): SpeechItem {
+		return {
+			text,
+			gen,
+			state: "queued",
+			promise: Promise.resolve(),
+			audio: "",
+		};
+	}
+
+	async function fetchSpeech(item: SpeechItem): Promise<void> {
+		if (item.state !== "queued") {
+			return;
 		}
+		let settle = () => {};
+		item.promise = new Promise<void>((resolve) => {
+			settle = resolve;
+		});
+		item.state = "fetching";
+		try {
+			const result = await speak({ text: item.text, locale });
+			if (!result.ok) {
+				setError(shownError(result.error));
+				item.state = "failed";
+				return;
+			}
+			if (item.gen !== speechGen.current) {
+				item.state = "failed";
+				return;
+			}
+			item.audio = result.data.audio;
+			item.state = "ready";
+		} catch (caught) {
+			setError(shownError(caught instanceof Error ? caught.message : ""));
+			item.state = "failed";
+		} finally {
+			settle();
+		}
+	}
+
+	async function prefetchSpeechQueue(): Promise<void> {
+		if (speechFetching.current) {
+			return;
+		}
+		speechFetching.current = true;
+		try {
+			while (speechPrefetch.current.length > 0) {
+				const item = speechPrefetch.current.find(
+					(entry) => entry.state === "queued",
+				);
+				if (!item) {
+					return;
+				}
+				await fetchSpeech(item);
+			}
+		} finally {
+			speechFetching.current = false;
+		}
+	}
+
+	function playSpeech(item: SpeechItem): Promise<void> {
 		return new Promise<void>((resolve) => {
-			void (async () => {
-				try {
-					const result = await speak({ text, locale });
-					if (!result.ok) {
-						setError(shownError(result.error));
-						resolve();
-						return;
+			try {
+				const player = new Audio(`data:audio/mpeg;base64,${item.audio}`);
+				const done = () => {
+					const settle = voiceSpeechResolve.current;
+					voiceSpeechResolve.current = null;
+					if (voiceSpeaking.current === player) {
+						voiceSpeaking.current = null;
+						setVoiceSpeakingNow(false);
+					}
+					settle?.();
+					resolve();
+				};
+				player.onended = done;
+				player.addEventListener("error", done);
+				voiceSpeaking.current = player;
+				voiceSpeechResolve.current = done;
+				setVoiceSpeakingNow(true);
+				voiceFloor.current = 0;
+				voiceFloorAt.current = Date.now();
+				voiceBarge.current = 0;
+				player.play().catch(() => {
+					done();
+				});
+			} catch (caught) {
+				setError(shownError(caught instanceof Error ? caught.message : ""));
+				resolve();
+			}
+		});
+	}
+
+	function dropSpeechItem(item: SpeechItem) {
+		const index = speechPrefetch.current.indexOf(item);
+		if (index !== -1) {
+			speechPrefetch.current.splice(index, 1);
+		}
+	}
+
+	function pumpSpeech() {
+		if (speechPlaying.current) {
+			void prefetchSpeechQueue();
+			return;
+		}
+		if (speechPrefetch.current.length === 0) {
+			return;
+		}
+		speechPlaying.current = true;
+		void (async () => {
+			try {
+				while (speechPrefetch.current.length > 0) {
+					const item = speechPrefetch.current[0];
+					if (!item) {
+						break;
 					}
 					if (
-						gen !== speechGen.current ||
+						item.gen !== speechGen.current ||
+						item.state === "failed" ||
 						(!voiceModeRef.current && !voiceReplyRef.current)
 					) {
-						resolve();
-						return;
+						dropSpeechItem(item);
+						continue;
 					}
-					const player = new Audio(
-						`data:audio/mpeg;base64,${result.data.audio}`,
-					);
-					const done = () => {
-						const settle = voiceSpeechResolve.current;
-						voiceSpeechResolve.current = null;
-						if (voiceSpeaking.current === player) {
-							voiceSpeaking.current = null;
-							setVoiceSpeakingNow(false);
-						}
-						settle?.();
-						resolve();
-					};
-					player.onended = done;
-					player.addEventListener("error", done);
-					voiceSpeaking.current = player;
-					voiceSpeechResolve.current = done;
-					setVoiceSpeakingNow(true);
-					voiceFloor.current = 0;
-					voiceFloorAt.current = Date.now();
-					voiceBarge.current = 0;
-					await player.play();
-				} catch (caught) {
-					setError(shownError(caught instanceof Error ? caught.message : ""));
-					resolve();
+					if (item.state === "queued") {
+						await fetchSpeech(item);
+					} else if (item.state === "fetching") {
+						await item.promise;
+					}
+					if (
+						item.gen !== speechGen.current ||
+						item.state !== "ready" ||
+						(!voiceModeRef.current && !voiceReplyRef.current)
+					) {
+						dropSpeechItem(item);
+						continue;
+					}
+					void prefetchSpeechQueue();
+					await playSpeech(item);
+					dropSpeechItem(item);
 				}
-			})();
-		});
+			} finally {
+				speechPlaying.current = false;
+			}
+		})();
 	}
 
 	function enqueueSpeech(text: string) {
@@ -1555,10 +1666,8 @@ export default function OpenCodeSession({
 		if (!clean) {
 			return;
 		}
-		const gen = speechGen.current;
-		speechChain.current = speechChain.current
-			.then(() => speakReply(clean, gen))
-			.catch(() => {});
+		speechPrefetch.current.push(makeSpeechItem(clean, speechGen.current));
+		pumpSpeech();
 	}
 
 	function voiceTick() {
@@ -1594,7 +1703,7 @@ export default function OpenCodeSession({
 			) {
 				stopVoiceUtterance();
 			}
-		} else if (voiceSpeaking.current) {
+		} else if (voiceSpeaking.current && voiceModeRef.current) {
 			if (now - voiceFloorAt.current < CODE_VOICE_FLOOR_MS) {
 				if (rms > voiceFloor.current) {
 					voiceFloor.current = rms;
@@ -1734,7 +1843,7 @@ export default function OpenCodeSession({
 		}
 	}, [voiceMode, view.turns]);
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
+	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and enqueueSpeech()
 	useEffect(() => {
 		if (!voiceMode && !voiceReply) {
 			clearSpeechQueue();
