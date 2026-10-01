@@ -3,7 +3,10 @@ import {
 	CODE_ATTACH_ACCEPT,
 	CODE_STT_MAX_MS,
 	CODE_VOICE_ARM_MS,
+	CODE_VOICE_BARGE_FLOOR,
+	CODE_VOICE_BARGE_HITS,
 	CODE_VOICE_BARGE_RMS,
+	CODE_VOICE_FLOOR_MS,
 	CODE_VOICE_MAX_MS,
 	CODE_VOICE_MIN_MS,
 	CODE_VOICE_RMS,
@@ -15,6 +18,7 @@ import {
 	codeMentionAt,
 	codeSpeechBlocks,
 	codeSpokenText,
+	codeVoiceUtterance,
 	encodeBase64,
 	filterCodeMentions,
 	removeContextDrafts,
@@ -585,6 +589,7 @@ export default function OpenCodeSession({
 	const [voiceListening, setVoiceListening] = useState(false);
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
 	const [voiceQueued, setVoiceQueued] = useState(0);
+	const [voiceReply, setVoiceReply] = useState(false);
 	const [query, setQuery] = useState("");
 	const [searching, setSearching] = useState(false);
 	const [error, setError] = useState("");
@@ -627,7 +632,10 @@ export default function OpenCodeSession({
 	const voiceBarge = useRef(0);
 	const voiceArm = useRef(0);
 	const voiceShown = useRef(-1);
+	const voiceFloor = useRef(0);
+	const voiceFloorAt = useRef(0);
 	const voiceModeRef = useRef(false);
+	const voiceReplyRef = useRef(false);
 	const pttRef = useRef(false);
 	const voiceTickRef = useRef<() => void>(() => {});
 	const beginPttRef = useRef<() => void>(() => {});
@@ -1234,7 +1242,13 @@ export default function OpenCodeSession({
 			return;
 		}
 		try {
-			const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+			const stream = await navigator.mediaDevices.getUserMedia({
+				audio: {
+					echoCancellation: true,
+					noiseSuppression: true,
+					autoGainControl: true,
+				},
+			});
 			const rec = new MediaRecorder(stream);
 			const chunks: Blob[] = [];
 			rec.ondataavailable = (event) => {
@@ -1381,7 +1395,11 @@ export default function OpenCodeSession({
 		void (async () => {
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: true,
+					audio: {
+						echoCancellation: true,
+						noiseSuppression: true,
+						autoGainControl: true,
+					},
 				});
 				const context = new AudioContext();
 				await context.resume().catch(() => {});
@@ -1427,12 +1445,14 @@ export default function OpenCodeSession({
 	async function finishVoice(blob: Blob) {
 		clearSpeechQueue();
 		try {
-			const heard = (
-				await transcribeCode(
-					encodeBase64(new Uint8Array(await blob.arrayBuffer())),
-					locale,
-				)
-			).text.trim();
+			const heard = codeVoiceUtterance(
+				(
+					await transcribeCode(
+						encodeBase64(new Uint8Array(await blob.arrayBuffer())),
+						locale,
+					)
+				).text,
+			);
 			if (!heard) {
 				return;
 			}
@@ -1457,7 +1477,11 @@ export default function OpenCodeSession({
 			void (async () => {
 				try {
 					const audio = (await speakCode(text, locale)).audio;
-					if (!audio || gen !== speechGen.current || !voiceModeRef.current) {
+					if (
+						!audio ||
+						gen !== speechGen.current ||
+						(!voiceModeRef.current && !voiceReplyRef.current)
+					) {
 						resolve();
 						return;
 					}
@@ -1477,6 +1501,9 @@ export default function OpenCodeSession({
 					voiceSpeaking.current = player;
 					voiceSpeechResolve.current = done;
 					setVoiceSpeakingNow(true);
+					voiceFloor.current = 0;
+					voiceFloorAt.current = Date.now();
+					voiceBarge.current = 0;
 					await player.play();
 				} catch (caught) {
 					setError(shownError(caught instanceof Error ? caught.message : ""));
@@ -1530,6 +1557,27 @@ export default function OpenCodeSession({
 			) {
 				stopVoiceUtterance();
 			}
+		} else if (voiceSpeaking.current) {
+			if (now - voiceFloorAt.current < CODE_VOICE_FLOOR_MS) {
+				if (rms > voiceFloor.current) {
+					voiceFloor.current = rms;
+				}
+				voiceBarge.current = 0;
+			} else {
+				const gate = Math.max(
+					CODE_VOICE_BARGE_RMS,
+					voiceFloor.current * CODE_VOICE_BARGE_FLOOR,
+				);
+				if (rms >= gate) {
+					voiceBarge.current += 1;
+					if (voiceBarge.current >= CODE_VOICE_BARGE_HITS) {
+						voiceBarge.current = 0;
+						clearSpeechQueue();
+					}
+				} else {
+					voiceBarge.current = 0;
+				}
+			}
 		} else if (pttRef.current || voiceModeRef.current) {
 			if (rms >= CODE_VOICE_RMS) {
 				if (!voiceArm.current) {
@@ -1539,17 +1587,6 @@ export default function OpenCodeSession({
 				}
 			} else {
 				voiceArm.current = 0;
-			}
-		}
-		if (voiceSpeaking.current) {
-			if (rms >= CODE_VOICE_BARGE_RMS) {
-				voiceBarge.current += 1;
-				if (voiceBarge.current >= 4) {
-					voiceBarge.current = 0;
-					clearSpeechQueue();
-				}
-			} else {
-				voiceBarge.current = 0;
 			}
 		}
 	}
@@ -1575,7 +1612,11 @@ export default function OpenCodeSession({
 		void (async () => {
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: true,
+					audio: {
+						echoCancellation: true,
+						noiseSuppression: true,
+						autoGainControl: true,
+					},
 				});
 				if (cancelled) {
 					for (const track of stream.getTracks()) {
@@ -1634,7 +1675,10 @@ export default function OpenCodeSession({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: streams <speech> blocks through refs and enqueueSpeech()
 	useEffect(() => {
-		if (!voiceMode) {
+		if (!voiceMode && !voiceReply) {
+			return;
+		}
+		if (voiceUtter.current) {
 			return;
 		}
 		for (const turn of view.turns) {
@@ -1655,7 +1699,7 @@ export default function OpenCodeSession({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
 	useEffect(() => {
-		if (!voiceMode) {
+		if (!voiceMode && !voiceReply) {
 			clearSpeechQueue();
 			return;
 		}
@@ -1781,6 +1825,22 @@ export default function OpenCodeSession({
 				text,
 				Boolean(override) || voiceModeRef.current,
 			);
+			if (override && !voiceModeRef.current) {
+				voiceReplyRef.current = true;
+				setVoiceReply(true);
+				for (const turn of view.turns) {
+					if (turn.role === "assistant") {
+						voiceSpoken.current.add(turn.id);
+						speechSpoken.current.set(
+							turn.id,
+							codeSpeechBlocks(turn.text).length,
+						);
+					}
+				}
+			} else if (!override && !voiceModeRef.current) {
+				voiceReplyRef.current = false;
+				setVoiceReply(false);
+			}
 		} catch (caught) {
 			setPrompt(typed);
 			setFiles(staged);

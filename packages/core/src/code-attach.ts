@@ -26,6 +26,10 @@ export const CODE_VOICE_MAX_MS = CODE_STT_MAX_MS;
 export const CODE_VOICE_ARM_MS = 140;
 export const CODE_VOICE_METER_DB = -32;
 export const CODE_VOICE_BARGE_DB = -20;
+export const CODE_VOICE_FLOOR_MS = 600;
+export const CODE_VOICE_BARGE_FLOOR = 1.6;
+export const CODE_VOICE_BARGE_HITS = 6;
+export const CODE_VOICE_BARGE_FLOOR_DB = 4;
 export const CODE_ATTACH_ACCEPT =
 	".c,.h,.hh,.hpp,.cc,.cpp,.cxx,.ino,.txt,.text,.md,.markdown,.ts,.tsx,.mts,.cts,.js,.jsx,.mjs,.cjs,.json,.css,.scss,.html,.htm,.yml,.yaml,.toml,.xml,.svg,.py,.sh,.bash,.rs,.go,.csv,.png,.jpg,.jpeg,.gif,.webp,.pdf";
 
@@ -422,6 +426,63 @@ export function codeSpeechBlocks(text: string): string[] {
 		match = pattern.exec(text);
 	}
 	return out;
+}
+
+const CODE_VOICE_NOISE = new Set([
+	"a",
+	"ah",
+	"ahh",
+	"an",
+	"and",
+	"eh",
+	"er",
+	"ha",
+	"haha",
+	"hm",
+	"hmm",
+	"hmph",
+	"hu",
+	"huh",
+	"m",
+	"mh",
+	"mhm",
+	"mm",
+	"mm-hmm",
+	"mmm",
+	"oh",
+	"ooh",
+	"uh",
+	"uhh",
+	"uhm",
+	"um",
+	"umm",
+	"you",
+	"euh",
+	"heu",
+	"ben",
+	"hein",
+	"mouais",
+	"vou",
+]);
+
+export function codeVoiceUtterance(text: string): string {
+	const heard = text.replace(/\s+/g, " ").trim();
+	if (!heard) {
+		return "";
+	}
+	const words = heard
+		.toLowerCase()
+		.replace(/[^\p{L}''-]+/gu, " ")
+		.split(/\s+/)
+		.filter(Boolean);
+	const meaningful = words.filter((word) => !CODE_VOICE_NOISE.has(word));
+	if (meaningful.length === 0) {
+		return "";
+	}
+	if (meaningful.length === 1 && (meaningful[0]?.length ?? 0) < 3) {
+		return "";
+	}
+	return heard;
 }
 
 export function codeSttMicros(

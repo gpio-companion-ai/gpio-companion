@@ -15,6 +15,8 @@ import {
 	CODE_STT_MAX_MS,
 	CODE_VOICE_ARM_MS,
 	CODE_VOICE_BARGE_DB,
+	CODE_VOICE_BARGE_FLOOR_DB,
+	CODE_VOICE_FLOOR_MS,
 	CODE_VOICE_METER_DB,
 	CODE_VOICE_MIN_MS,
 	CODE_VOICE_SILENCE_MS,
@@ -25,6 +27,7 @@ import {
 	codeMentionAt,
 	codeSpeechBlocks,
 	codeSpokenText,
+	codeVoiceUtterance,
 	decodeBase64,
 	encodeBase64,
 	filterCodeMentions,
@@ -412,6 +415,8 @@ export default function Code() {
 	const voiceQueue = useRef<string[]>([]);
 	const voiceBarge = useRef(0);
 	const voiceArmAt = useRef(0);
+	const voiceFloor = useRef(-160);
+	const voiceFloorAt = useRef(0);
 	const voiceSource = useRef<"auto" | "ptt">("auto");
 	const pttRef = useRef(false);
 	const beginPttRef = useRef<() => void>(() => {});
@@ -422,6 +427,7 @@ export default function Code() {
 	const voicePreparing = useRef(false);
 	const voiceUri = useRef("");
 	const voiceModeRef = useRef(false);
+	const voiceReplyRef = useRef(false);
 	const finishVoiceRef = useRef<(uri: string) => void>(() => {});
 	const startVoiceCaptureRef = useRef<() => void>(() => {});
 	const stopVoiceEngineRef = useRef<() => void>(() => {});
@@ -465,6 +471,7 @@ export default function Code() {
 	const [voiceListening, setVoiceListening] = useState(false);
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
 	const [voiceQueued, setVoiceQueued] = useState(0);
+	const [voiceReply, setVoiceReply] = useState(false);
 	const [voicePulse, setVoicePulse] = useState(0);
 	const [query, setQuery] = useState("");
 	const [error, setError] = useState("");
@@ -1156,13 +1163,15 @@ export default function Code() {
 	async function finishVoice(uri: string) {
 		clearSpeechQueue();
 		try {
-			const heard = (
-				await transcribeCode(
-					token,
-					encodeBase64(new Uint8Array(await new File(uri).arrayBuffer())),
-					locale,
-				)
-			).text.trim();
+			const heard = codeVoiceUtterance(
+				(
+					await transcribeCode(
+						token,
+						encodeBase64(new Uint8Array(await new File(uri).arrayBuffer())),
+						locale,
+					)
+				).text,
+			);
 			if (heard) {
 				if (view.busy || uploading) {
 					voiceQueue.current.push(heard);
@@ -1261,7 +1270,11 @@ export default function Code() {
 			void (async () => {
 				try {
 					const audio = (await speakCode(token, text, locale)).audio;
-					if (!audio || gen !== speechGen.current || !voiceModeRef.current) {
+					if (
+						!audio ||
+						gen !== speechGen.current ||
+						(!voiceModeRef.current && !voiceReplyRef.current)
+					) {
 						resolve();
 						return;
 					}
@@ -1301,6 +1314,9 @@ export default function Code() {
 					voiceSpeaking.current = player;
 					voiceSpeechResolve.current = done;
 					setVoiceSpeakingNow(true);
+					voiceFloor.current = -160;
+					voiceFloorAt.current = Date.now();
+					voiceBarge.current = 0;
 					const sub = player.addListener("playbackStatusUpdate", (status) => {
 						if (!status.didJustFinish) {
 							return;
@@ -1340,14 +1356,26 @@ export default function Code() {
 		const loud = metering >= CODE_VOICE_METER_DB;
 		setVoiceLevel(loud ? Math.max(0, Math.min(1, (metering + 60) / 45)) : 0.04);
 		if (voiceSpeaking.current) {
-			if (metering >= CODE_VOICE_BARGE_DB) {
-				voiceBarge.current += 1;
-				if (voiceBarge.current >= 3) {
-					voiceBarge.current = 0;
-					clearSpeechQueue();
+			const now = Date.now();
+			if (now - voiceFloorAt.current < CODE_VOICE_FLOOR_MS) {
+				if (metering > voiceFloor.current) {
+					voiceFloor.current = metering;
 				}
-			} else {
 				voiceBarge.current = 0;
+			} else {
+				const gate = Math.max(
+					CODE_VOICE_BARGE_DB,
+					voiceFloor.current + CODE_VOICE_BARGE_FLOOR_DB,
+				);
+				if (metering >= gate) {
+					voiceBarge.current += 1;
+					if (voiceBarge.current >= 2) {
+						voiceBarge.current = 0;
+						clearSpeechQueue();
+					}
+				} else {
+					voiceBarge.current = 0;
+				}
 			}
 			return;
 		}
@@ -1461,7 +1489,10 @@ export default function Code() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: streams <speech> blocks through refs and enqueueSpeech()
 	useEffect(() => {
-		if (!voiceMode) {
+		if (!voiceMode && !voiceReply) {
+			return;
+		}
+		if (voiceHandling.current) {
 			return;
 		}
 		for (const turn of view.turns) {
@@ -1482,7 +1513,7 @@ export default function Code() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
 	useEffect(() => {
-		if (!voiceMode) {
+		if (!voiceMode && !voiceReply) {
 			clearSpeechQueue();
 			return;
 		}
@@ -1571,6 +1602,22 @@ export default function Code() {
 				text,
 				Boolean(override) || voiceModeRef.current,
 			);
+			if (override && !voiceModeRef.current) {
+				voiceReplyRef.current = true;
+				setVoiceReply(true);
+				for (const turn of view.turns) {
+					if (turn.role === "assistant") {
+						voiceSpoken.current.add(turn.id);
+						speechSpoken.current.set(
+							turn.id,
+							codeSpeechBlocks(turn.text).length,
+						);
+					}
+				}
+			} else if (!override && !voiceModeRef.current) {
+				voiceReplyRef.current = false;
+				setVoiceReply(false);
+			}
 		} catch (caught) {
 			setPrompt(typed);
 			setFiles(staged);
