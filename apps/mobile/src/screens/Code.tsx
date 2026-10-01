@@ -21,12 +21,14 @@ import {
 	CODE_VOICE_MIN_MS,
 	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
+	type CodeVoiceProvider,
 	codeAppendSpeechDirective,
 	codeAttachPrompt,
 	codeComposerErrorKey,
 	codeMentionAt,
 	codeSpeechBlocks,
 	codeSpokenText,
+	codeVoiceProvider,
 	codeVoiceUtterance,
 	decodeBase64,
 	encodeBase64,
@@ -114,6 +116,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ProjectFiles from "../components/ProjectFiles.tsx";
 import {
+	getVoiceSettings,
 	listBoardFiles,
 	listProjects,
 	opencodeCall,
@@ -466,6 +469,8 @@ export default function Code() {
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [voiceMode, setVoiceMode] = useState(false);
+	const [voiceProvider, setVoiceProvider] =
+		useState<CodeVoiceProvider>("workers-ai");
 	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
@@ -1562,6 +1567,17 @@ export default function Code() {
 	]);
 
 	useEffect(() => {
+		if (!token) {
+			return;
+		}
+		void getVoiceSettings(token)
+			.then((result) => {
+				setVoiceProvider(codeVoiceProvider(result.provider));
+			})
+			.catch(() => setVoiceProvider("workers-ai"));
+	}, [token]);
+
+	useEffect(() => {
 		const waiting =
 			voiceMode &&
 			!voiceListening &&
@@ -1601,6 +1617,7 @@ export default function Code() {
 			text = codeAppendSpeechDirective(
 				text,
 				Boolean(override) || voiceModeRef.current,
+				voiceProvider,
 			);
 			if (override && !voiceModeRef.current) {
 				voiceReplyRef.current = true;

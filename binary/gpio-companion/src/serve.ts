@@ -135,6 +135,8 @@ import {
 import { proxyJlcpcbRequest } from "./jlcpcb-proxy.ts";
 import { readJournalLogs } from "./logs.ts";
 import { readNetworkStatus } from "./network.ts";
+import { handleOpencodePermissionMode } from "./opencode-permission-mode.ts";
+import { OPENCODE_PERMISSION_MODE_PATH } from "./opencode-permission-mode.ts";
 import {
 	assertOpencodeProxyGranted,
 	bridgeOpencodeEvents,
@@ -879,6 +881,7 @@ export async function handleDeviceRequest(
 			path,
 			url,
 			bodyText,
+			store,
 			pairingStore,
 			extras,
 		);
@@ -1645,6 +1648,7 @@ async function proxySignedOpencode(
 	path: string,
 	url: URL,
 	bodyText: string,
+	store: ConfigStore,
 	pairingStore: PairingStore,
 	extras: DeviceRequestExtras | undefined,
 ): Promise<Response> {
@@ -1679,6 +1683,21 @@ async function proxySignedOpencode(
 		const message =
 			error instanceof Error ? error.message : "opencode proxy revoked";
 		return json({ error: message }, 403);
+	}
+	if (path === OPENCODE_PERMISSION_MODE_PATH) {
+		try {
+			return await handleOpencodePermissionMode({
+				method: request.method.toUpperCase(),
+				bodyText,
+				store,
+			});
+		} catch (error) {
+			const message =
+				error instanceof Error
+					? error.message
+					: "opencode permission mode failed";
+			return json({ error: message }, 500);
+		}
 	}
 	const envPath =
 		extras?.opencodeEnvPath ??

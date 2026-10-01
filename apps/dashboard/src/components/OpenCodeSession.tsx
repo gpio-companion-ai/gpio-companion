@@ -1,6 +1,7 @@
 import { POST as transcribe } from "@api/code/stt";
 import { POST as speak } from "@api/code/tts";
 import { PUT as writeFile } from "@api/files/write";
+import { GET as loadVoiceSettingsAction } from "@api/voice-settings";
 import { POST as postOpencode } from "@api/opencode";
 import { POST as signOpencodeLive } from "@api/opencode/live";
 import { GET as getProjects } from "@api/projects";
@@ -22,6 +23,7 @@ import {
 	CODE_VOICE_RMS,
 	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
+	type CodeVoiceProvider,
 	codeAppendSpeechDirective,
 	codeAttachPrompt,
 	codeComposerErrorKey,
@@ -35,6 +37,7 @@ import {
 	codeSpeechBlocks,
 	codeSpokenText,
 	codeVoiceUtterance,
+	codeVoiceProvider,
 	emptyOpencodeView,
 	encodeBase64,
 	filterCodeMentions,
@@ -555,6 +558,9 @@ export default function OpenCodeSession({
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
 	const [voiceQueued, setVoiceQueued] = useState(0);
 	const [voiceReply, setVoiceReply] = useState(false);
+	const [voiceProvider, setVoiceProvider] = useState<CodeVoiceProvider>(
+		"workers-ai",
+	);
 	const [query, setQuery] = useState("");
 	const [searching, setSearching] = useState(false);
 	const [error, setError] = useState("");
@@ -626,6 +632,16 @@ export default function OpenCodeSession({
 			setModel(CODE_DEFAULT_MODEL);
 			setEffort("medium");
 		}
+	}, []);
+
+	useEffect(() => {
+		void loadVoiceSettingsAction()
+			.then((result) => {
+				if (result.ok) {
+					setVoiceProvider(codeVoiceProvider(result.data.provider));
+				}
+			})
+			.catch(() => setVoiceProvider("workers-ai"));
 	}, []);
 
 	useEffect(() => {
@@ -1779,6 +1795,7 @@ export default function OpenCodeSession({
 			text = codeAppendSpeechDirective(
 				text,
 				Boolean(override) || voiceModeRef.current,
+				voiceProvider,
 			);
 			if (override && !voiceModeRef.current) {
 				voiceReplyRef.current = true;

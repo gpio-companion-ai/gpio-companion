@@ -12,6 +12,7 @@ import {
 	CODE_VOICE_RMS,
 	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
+	type CodeVoiceProvider,
 	codeAppendSpeechDirective,
 	codeAttachPrompt,
 	codeComposerErrorKey,
@@ -20,6 +21,7 @@ import {
 	codeSpokenText,
 	codeVoiceUtterance,
 	encodeBase64,
+	codeVoiceProvider,
 	filterCodeMentions,
 	removeContextDrafts,
 	renameContextDrafts,
@@ -99,6 +101,7 @@ import {
 	speakCode,
 	transcribeCode,
 	uploadBoardFile,
+	getVoiceSettings,
 } from "../api";
 import { useUserBoards } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
@@ -584,6 +587,9 @@ export default function OpenCodeSession({
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [voiceMode, setVoiceMode] = useState(false);
+	const [voiceProvider, setVoiceProvider] = useState<CodeVoiceProvider>(
+		"workers-ai",
+	);
 	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
@@ -663,6 +669,14 @@ export default function OpenCodeSession({
 			.catch((caught) => {
 				setError(caught instanceof Error ? caught.message : "request failed");
 			});
+	}, []);
+
+	useEffect(() => {
+		void getVoiceSettings()
+			.then((result) => {
+				setVoiceProvider(codeVoiceProvider(result.provider));
+			})
+			.catch(() => setVoiceProvider("workers-ai"));
 	}, []);
 
 	useEffect(() => {
@@ -1824,6 +1838,7 @@ export default function OpenCodeSession({
 			text = codeAppendSpeechDirective(
 				text,
 				Boolean(override) || voiceModeRef.current,
+				voiceProvider,
 			);
 			if (override && !voiceModeRef.current) {
 				voiceReplyRef.current = true;

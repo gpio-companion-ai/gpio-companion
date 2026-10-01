@@ -12,6 +12,7 @@ import { translateError } from "gpio-companion/i18n";
 import { useEffect, useState } from "react";
 import AddressForm from "../../components/AddressForm.tsx";
 import LanguageCard from "../../components/LanguageCard.tsx";
+import VoiceCard from "../../components/VoiceCard.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
 import { useAuth, useAuthSession } from "../../hooks/useAuth.ts";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
@@ -67,6 +68,7 @@ export default function ProfilePage() {
 	return (
 		<Stack spacing={1.5}>
 			<LanguageCard />
+			{loggedIn ? <VoiceCard /> : null}
 
 			{!loggedIn ? (
 				<LoginPanel />

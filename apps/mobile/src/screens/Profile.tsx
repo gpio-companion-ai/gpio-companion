@@ -14,6 +14,7 @@ import {
 	Skeleton,
 	TextButton,
 } from "../components/ui.tsx";
+import VoiceCard from "../components/VoiceCard.tsx";
 import { getCredits, listDeviceStatus, submitBugReport } from "../lib/api.ts";
 import { CACHE_KEYS, useCachedQuery } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
@@ -83,6 +84,7 @@ export default function Profile() {
 				{translateError(t, error || creditsQuery.error || "")}
 			</ErrorText>
 			<LanguageCard />
+			{token ? <VoiceCard token={token} /> : null}
 			<View
 				collapsable={false}
 				ref={(node) => {

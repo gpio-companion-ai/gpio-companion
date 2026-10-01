@@ -181,6 +181,16 @@ export const fr = {
 		title: "Langue",
 		hint: "Choisissez la langue de ce tableau de bord.",
 	},
+	voice: {
+		title: "Voix",
+		provider: "Moteur de voix",
+		voiceType: "Type de voix",
+		providerWorkersAi: "Cloudflare Workers AI",
+		providerXai: "Voix xAI",
+		hint: "Lit les réponses de l’agent en mode voix de Code.",
+		saveFailed: "Impossible d’enregistrer le réglage de la voix.",
+		notConfigured: "Le moteur de voix choisi n’est pas encore configuré.",
+	},
 	auth: {
 		signIn: "Connexion",
 		signInWithGithub: "Connexion avec GitHub",

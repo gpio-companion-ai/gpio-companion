@@ -25,7 +25,7 @@ export async function mountModelScene(
 
 	const scene = new THREE.Scene();
 	const camera = new THREE.PerspectiveCamera(40, 1, 0.01, 100);
-	const ambient = new THREE.AmbientLight(0xffffff, 0.72);
+	const ambient = new THREE.AmbientLight(0xffffff, 0.45);
 	const key = new THREE.DirectionalLight(0xfff8f0, 0.9);
 	key.position.set(2.2, 3.4, 4);
 	const fill = new THREE.DirectionalLight(0xe7edf2, 0.28);
@@ -41,8 +41,11 @@ export async function mountModelScene(
 			return;
 		}
 		meshes += 1;
+		if (!obj.geometry.getAttribute("normal")) {
+			obj.geometry.computeVertexNormals();
+		}
 		obj.material = new THREE.MeshStandardMaterial({
-			color: 0x8a847c,
+			color: 0xffffff,
 			metalness: 0.04,
 			roughness: 0.78,
 		});

@@ -18,6 +18,13 @@ export const CODE_TTS_MODEL = "@cf/myshell-ai/melotts";
 export const CODE_TTS_USD_PER_MINUTE = 0.000205;
 export const CODE_TTS_CHARS_PER_MINUTE = 900;
 export const CODE_TTS_MAX_CHARS = 4000;
+export const CODE_TTS_XAI_ENDPOINT = "https://api.x.ai/v1/tts";
+export const CODE_TTS_XAI_DEFAULT_VOICE = "eve";
+export const CODE_TTS_XAI_USD_PER_MILLION_CHARS = 15;
+export const CODE_TTS_XAI_VOICES = ["ara", "eve", "leo", "rex", "sal"] as const;
+export const CODE_VOICE_PRICE_WORKERS_AI = "$0.0002/min";
+export const CODE_VOICE_PRICE_XAI = "$15/1M chars";
+export type CodeVoiceProvider = "workers-ai" | "xai";
 export const CODE_VOICE_RMS = 0.025;
 export const CODE_VOICE_BARGE_RMS = 0.06;
 export const CODE_VOICE_SILENCE_MS = 1200;
@@ -403,11 +410,60 @@ export const CODE_SPEECH_DIRECTIVE = [
 export function codeAppendSpeechDirective(
 	text: string,
 	speech: boolean,
+	provider: CodeVoiceProvider = "workers-ai",
 ): string {
 	if (!speech || text.includes("<speech>") || text.includes("speech-mode")) {
 		return text;
 	}
-	return `${text}\n\n${CODE_SPEECH_DIRECTIVE}`;
+	if (provider === "xai") {
+		return `${text}\n\n${CODE_SPEECH_DIRECTIVE} The selected voice engine is xAI voice: also read the xai-voice skill before speaking, and you may use its inline tags like [pause] and [laugh] plus wrapping tags like <whisper>, <slow> and <soft> inside the <speech> blocks.`;
+	}
+	return `${text}\n\n${CODE_SPEECH_DIRECTIVE} The selected voice engine is Workers AI: plain spoken text only, never use inline or wrapping tags inside the <speech> blocks.`;
+}
+
+export function codeVoiceProvider(value: unknown): CodeVoiceProvider {
+	return value === "xai" ? "xai" : "workers-ai";
+}
+
+export type CodeVoiceSettings = {
+	provider: CodeVoiceProvider;
+	voice: string;
+};
+
+export function codeVoiceSettings(value: unknown): CodeVoiceSettings {
+	const record =
+		value && typeof value === "object" && !Array.isArray(value)
+			? (value as Record<string, unknown>)
+			: {};
+	const provider = codeVoiceProvider(record.provider);
+	const voice =
+		typeof record.voice === "string" ? record.voice.trim().toLowerCase() : "";
+	if (provider === "xai") {
+		const known = (CODE_TTS_XAI_VOICES as readonly string[]).includes(voice);
+		return { provider, voice: known ? voice : CODE_TTS_XAI_DEFAULT_VOICE };
+	}
+	return { provider, voice: "" };
+}
+
+export function codeVoiceSettingsKey(userId: string): string {
+	return `voice-settings:${userId}`;
+}
+
+export function codeTtsXaiMicros(
+	chars: number,
+	markup: number = DEFAULT_AI_MARKUP,
+): number {
+	const safe = Math.min(
+		CODE_TTS_MAX_CHARS,
+		Math.max(0, Number.isFinite(chars) ? Math.ceil(chars) : 0),
+	);
+	if (safe <= 0) {
+		return 0;
+	}
+	const raw = usdToMicros(
+		(safe / 1_000_000) * CODE_TTS_XAI_USD_PER_MILLION_CHARS,
+	);
+	return applyMarkup(raw === 0 ? 1 : raw, markup);
 }
 
 export function codeSpeechBlocks(text: string): string[] {

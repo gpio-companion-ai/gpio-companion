@@ -48,6 +48,8 @@ declare module "three" {
 		constructor(params?: object);
 	}
 	export class BufferGeometry {
+		getAttribute(name: string): unknown | undefined;
+		computeVertexNormals(): void;
 		dispose(): void;
 	}
 	export class Mesh extends Object3D {

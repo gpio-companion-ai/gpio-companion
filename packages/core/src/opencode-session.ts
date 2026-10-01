@@ -12,6 +12,7 @@ export const OPENCODE_EVENT_PREFIX = "/v1/opencode/event/";
 export const OPENCODE_PROVIDER_ID = "gpio-companion";
 export const OPENCODE_MODEL_KEY = "gpio-companion-code-model";
 export const OPENCODE_EFFORT_KEY = "gpio-companion-code-effort";
+export const OPENCODE_PERMISSION_MODE_KEY = "gpio-companion-code-permission";
 export const CODE_DEFAULT_MODEL = "muse-spark-1.3-contributor-free";
 export const CODE_NAV_STATE = "gpio-code";
 
@@ -118,6 +119,19 @@ const REPO = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 
 export type OpencodePermissionResponse = "once" | "always" | "reject";
 
+export type OpencodePermissionMode = "ask" | "full";
+
+export const OPENCODE_PERMISSION_MODES: readonly OpencodePermissionMode[] = [
+	"ask",
+	"full",
+];
+
+export function opencodePermissionMode(
+	value: unknown,
+): OpencodePermissionMode {
+	return value === "full" ? "full" : "ask";
+}
+
 export type OpencodeClientCall = {
 	uuid: string;
 	repo: string;
@@ -130,6 +144,7 @@ export type OpencodeClientCall = {
 		| "delete"
 		| "permission"
 		| "permissions"
+		| "permission-mode"
 		| "question"
 		| "questions";
 	sessionID?: string;
@@ -141,6 +156,7 @@ export type OpencodeClientCall = {
 	response?: OpencodePermissionResponse;
 	answers?: string[][];
 	reject?: boolean;
+	mode?: OpencodePermissionMode;
 };
 
 export type OpencodeUpstreamCall = {
@@ -276,6 +292,12 @@ export function opencodeStoredEffort(
 		return raw;
 	}
 	return "medium";
+}
+
+export function opencodeStoredPermissionMode(
+	raw: string | null | undefined,
+): OpencodePermissionMode {
+	return raw === "full" ? "full" : "ask";
 }
 
 export function opencodePromptFields(
@@ -469,7 +491,8 @@ function opencodeSuffixAllowed(suffix: string): boolean {
 		suffix === "/session" ||
 		suffix === "/event" ||
 		suffix === "/question" ||
-		suffix === "/permission"
+		suffix === "/permission" ||
+		suffix === "/permission-mode"
 	) {
 		return true;
 	}
@@ -552,6 +575,19 @@ export function opencodeClientRequest(
 			return { method: "GET", path: "/question" };
 		case "permissions":
 			return { method: "GET", path: "/permission" };
+		case "permission-mode": {
+			if (call.mode === undefined) {
+				return { method: "GET", path: "/permission-mode" };
+			}
+			if (call.mode !== "ask" && call.mode !== "full") {
+				throw new Error("invalid permission mode");
+			}
+			return {
+				method: "POST",
+				path: "/permission-mode",
+				body: { mode: call.mode },
+			};
+		}
 		case "question": {
 			const requestID = opencodeId(call.requestID, "question");
 			if (call.reject) {

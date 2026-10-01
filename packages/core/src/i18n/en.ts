@@ -177,6 +177,16 @@ export const en = {
 		title: "Language",
 		hint: "Choose the language for this dashboard.",
 	},
+	voice: {
+		title: "Voice",
+		provider: "Voice engine",
+		voiceType: "Voice type",
+		providerWorkersAi: "Cloudflare Workers AI",
+		providerXai: "xAI Voice",
+		hint: "Speaks agent replies in Code voice mode.",
+		saveFailed: "Could not save the voice setting.",
+		notConfigured: "The selected voice engine is not configured yet.",
+	},
 	auth: {
 		signIn: "Sign in",
 		signInWithGithub: "Sign in with GitHub",

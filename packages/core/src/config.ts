@@ -12,6 +12,7 @@ export type TunnelConfig = {
 export type DeviceConfig = {
 	hardware: HardwareId;
 	tunnel: TunnelConfig;
+	opencodePermission?: "ask" | "full";
 };
 
 export function emptyTunnelConfig(): TunnelConfig {
@@ -46,10 +47,21 @@ export function parseDeviceConfig(input: unknown): DeviceConfig {
 		throw new Error(`hardware must be one of: ${HARDWARE_IDS.join(", ")}`);
 	}
 	const tunnel = parseTunnelConfig(record.tunnel);
+	const opencodePermission =
+		record.opencodePermission === "ask" || record.opencodePermission === "full"
+			? record.opencodePermission
+			: undefined;
 	return {
 		hardware: record.hardware,
 		tunnel,
+		...(opencodePermission ? { opencodePermission } : {}),
 	};
+}
+
+export function deviceOpencodePermissionMode(
+	config: DeviceConfig | undefined,
+): "ask" | "full" {
+	return config?.opencodePermission === "full" ? "full" : "ask";
 }
 
 export function parseTunnelConfig(input: unknown): TunnelConfig {

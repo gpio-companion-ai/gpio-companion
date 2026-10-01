@@ -23,6 +23,7 @@ import Keys from "./Keys";
 import LanguageCard from "./LanguageCard";
 import { consumeProfileJump } from "./PartsSearchPanel";
 import { LinesSkeleton } from "./skeletons";
+import VoiceCard from "./VoiceCard";
 
 export default function Profile({
 	session,
@@ -59,6 +60,9 @@ export default function Profile({
 			) : null}
 			<div id="profile-language">
 				<LanguageCard />
+			</div>
+			<div id="profile-voice">
+				<VoiceCard />
 			</div>
 			<Paper id="profile-account" sx={{ p: 1.5 }} elevation={1}>
 				<Stack spacing={0.5}>

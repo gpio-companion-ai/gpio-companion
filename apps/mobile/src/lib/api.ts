@@ -454,6 +454,28 @@ export function getCredits(token: string) {
 	return request<Credits>(token, "/api/mobile/credits");
 }
 
+export function getVoiceSettings(token: string) {
+	return request<{ provider: string; voice: string }>(
+		token,
+		"/api/mobile/voice-settings",
+	);
+}
+
+export function saveVoiceSettings(
+	token: string,
+	provider: string,
+	voice: string,
+) {
+	return request<{ provider: string; voice: string }>(
+		token,
+		"/api/mobile/voice-settings",
+		{
+			method: "PUT",
+			body: JSON.stringify({ provider, voice }),
+		},
+	);
+}
+
 export function submitBugReport(
 	token: string,
 	body: {

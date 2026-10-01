@@ -590,6 +590,21 @@ export function getCredits() {
 	return apiRequest<Credits>("GET", "/api/mobile/credits");
 }
 
+export function getVoiceSettings() {
+	return apiRequest<{ provider: string; voice: string }>(
+		"GET",
+		"/api/mobile/voice-settings",
+	);
+}
+
+export function saveVoiceSettings(provider: string, voice: string) {
+	return apiRequest<{ provider: string; voice: string }>(
+		"PUT",
+		"/api/mobile/voice-settings",
+		{ provider, voice },
+	);
+}
+
 export function submitBugReport(body: {
 	text: string;
 	surface: "desktop";
