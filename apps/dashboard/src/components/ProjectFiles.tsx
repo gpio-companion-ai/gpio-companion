@@ -44,6 +44,7 @@ import {
 import { createPortal } from "react-dom";
 import { useColorMode } from "../hooks/useColorMode.tsx";
 import { useT } from "../hooks/useLocale.tsx";
+import useMobile from "../hooks/useMobile.ts";
 import { useWorkbench } from "../hooks/useWorkbench.tsx";
 import { unwrapAction } from "../lib/action.ts";
 import BreadboardViewer from "./BreadboardViewer.tsx";
@@ -107,6 +108,9 @@ export default function ProjectFiles({
 }: Props) {
 	const t = useT();
 	const { mode } = useColorMode();
+	const mobile = useMobile();
+	type MobilePane = "chat" | "files" | "preview";
+	const [mobilePane, setMobilePane] = useState<MobilePane>("chat");
 	const { boards, setDockOpen, setDockTab, setFlashSketch } = useWorkbench();
 	const boardModel = boards.find((board) => board.uuid === uuid)?.model || null;
 	const [entries, setEntries] = useState<BoardFileEntry[]>([]);
@@ -372,6 +376,9 @@ export default function ProjectFiles({
 		setStale(false);
 		setNote("");
 		setSaved("");
+		if (mobile) {
+			setMobilePane("preview");
+		}
 		const parts = path.split("/");
 		parts.pop();
 		setOpenDirs((current) => {
@@ -787,310 +794,347 @@ export default function ProjectFiles({
 		window.addEventListener("pointerup", up);
 	}
 
+	const filesDirty = dirty;
 	return (
-		<div className="oc-work">
-			<aside className="oc-tree" aria-label={t("code.files")}>
-				<div className="oc-tree-head">
-					<span className="oc-tree-title" title={name}>
-						{name || t("code.files")}
-					</span>
-					{branch ? (
-						<span className="oc-tree-branch" title={branch}>
-							{branch}
-						</span>
-					) : null}
-					{fileCount > 0 ? (
-						<span
-							className="oc-tree-branch"
-							title={t("code.filesCount", { n: fileCount })}
-						>
-							{t("code.filesCount", { n: fileCount })}
-						</span>
-					) : null}
-					<span className="oc-tree-actions">
-						<button
-							type="button"
-							className="oc-tree-action"
-							aria-label={t("code.newFile")}
-							title={t("code.newFile")}
-							disabled={!uuid || !name || busy === "file"}
-							onClick={startCreate}
-						>
-							<NewFileIcon />
-						</button>
-						<button
-							type="button"
-							className="oc-tree-action"
-							aria-label={t("code.renameFile")}
-							title={t("code.renameFile")}
-							disabled={!(picked?.path || file?.path) || busy === "file"}
-							onMouseDown={(event) => event.preventDefault()}
-							onClick={() => startRename()}
-						>
-							<RenameIcon />
-						</button>
-						<button
-							type="button"
-							className="oc-tree-action"
-							aria-label={t("code.refreshFiles")}
-							title={t("code.refreshFiles")}
-							disabled={!uuid || !name}
-							onClick={() => void reloadFiles()}
-						>
-							<RefreshIcon />
-						</button>
-					</span>
-					<button
-						type="button"
-						className="oc-mini"
-						disabled={!uuid || !owner || !name || busy === "github"}
-						title={t("code.saveGithub")}
-						onClick={() => void saveGithub()}
-					>
-						{busy === "github" ? t("code.savingGithub") : t("code.saveGithub")}
-					</button>
-				</div>
-				<div className="oc-tree-filter">
-					<input
-						value={fileFilter}
-						placeholder={t("code.filterFiles")}
-						aria-label={t("code.filterFiles")}
-						onChange={(event) => setFileFilter(event.target.value)}
-						onKeyDown={(event) => {
-							if (event.key === "Escape") {
-								setFileFilter("");
-							}
-						}}
-					/>
-					{fileFilter ? (
-						<button
-							type="button"
-							className="oc-mini"
-							aria-label={t("code.clear")}
-							onClick={() => setFileFilter("")}
-						>
-							{t("code.clear")}
-						</button>
-					) : (
-						<button
-							type="button"
-							className="oc-mini"
-							aria-label={t("code.collapseAll")}
-							disabled={openDirs.size === 0}
-							onClick={() => setOpenDirs(new Set())}
-						>
-							{t("code.collapseAll")}
-						</button>
-					)}
-				</div>
-				{note ? <p className="oc-editor-note oc-error-note">{note}</p> : null}
-				{saved ? <p className="oc-editor-note oc-success">{saved}</p> : null}
+		<div className={`oc-code-tabs${mobile ? ` is-m-${mobilePane}` : ""}`}>
+			{mobile ? (
 				<div
-					className={`oc-tree-scroll${dropDir === "" ? " is-drop" : ""}`}
-					role="tree"
-					aria-label={t("code.files")}
-					onDragOver={(event) => {
-						if (!event.dataTransfer.types.includes("Files")) {
-							return;
-						}
-						event.preventDefault();
-						setDropDir("");
-					}}
-					onDragLeave={(event) => {
-						if (event.currentTarget.contains(event.relatedTarget as Node)) {
-							return;
-						}
-						setDropDir(null);
-					}}
-					onDrop={(event) => {
-						event.preventDefault();
-						void importFiles("", [...event.dataTransfer.files]);
-					}}
+					className="oc-pane-tabs"
+					role="tablist"
+					aria-label={t("code.title")}
 				>
-					{creating === "" ? (
-						<NameRow
-							value={nameDraft}
-							label={t("code.fileName")}
-							onChange={setNameDraft}
-							onCommit={() => void commitName()}
-							onCancel={() => setCreating(null)}
-						/>
-					) : null}
-					{visibleTree.length === 0 ? (
-						<p className="oc-editor-note">
-							{fileFilter.trim() ? t("code.searchEmpty") : t("code.emptyTree")}
-						</p>
-					) : (
-						visibleTree.map((node) => (
-							<TreeRows
-								key={node.path}
-								node={node}
-								depth={0}
-								openDirs={
-									fileFilter.trim() ? openAllDirs(visibleTree) : openDirs
-								}
-								active={picked?.path || file?.path || ""}
-								onToggle={(path) =>
-									setOpenDirs((current) => {
-										const copy = new Set(current);
-										if (copy.has(path)) {
-											copy.delete(path);
-										} else {
-											copy.add(path);
-										}
-										return copy;
-									})
-								}
-								onOpen={(path) => {
-									setPicked({ path, type: "file" });
-									void openPath(path);
-								}}
-								onPickDir={(path) => setPicked({ path, type: "dir" })}
-								dropDir={dropDir}
-								onDragFolder={setDropDir}
-								onDropFiles={(dir, list) => void importFiles(dir, list)}
-								creating={creating}
-								renaming={renaming}
-								nameDraft={nameDraft}
-								onName={setNameDraft}
-								onCommit={() => void commitName()}
-								onCancelName={() => {
-									setCreating(null);
-									setRenaming("");
-								}}
-								onFileMenu={openFileMenu}
-							/>
-						))
-					)}
+					{(
+						[
+							{ id: "chat", label: t("code.chat") },
+							{
+								id: "files",
+								label: `${t("code.files")}${filesDirty || stale ? " ●" : ""}`,
+							},
+							{ id: "preview", label: t("code.preview") },
+						] as const
+					).map((tab) => (
+						<button
+							key={tab.id}
+							type="button"
+							role="tab"
+							aria-selected={mobilePane === tab.id}
+							className={mobilePane === tab.id ? "is-on" : undefined}
+							onClick={() => setMobilePane(tab.id)}
+						>
+							{tab.label}
+						</button>
+					))}
 				</div>
-			</aside>
-			<div className={`oc-stage${file ? " is-split" : ""}`} ref={stageRef}>
-				{file ? (
-					<section className="oc-editor" aria-label={file.path}>
-						<div className="oc-editor-bar">
-							<span
-								className={`oc-editor-name${dirty ? " is-dirty" : ""}`}
-								title={dirty ? `${file.path} ●` : file.path}
-							>
-								{file.path}
+			) : null}
+			<div className="oc-work">
+				<aside className="oc-tree" aria-label={t("code.files")}>
+					<div className="oc-tree-head">
+						<span className="oc-tree-title" title={name}>
+							{name || t("code.files")}
+						</span>
+						{branch ? (
+							<span className="oc-tree-branch" title={branch}>
+								{branch}
 							</span>
-							{stale ? (
-								<button
-									type="button"
-									className="oc-mini"
-									title={t("code.discardConfirm")}
-									onClick={() => {
-										if (dirty && !window.confirm(t("code.discardConfirm"))) {
-											return;
-										}
-										void openPath(file.path);
+						) : null}
+						{fileCount > 0 ? (
+							<span
+								className="oc-tree-branch"
+								title={t("code.filesCount", { n: fileCount })}
+							>
+								{t("code.filesCount", { n: fileCount })}
+							</span>
+						) : null}
+						<span className="oc-tree-actions">
+							<button
+								type="button"
+								className="oc-tree-action"
+								aria-label={t("code.newFile")}
+								title={t("code.newFile")}
+								disabled={!uuid || !name || busy === "file"}
+								onClick={startCreate}
+							>
+								<NewFileIcon />
+							</button>
+							<button
+								type="button"
+								className="oc-tree-action"
+								aria-label={t("code.renameFile")}
+								title={t("code.renameFile")}
+								disabled={!(picked?.path || file?.path) || busy === "file"}
+								onMouseDown={(event) => event.preventDefault()}
+								onClick={() => startRename()}
+							>
+								<RenameIcon />
+							</button>
+							<button
+								type="button"
+								className="oc-tree-action"
+								aria-label={t("code.refreshFiles")}
+								title={t("code.refreshFiles")}
+								disabled={!uuid || !name}
+								onClick={() => void reloadFiles()}
+							>
+								<RefreshIcon />
+							</button>
+						</span>
+						<button
+							type="button"
+							className="oc-mini"
+							disabled={!uuid || !owner || !name || busy === "github"}
+							title={t("code.saveGithub")}
+							onClick={() => void saveGithub()}
+						>
+							{busy === "github"
+								? t("code.savingGithub")
+								: t("code.saveGithub")}
+						</button>
+					</div>
+					<div className="oc-tree-filter">
+						<input
+							value={fileFilter}
+							placeholder={t("code.filterFiles")}
+							aria-label={t("code.filterFiles")}
+							onChange={(event) => setFileFilter(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Escape") {
+									setFileFilter("");
+								}
+							}}
+						/>
+						{fileFilter ? (
+							<button
+								type="button"
+								className="oc-mini"
+								aria-label={t("code.clear")}
+								onClick={() => setFileFilter("")}
+							>
+								{t("code.clear")}
+							</button>
+						) : (
+							<button
+								type="button"
+								className="oc-mini"
+								aria-label={t("code.collapseAll")}
+								disabled={openDirs.size === 0}
+								onClick={() => setOpenDirs(new Set())}
+							>
+								{t("code.collapseAll")}
+							</button>
+						)}
+					</div>
+					{note ? <p className="oc-editor-note oc-error-note">{note}</p> : null}
+					{saved ? <p className="oc-editor-note oc-success">{saved}</p> : null}
+					<div
+						className={`oc-tree-scroll${dropDir === "" ? " is-drop" : ""}`}
+						role="tree"
+						aria-label={t("code.files")}
+						onDragOver={(event) => {
+							if (!event.dataTransfer.types.includes("Files")) {
+								return;
+							}
+							event.preventDefault();
+							setDropDir("");
+						}}
+						onDragLeave={(event) => {
+							if (event.currentTarget.contains(event.relatedTarget as Node)) {
+								return;
+							}
+							setDropDir(null);
+						}}
+						onDrop={(event) => {
+							event.preventDefault();
+							void importFiles("", [...event.dataTransfer.files]);
+						}}
+					>
+						{creating === "" ? (
+							<NameRow
+								value={nameDraft}
+								label={t("code.fileName")}
+								onChange={setNameDraft}
+								onCommit={() => void commitName()}
+								onCancel={() => setCreating(null)}
+							/>
+						) : null}
+						{visibleTree.length === 0 ? (
+							<p className="oc-editor-note">
+								{fileFilter.trim()
+									? t("code.searchEmpty")
+									: t("code.emptyTree")}
+							</p>
+						) : (
+							visibleTree.map((node) => (
+								<TreeRows
+									key={node.path}
+									node={node}
+									depth={0}
+									openDirs={
+										fileFilter.trim() ? openAllDirs(visibleTree) : openDirs
+									}
+									active={picked?.path || file?.path || ""}
+									onToggle={(path) =>
+										setOpenDirs((current) => {
+											const copy = new Set(current);
+											if (copy.has(path)) {
+												copy.delete(path);
+											} else {
+												copy.add(path);
+											}
+											return copy;
+										})
+									}
+									onOpen={(path) => {
+										setPicked({ path, type: "file" });
+										void openPath(path);
 									}}
-								>
-									{t("code.updatedOnBoard")}
-								</button>
-							) : null}
-							{file.path === BREADBOARD_DIAGRAM_JSON ? (
-								<span className="oc-view-toggle">
-									<button
-										type="button"
-										className={`oc-mini${diagramView === "json" ? " is-on" : ""}`}
-										aria-pressed={diagramView === "json"}
-										onClick={() => setDiagramView("json")}
-									>
-										{t("code.viewJson")}
-									</button>
-									<button
-										type="button"
-										className={`oc-mini${diagramView === "board" ? " is-on" : ""}`}
-										aria-pressed={diagramView === "board"}
-										onClick={() => setDiagramView("board")}
-									>
-										{t("code.viewBreadboard")}
-									</button>
-								</span>
-							) : null}
-							{file.kind === "text" && isMarkdownPath(file.path) ? (
-								<span className="oc-view-toggle">
-									<button
-										type="button"
-										className={`oc-mini${mdView === "parsed" ? " is-on" : ""}`}
-										aria-pressed={mdView === "parsed"}
-										onClick={() => setMdView("parsed")}
-									>
-										{t("code.viewParsed")}
-									</button>
-									<button
-										type="button"
-										className={`oc-mini${mdView === "raw" ? " is-on" : ""}`}
-										aria-pressed={mdView === "raw"}
-										onClick={() => setMdView("raw")}
-									>
-										{t("code.viewRaw")}
-									</button>
-								</span>
-							) : null}
-							{file.kind === "text" ? (
-								<button
-									type="button"
-									className="oc-mini"
-									disabled={!dirty || busy === "board"}
-									onClick={() => void saveBoard()}
-								>
-									{busy === "board"
-										? t("code.savingBoard")
-										: t("code.saveBoard")}
-								</button>
-							) : null}
-						</div>
-						<div className="oc-editor-body">
-							{fileLoading ? (
-								<p className="oc-editor-note">{t("code.loadingFile")}</p>
-							) : showBoard ? (
-								<BreadboardViewer
-									diagramText={draft}
-									boardModel={boardModel}
-									fill
+									onPickDir={(path) => setPicked({ path, type: "dir" })}
+									dropDir={dropDir}
+									onDragFolder={setDropDir}
+									onDropFiles={(dir, list) => void importFiles(dir, list)}
+									creating={creating}
+									renaming={renaming}
+									nameDraft={nameDraft}
+									onName={setNameDraft}
+									onCommit={() => void commitName()}
+									onCancelName={() => {
+										setCreating(null);
+										setRenaming("");
+									}}
+									onFileMenu={openFileMenu}
 								/>
-							) : file.kind === "model" ? (
-								<ModelViewer glbBase64={file.base64} fill />
-							) : file.kind === "binary" ? (
-								<p className="oc-editor-note">{t("code.binary")}</p>
-							) : file.kind === "text" &&
-								isMarkdownPath(file.path) &&
-								mdView === "parsed" ? (
-								<div className="oc-md-preview">
-									<MarkdownView text={draft} />
-								</div>
-							) : (
-								<CodeEditor
-									path={file.path}
-									value={draft}
-									theme={mode === "dark" ? "vs-dark" : "vs"}
-									onChange={setDraft}
-									onSave={() => void saveBoard()}
-								/>
-							)}
-						</div>
-					</section>
-				) : null}
-				{file ? <div className="oc-split" onPointerDown={onSplitDown} /> : null}
-				<div className="oc-chat">{children}</div>
+							))
+						)}
+					</div>
+				</aside>
+				<div className={`oc-stage${file ? " is-split" : ""}`} ref={stageRef}>
+					{file ? (
+						<section className="oc-editor" aria-label={file.path}>
+							<div className="oc-editor-bar">
+								<span
+									className={`oc-editor-name${dirty ? " is-dirty" : ""}`}
+									title={dirty ? `${file.path} ●` : file.path}
+								>
+									{file.path}
+								</span>
+								{stale ? (
+									<button
+										type="button"
+										className="oc-mini"
+										title={t("code.discardConfirm")}
+										onClick={() => {
+											if (dirty && !window.confirm(t("code.discardConfirm"))) {
+												return;
+											}
+											void openPath(file.path);
+										}}
+									>
+										{t("code.updatedOnBoard")}
+									</button>
+								) : null}
+								{file.path === BREADBOARD_DIAGRAM_JSON ? (
+									<span className="oc-view-toggle">
+										<button
+											type="button"
+											className={`oc-mini${diagramView === "json" ? " is-on" : ""}`}
+											aria-pressed={diagramView === "json"}
+											onClick={() => setDiagramView("json")}
+										>
+											{t("code.viewJson")}
+										</button>
+										<button
+											type="button"
+											className={`oc-mini${diagramView === "board" ? " is-on" : ""}`}
+											aria-pressed={diagramView === "board"}
+											onClick={() => setDiagramView("board")}
+										>
+											{t("code.viewBreadboard")}
+										</button>
+									</span>
+								) : null}
+								{file.kind === "text" && isMarkdownPath(file.path) ? (
+									<span className="oc-view-toggle">
+										<button
+											type="button"
+											className={`oc-mini${mdView === "parsed" ? " is-on" : ""}`}
+											aria-pressed={mdView === "parsed"}
+											onClick={() => setMdView("parsed")}
+										>
+											{t("code.viewParsed")}
+										</button>
+										<button
+											type="button"
+											className={`oc-mini${mdView === "raw" ? " is-on" : ""}`}
+											aria-pressed={mdView === "raw"}
+											onClick={() => setMdView("raw")}
+										>
+											{t("code.viewRaw")}
+										</button>
+									</span>
+								) : null}
+								{file.kind === "text" ? (
+									<button
+										type="button"
+										className="oc-mini"
+										disabled={!dirty || busy === "board"}
+										onClick={() => void saveBoard()}
+									>
+										{busy === "board"
+											? t("code.savingBoard")
+											: t("code.saveBoard")}
+									</button>
+								) : null}
+							</div>
+							<div className="oc-editor-body">
+								{fileLoading ? (
+									<p className="oc-editor-note">{t("code.loadingFile")}</p>
+								) : showBoard ? (
+									<BreadboardViewer
+										diagramText={draft}
+										boardModel={boardModel}
+										fill
+									/>
+								) : file.kind === "model" ? (
+									<ModelViewer glbBase64={file.base64} fill />
+								) : file.kind === "binary" ? (
+									<p className="oc-editor-note">{t("code.binary")}</p>
+								) : file.kind === "text" &&
+									isMarkdownPath(file.path) &&
+									mdView === "parsed" ? (
+									<div className="oc-md-preview">
+										<MarkdownView text={draft} />
+									</div>
+								) : (
+									<CodeEditor
+										path={file.path}
+										value={draft}
+										theme={mode === "dark" ? "vs-dark" : "vs"}
+										onChange={setDraft}
+										onSave={() => void saveBoard()}
+									/>
+								)}
+							</div>
+						</section>
+					) : null}
+					{file ? (
+						<div className="oc-split" onPointerDown={onSplitDown} />
+					) : null}
+					<div className="oc-chat">{children}</div>
+				</div>
+				{fileMenu
+					? createPortal(
+							<FileContextMenu
+								menu={fileMenu}
+								menuRef={fileMenuRef}
+								ariaLabel={t("code.fileActions")}
+								onClose={() => setFileMenu(null)}
+								items={fileMenuItems(fileMenu.path)}
+							/>,
+							document.body,
+						)
+					: null}
 			</div>
-			{fileMenu
-				? createPortal(
-						<FileContextMenu
-							menu={fileMenu}
-							menuRef={fileMenuRef}
-							ariaLabel={t("code.fileActions")}
-							onClose={() => setFileMenu(null)}
-							items={fileMenuItems(fileMenu.path)}
-						/>,
-						document.body,
-					)
-				: null}
 		</div>
 	);
-
 	function fileMenuItems(path: string): ContextMenuItem[] {
 		const items: ContextMenuItem[] = [];
 		if (sketchAction) {

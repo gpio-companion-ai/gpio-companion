@@ -480,12 +480,21 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	}, [dockTab, mode, setDockTab]);
 
 	useEffect(() => {
-		if (!mobile || mobileDockInit.current) {
+		if (!mobile) {
+			mobileDockInit.current = false;
+			return;
+		}
+		if (pathname.startsWith("/devices/code")) {
+			mobileDockInit.current = true;
+			setDockOpen(false);
+			return;
+		}
+		if (mobileDockInit.current) {
 			return;
 		}
 		mobileDockInit.current = true;
 		setDockOpen(false);
-	}, [mobile, setDockOpen]);
+	}, [mobile, pathname, setDockOpen]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset the highlighted command when the filter or dialog changes
 	useEffect(() => {

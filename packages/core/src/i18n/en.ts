@@ -1112,6 +1112,7 @@ export const en = {
 		toolInput: "Input",
 		toolOutput: "Output",
 		files: "Files",
+		preview: "Preview",
 		viewJson: "JSON",
 		viewBreadboard: "Breadboard",
 		viewParsed: "Parsed",

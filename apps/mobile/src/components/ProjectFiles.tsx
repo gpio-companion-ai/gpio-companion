@@ -754,8 +754,10 @@ export default function ProjectFiles({
 				style={{
 					flexDirection: "row",
 					alignItems: "center",
-					gap: 8,
-					paddingHorizontal: 12,
+					flexWrap: "wrap",
+					rowGap: 4,
+					columnGap: 4,
+					paddingHorizontal: 8,
 					paddingVertical: 8,
 					borderBottomWidth: 1,
 					borderBottomColor: colors.chipBg,
@@ -771,14 +773,26 @@ export default function ProjectFiles({
 					accessibilityLabel={t("code.newFile")}
 					disabled={!token || !uuid || !name || busy === "file"}
 					onPress={startCreate}
+					style={{
+						minWidth: 40,
+						minHeight: 40,
+						alignItems: "center",
+						justifyContent: "center",
+					}}
 				>
-					<Text style={{ color: colors.text, fontSize: 16 }}>+</Text>
+					<Text style={{ color: colors.text, fontSize: 18 }}>+</Text>
 				</Pressable>
 				<Pressable
 					accessibilityRole="button"
 					accessibilityLabel={t("code.renameFile")}
 					disabled={!(picked?.path || file?.path) || busy === "file"}
 					onPress={() => startRename()}
+					style={{
+						minWidth: 40,
+						minHeight: 40,
+						alignItems: "center",
+						justifyContent: "center",
+					}}
 				>
 					<Text style={{ color: colors.text, fontSize: 12 }}>A</Text>
 				</Pressable>
@@ -787,20 +801,33 @@ export default function ProjectFiles({
 					accessibilityLabel={t("code.refreshFiles")}
 					disabled={!token || !uuid || !name}
 					onPress={() => void reloadFiles()}
+					style={{
+						minWidth: 40,
+						minHeight: 40,
+						alignItems: "center",
+						justifyContent: "center",
+					}}
 				>
-					<Text style={{ color: colors.text, fontSize: 14 }}>↻</Text>
+					<Text style={{ color: colors.text, fontSize: 16 }}>↻</Text>
 				</Pressable>
 				<Pressable
 					accessibilityRole="button"
 					accessibilityLabel={t("code.dropRoot")}
 					disabled={!token || !uuid || !name || busy === "drop"}
 					onPress={() => void pickInto("")}
+					style={{
+						minWidth: 40,
+						minHeight: 40,
+						alignItems: "center",
+						justifyContent: "center",
+					}}
 				>
 					<Text style={{ color: colors.primary, fontWeight: "600" }}>+</Text>
 				</Pressable>
 				<Pressable
 					disabled={!token || !uuid || !owner || !name || busy === "github"}
 					onPress={() => void saveGithub()}
+					style={{ minHeight: 40, justifyContent: "center" }}
 				>
 					<Text style={{ color: colors.primary, fontWeight: "600" }}>
 						{busy === "github" ? t("code.savingGithub") : t("code.saveGithub")}
@@ -864,17 +891,22 @@ export default function ProjectFiles({
 				</Text>
 			) : null}
 			{file ? (
-				<View style={{ flex: 1.2, minHeight: 180 }}>
+				<View style={{ flex: 1, minHeight: 320 }}>
 					<View
 						style={{
 							flexDirection: "row",
 							alignItems: "center",
-							gap: 8,
-							paddingHorizontal: 12,
+							flexWrap: "wrap",
+							rowGap: 4,
+							columnGap: 8,
+							paddingHorizontal: 8,
 							paddingVertical: 6,
 						}}
 					>
-						<Pressable onPress={() => setFile(null)}>
+						<Pressable
+							onPress={() => setFile(null)}
+							style={{ minHeight: 40, justifyContent: "center" }}
+						>
 							<Text style={{ color: colors.primary }}>{t("code.files")}</Text>
 						</Pressable>
 						<Text style={{ flex: 1, color: colors.text }} numberOfLines={1}>
@@ -882,7 +914,11 @@ export default function ProjectFiles({
 							{dirty ? " ●" : ""}
 						</Text>
 						{stale ? (
-							<Pressable onPress={reloadStale}>
+							<Pressable
+								onPress={reloadStale}
+								style={{ minHeight: 40, justifyContent: "center" }}
+							>
+								{" "}
 								<Text style={{ color: colors.primary }}>
 									{t("code.updatedOnBoard")}
 								</Text>
@@ -943,6 +979,7 @@ export default function ProjectFiles({
 							<Pressable
 								disabled={!dirty || busy === "board"}
 								onPress={() => void saveBoard()}
+								style={{ minHeight: 40, justifyContent: "center" }}
 							>
 								<Text style={{ color: colors.primary, fontWeight: "600" }}>
 									{busy === "board"
@@ -1210,7 +1247,7 @@ function TreeRows({
 		<View>
 			<View
 				style={{
-					height: 28,
+					minHeight: 44,
 					flexDirection: "row",
 					alignItems: "center",
 					paddingLeft: 8 + depth * 14,
@@ -1231,7 +1268,11 @@ function TreeRows({
 							event.nativeEvent.pageY,
 						);
 					}}
-					style={{ flex: 1, justifyContent: "center" }}
+					style={{
+						flex: 1,
+						alignSelf: "stretch",
+						justifyContent: "center",
+					}}
 				>
 					{renaming === node.path ? (
 						<TextInput
@@ -1253,7 +1294,12 @@ function TreeRows({
 						accessibilityRole="button"
 						accessibilityLabel={t("code.dropFolder", { name: node.name })}
 						onPress={() => onAdd(node.path)}
-						style={{ paddingHorizontal: 10 }}
+						style={{
+							minWidth: 44,
+							minHeight: 44,
+							alignItems: "center",
+							justifyContent: "center",
+						}}
 					>
 						<Text style={{ color }}>+</Text>
 					</Pressable>

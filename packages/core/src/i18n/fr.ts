@@ -1139,6 +1139,7 @@ export const fr = {
 		toolInput: "Entrée",
 		toolOutput: "Sortie",
 		files: "Fichiers",
+		preview: "Aperçu",
 		viewJson: "JSON",
 		viewBreadboard: "Breadboard",
 		viewParsed: "Interprété",

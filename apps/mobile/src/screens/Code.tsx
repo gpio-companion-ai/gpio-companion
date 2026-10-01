@@ -2142,8 +2142,8 @@ export default function Code() {
 				) : null}
 				<View
 					style={{
-						flexDirection: "row",
-						alignItems: "flex-end",
+						flexDirection: "column",
+						alignItems: "stretch",
 						gap: 8,
 						borderRadius: 12,
 						padding: 8,
@@ -2152,175 +2152,167 @@ export default function Code() {
 						borderColor: composerFocused ? colors.text : colors.border,
 					}}
 				>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel={t("code.attach")}
-						disabled={toolsDisabled}
-						onPress={() => void addPicked()}
+					<View
 						style={{
-							width: 28,
-							height: 28,
+							flexDirection: "row",
 							alignItems: "center",
-							justifyContent: "center",
-							opacity: toolsDisabled ? 0.35 : 1,
+							gap: 4,
 						}}
 					>
-						<Text style={{ color: colors.text, fontSize: 16 }}>+</Text>
-					</Pressable>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel={
-							recording ? t("code.dictating") : t("code.dictate")
-						}
-						disabled={toolsDisabled}
-						onPress={() => void dictate()}
-						style={{
-							width: 28,
-							height: 28,
-							alignItems: "center",
-							justifyContent: "center",
-							borderRadius: 8,
-							backgroundColor: recording ? colors.text : "transparent",
-							opacity: toolsDisabled ? 0.35 : 1,
-						}}
-					>
-						<Text
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel={t("code.attach")}
+							disabled={toolsDisabled}
+							onPress={() => void addPicked()}
 							style={{
-								color: recording ? colors.surface : colors.text,
-								fontSize: 11,
+								width: 40,
+								height: 40,
+								alignItems: "center",
+								justifyContent: "center",
+								borderRadius: 8,
+								opacity: toolsDisabled ? 0.35 : 1,
 							}}
 						>
-							{recording ? "●" : "M"}
-						</Text>
-					</Pressable>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel={
-							voiceMode ? t("code.voiceStop") : t("code.voiceMode")
-						}
-						accessibilityState={{ selected: voiceMode }}
-						disabled={toolsDisabled}
-						onPress={() => setVoiceMode((current) => !current)}
-						style={{
-							width: 28,
-							height: 28,
-							alignItems: "center",
-							justifyContent: "center",
-							borderRadius: 8,
-							backgroundColor: voiceMode ? colors.text : "transparent",
-							opacity: toolsDisabled ? 0.35 : 1,
-						}}
-					>
-						<Text
+							<Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
+						</Pressable>
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel={
+								recording ? t("code.dictating") : t("code.dictate")
+							}
+							disabled={toolsDisabled}
+							onPress={() => void dictate()}
 							style={{
-								color: voiceMode ? colors.surface : colors.text,
-								fontSize: 11,
+								width: 40,
+								height: 40,
+								alignItems: "center",
+								justifyContent: "center",
+								borderRadius: 8,
+								backgroundColor: recording ? colors.text : "transparent",
+								opacity: toolsDisabled ? 0.35 : 1,
 							}}
 						>
-							∿
-						</Text>
-					</Pressable>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel={t("code.ptt")}
-						accessibilityState={{ selected: pttHeld }}
-						disabled={toolsDisabled}
-						onPressIn={() => beginPttRef.current()}
-						onPressOut={() => endPttRef.current()}
-						style={{
-							width: 28,
-							height: 28,
-							alignItems: "center",
-							justifyContent: "center",
-							borderRadius: 8,
-							backgroundColor: pttHeld ? colors.text : "transparent",
-							opacity: toolsDisabled ? 0.35 : 1,
-						}}
-					>
-						<Text
+							<Text
+								style={{
+									color: recording ? colors.surface : colors.text,
+									fontSize: 13,
+								}}
+							>
+								{recording ? "●" : "M"}
+							</Text>
+						</Pressable>
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel={
+								voiceMode ? t("code.voiceStop") : t("code.voiceMode")
+							}
+							accessibilityState={{ selected: voiceMode }}
+							disabled={toolsDisabled}
+							onPress={() => setVoiceMode((current) => !current)}
 							style={{
-								color: pttHeld ? colors.surface : colors.text,
-								fontSize: 13,
+								width: 40,
+								height: 40,
+								alignItems: "center",
+								justifyContent: "center",
+								borderRadius: 8,
+								backgroundColor: voiceMode ? colors.text : "transparent",
+								opacity: toolsDisabled ? 0.35 : 1,
 							}}
 						>
-							●
-						</Text>
-					</Pressable>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel={
-							voiceMode ? t("code.voiceStop") : t("code.voiceMode")
-						}
-						accessibilityState={{ selected: voiceMode }}
-						disabled={toolsDisabled}
-						onPress={() => setVoiceMode((current) => !current)}
-						style={{
-							width: 28,
-							height: 28,
-							alignItems: "center",
-							justifyContent: "center",
-							borderRadius: 8,
-							backgroundColor: voiceMode ? colors.text : "transparent",
-							opacity: toolsDisabled ? 0.35 : 1,
-						}}
-					>
-						<Text
+							<Text
+								style={{
+									color: voiceMode ? colors.surface : colors.text,
+									fontSize: 13,
+								}}
+							>
+								∿
+							</Text>
+						</Pressable>
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel={t("code.ptt")}
+							accessibilityState={{ selected: pttHeld }}
+							disabled={toolsDisabled}
+							onPressIn={() => beginPttRef.current()}
+							onPressOut={() => endPttRef.current()}
 							style={{
-								color: voiceMode ? colors.surface : colors.text,
-								fontSize: 11,
+								width: 40,
+								height: 40,
+								alignItems: "center",
+								justifyContent: "center",
+								borderRadius: 8,
+								backgroundColor: pttHeld ? colors.text : "transparent",
+								opacity: toolsDisabled ? 0.35 : 1,
 							}}
 						>
-							∿
-						</Text>
-					</Pressable>
-					<TextInput
-						value={prompt}
-						placeholder={t("code.placeholder")}
-						placeholderTextColor={colors.placeholder}
-						editable={!disabled}
-						multiline
-						onChangeText={(value) => {
-							setPrompt(value);
-							setCaret(value.length);
-						}}
-						onSelectionChange={(event) =>
-							setCaret(event.nativeEvent.selection.start)
-						}
-						onFocus={() => setComposerFocused(true)}
-						onBlur={() => setComposerFocused(false)}
+							<Text
+								style={{
+									color: pttHeld ? colors.surface : colors.text,
+									fontSize: 15,
+								}}
+							>
+								●
+							</Text>
+						</Pressable>
+					</View>
+					<View
 						style={{
-							flex: 1,
-							color: colors.text,
-							maxHeight: 120,
-							fontSize: 13,
-						}}
-					/>
-					<Pressable
-						accessibilityRole="button"
-						accessibilityLabel={view.busy ? t("code.stop") : t("code.send")}
-						disabled={sendDisabled}
-						onPress={() => void (view.busy ? abort() : send())}
-						style={{
-							width: 28,
-							height: 28,
-							borderRadius: 8,
-							alignItems: "center",
-							justifyContent: "center",
-							backgroundColor: view.busy ? "transparent" : colors.text,
-							borderWidth: view.busy ? 1.5 : 0,
-							borderColor: colors.text,
-							opacity: sendDisabled ? 0.35 : 1,
+							flexDirection: "row",
+							alignItems: "flex-end",
+							gap: 8,
 						}}
 					>
-						<Text
+						<TextInput
+							value={prompt}
+							placeholder={t("code.placeholder")}
+							placeholderTextColor={colors.placeholder}
+							editable={!disabled}
+							multiline
+							onChangeText={(value) => {
+								setPrompt(value);
+								setCaret(value.length);
+							}}
+							onSelectionChange={(event) =>
+								setCaret(event.nativeEvent.selection.start)
+							}
+							onFocus={() => setComposerFocused(true)}
+							onBlur={() => setComposerFocused(false)}
 							style={{
-								color: view.busy ? colors.text : colors.surface,
-								fontSize: 12,
+								flex: 1,
+								color: colors.text,
+								maxHeight: 120,
+								minHeight: 44,
+								paddingVertical: 10,
+								fontSize: 15,
+							}}
+						/>
+						<Pressable
+							accessibilityRole="button"
+							accessibilityLabel={view.busy ? t("code.stop") : t("code.send")}
+							disabled={sendDisabled}
+							onPress={() => void (view.busy ? abort() : send())}
+							style={{
+								width: 44,
+								height: 44,
+								borderRadius: 10,
+								alignItems: "center",
+								justifyContent: "center",
+								backgroundColor: view.busy ? "transparent" : colors.text,
+								borderWidth: view.busy ? 1.5 : 0,
+								borderColor: colors.text,
+								opacity: sendDisabled ? 0.35 : 1,
 							}}
 						>
-							{view.busy ? "■" : "↑"}
-						</Text>
-					</Pressable>
+							<Text
+								style={{
+									color: view.busy ? colors.text : colors.surface,
+									fontSize: 16,
+								}}
+							>
+								{view.busy ? "■" : "↑"}
+							</Text>
+						</Pressable>
+					</View>
 				</View>
 			</View>
 		);
@@ -2413,7 +2405,9 @@ export default function Code() {
 							onPress={() => setPane(item)}
 							style={{
 								paddingHorizontal: 14,
-								paddingVertical: 8,
+								paddingVertical: 12,
+								minHeight: 44,
+								justifyContent: "center",
 								borderBottomWidth: 2,
 								borderBottomColor:
 									pane === item ? colors.primary : "transparent",
@@ -2670,7 +2664,10 @@ export default function Code() {
 								borderBottomColor: colors.border,
 							}}
 						>
-							<Pressable onPress={leaveChat}>
+							<Pressable
+								onPress={leaveChat}
+								style={{ minHeight: 44, justifyContent: "center" }}
+							>
 								<Text style={{ color: colors.muted, fontWeight: "600" }}>
 									{t("code.back")}
 								</Text>
@@ -2739,18 +2736,21 @@ export default function Code() {
 								<Pressable
 									disabled={replyBusy}
 									onPress={() => void replyPermission(permission.id, "once")}
+									style={{ minHeight: 44, justifyContent: "center" }}
 								>
 									<Text style={ink}>{t("code.allowOnce")}</Text>
 								</Pressable>
 								<Pressable
 									disabled={replyBusy}
 									onPress={() => void replyPermission(permission.id, "always")}
+									style={{ minHeight: 44, justifyContent: "center" }}
 								>
 									<Text style={ink}>{t("code.allowAlways")}</Text>
 								</Pressable>
 								<Pressable
 									disabled={replyBusy}
 									onPress={() => void replyPermission(permission.id, "reject")}
+									style={{ minHeight: 44, justifyContent: "center" }}
 								>
 									<Text style={{ color: colors.danger }}>{t("code.deny")}</Text>
 								</Pressable>
@@ -2842,7 +2842,7 @@ export default function Code() {
 																	pickChoice(item.question, option)
 																}
 																style={{
-																	flexBasis: "48%",
+																	flexBasis: "100%",
 																	flexGrow: 1,
 																	flexDirection: "row",
 																	alignItems: "center",
@@ -2942,7 +2942,13 @@ export default function Code() {
 													}}
 												/>
 											) : null}
-											<View style={{ flexDirection: "row", gap: 8 }}>
+											<View
+												style={{
+													flexDirection: "row",
+													flexWrap: "wrap",
+													gap: 8,
+												}}
+											>
 												<Pressable
 													accessibilityRole="button"
 													accessibilityLabel={t("code.previousQuestion")}
@@ -2950,7 +2956,10 @@ export default function Code() {
 													onPress={() => moveQuestion(-1)}
 													style={{
 														flex: 1,
+														flexBasis: "45%",
 														alignItems: "center",
+														justifyContent: "center",
+														minHeight: 44,
 														paddingVertical: 10,
 														borderRadius: 8,
 														backgroundColor: colors.chipBg,
@@ -2966,7 +2975,10 @@ export default function Code() {
 													onPress={() => moveQuestion(1)}
 													style={{
 														flex: 1,
+														flexBasis: "45%",
 														alignItems: "center",
+														justifyContent: "center",
+														minHeight: 44,
 														paddingVertical: 10,
 														borderRadius: 8,
 														backgroundColor: colors.chipBg,
@@ -2982,7 +2994,10 @@ export default function Code() {
 													onPress={() => answerQuestion(false)}
 													style={{
 														flex: 1,
+														flexBasis: "45%",
 														alignItems: "center",
+														justifyContent: "center",
+														minHeight: 44,
 														paddingVertical: 10,
 														borderRadius: 8,
 														backgroundColor: colors.text,
@@ -3000,7 +3015,10 @@ export default function Code() {
 													onPress={() => answerQuestion(true)}
 													style={{
 														flex: 1,
+														flexBasis: "45%",
 														alignItems: "center",
+														justifyContent: "center",
+														minHeight: 44,
 														paddingVertical: 10,
 														borderRadius: 8,
 														backgroundColor: colors.chipBg,

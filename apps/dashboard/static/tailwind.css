@@ -3240,6 +3240,19 @@ button.oc-chip,
 	inset: -4px;
 }
 
+.oc-code-tabs {
+	display: flex;
+	min-width: 0;
+	min-height: 0;
+	flex: 1 1 0;
+	flex-direction: column;
+	overflow: hidden;
+}
+
+.oc-pane-tabs {
+	display: none;
+}
+
 @media (max-width: 800px) {
 	.oc-work {
 		flex-direction: column;
@@ -3259,5 +3272,173 @@ button.oc-chip,
 
 	.oc-split {
 		cursor: row-resize;
+	}
+}
+
+/* Mobile Code workspace: tabbed single-pane (Chat | Files | Preview).
+   Matches useMobile() MOBILE_QUERY so the tabs and layout switch together. */
+@media (max-width: 899px) {
+	.oc-pane-tabs {
+		display: flex;
+		flex: none;
+		gap: 4px;
+		padding: 8px 8px 0;
+	}
+
+	.oc-pane-tabs button {
+		min-height: 44px;
+		flex: 1;
+		border-radius: 8px;
+		padding: 0 8px;
+		background: rgba(var(--text-main), 0.06);
+		color: rgb(var(--text-secondary));
+		font-weight: 600;
+	}
+
+	.oc-pane-tabs button.is-on {
+		background: rgb(var(--text-main));
+		color: rgb(var(--bg-surface));
+	}
+
+	.oc-code-tabs .oc-work {
+		flex-direction: column;
+	}
+
+	.oc-code-tabs.is-m-chat .oc-tree,
+	.oc-code-tabs.is-m-chat .oc-editor,
+	.oc-code-tabs.is-m-chat .oc-split,
+	.oc-code-tabs.is-m-files .oc-stage,
+	.oc-code-tabs.is-m-preview .oc-tree,
+	.oc-code-tabs.is-m-preview .oc-chat,
+	.oc-code-tabs.is-m-preview .oc-split {
+		display: none;
+	}
+
+	.oc-code-tabs.is-m-files .oc-tree {
+		width: auto;
+		max-height: none;
+		flex: 1;
+		border-right: 0;
+		border-bottom: 0;
+	}
+
+	.oc-code-tabs.is-m-preview .oc-stage,
+	.oc-code-tabs.is-m-preview .oc-stage.is-split {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.oc-tree-row {
+		min-height: 40px;
+	}
+
+	.oc-tree-action {
+		width: 40px;
+		height: 40px;
+	}
+
+	.oc-tree-head {
+		flex-wrap: wrap;
+		min-height: 44px;
+		row-gap: 4px;
+	}
+
+	.oc-tree-filter input {
+		height: 40px;
+	}
+
+	.oc-editor-bar {
+		flex-wrap: wrap;
+		min-height: 44px;
+		row-gap: 4px;
+	}
+
+	.oc-editor-name {
+		flex: 1 1 100%;
+	}
+
+	.oc-mini {
+		min-height: 36px;
+	}
+
+	.oc-editor-body {
+		min-height: 50dvh;
+	}
+
+	.oc-transcript {
+		padding: 12px 12px 8px;
+	}
+
+	.oc-compose,
+	.oc-composer {
+		width: calc(100% - 16px);
+	}
+
+	.oc-composer {
+		position: sticky;
+		bottom: 0;
+		padding-bottom: calc(8px + env(safe-area-inset-bottom));
+	}
+
+	.oc-composer .oc-tool,
+	.oc-send {
+		width: 44px;
+		height: 44px;
+	}
+
+	.oc-chip {
+		min-height: 40px;
+	}
+
+	.oc-sessions-head {
+		flex-wrap: wrap;
+	}
+
+	.oc-search {
+		flex: 1 1 100%;
+		min-height: 44px;
+	}
+
+	.oc-draft-body {
+		margin: 24px auto 0;
+		padding: 0 12px;
+	}
+
+	.oc-back {
+		min-height: 40px;
+	}
+
+	.oc-decision-actions {
+		flex-direction: column;
+		align-items: stretch;
+	}
+
+	.oc-decision-actions button {
+		min-height: 44px;
+	}
+
+	.oc-question-foot {
+		flex-wrap: wrap;
+	}
+
+	.oc-question-foot button {
+		flex: 1 1 45%;
+		min-height: 44px;
+	}
+
+	.oc-boardbar {
+		flex-wrap: wrap;
+		padding: 6px 8px;
+	}
+
+	.oc-home {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.oc-projects {
+		max-height: 160px;
+		border-right: 0;
+		border-bottom: 1px solid rgba(var(--text-main), 0.08);
 	}
 }
