@@ -13,14 +13,17 @@ import { router } from "expo-router";
 import {
 	applyCodeMention,
 	CODE_STT_MAX_MS,
+	CODE_VOICE_ARM_MS,
 	CODE_VOICE_BARGE_DB,
 	CODE_VOICE_METER_DB,
 	CODE_VOICE_MIN_MS,
 	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
+	codeAppendSpeechDirective,
 	codeAttachPrompt,
 	codeComposerErrorKey,
 	codeMentionAt,
+	codeSpeechBlocks,
 	codeSpokenText,
 	decodeBase64,
 	encodeBase64,
@@ -401,9 +404,18 @@ export default function Code() {
 	const recState = useAudioRecorderState(recorder, 200);
 	const heardUri = useRef("");
 	const voiceSpeaking = useRef<AudioPlayer | null>(null);
+	const voiceSpeechResolve = useRef<(() => void) | null>(null);
+	const speechSpoken = useRef(new Map<string, number>());
+	const speechChain = useRef<Promise<void>>(Promise.resolve());
+	const speechGen = useRef(0);
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
 	const voiceBarge = useRef(0);
+	const voiceArmAt = useRef(0);
+	const voiceSource = useRef<"auto" | "ptt">("auto");
+	const pttRef = useRef(false);
+	const beginPttRef = useRef<() => void>(() => {});
+	const endPttRef = useRef<() => void>(() => {});
 	const voiceLastVoice = useRef(0);
 	const voiceSpeech = useRef(false);
 	const voiceHandling = useRef(false);
@@ -448,6 +460,7 @@ export default function Code() {
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [voiceMode, setVoiceMode] = useState(false);
+	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
@@ -1064,7 +1077,7 @@ export default function Code() {
 
 	function startVoiceCapture() {
 		if (
-			!voiceModeRef.current ||
+			(!voiceModeRef.current && !pttRef.current) ||
 			voiceHandling.current ||
 			voicePreparing.current
 		) {
@@ -1075,11 +1088,12 @@ export default function Code() {
 				return;
 			}
 			voicePreparing.current = true;
+			voiceSource.current = pttRef.current ? "ptt" : "auto";
 			void recorder
 				.prepareToRecordAsync()
 				.then(() => {
 					if (
-						!voiceModeRef.current ||
+						(!voiceModeRef.current && !pttRef.current) ||
 						voiceHandling.current ||
 						!recStateRef.current.canRecord
 					) {
@@ -1087,6 +1101,7 @@ export default function Code() {
 					}
 					voiceSpeech.current = false;
 					voiceLastVoice.current = Date.now();
+					voiceArmAt.current = 0;
 					recorder.record({ forDuration: CODE_STT_MAX_MS / 1000 });
 					setVoiceListening(false);
 				})
@@ -1111,6 +1126,18 @@ export default function Code() {
 			}
 		}
 		setVoiceSpeakingNow(false);
+		const resolve = voiceSpeechResolve.current;
+		voiceSpeechResolve.current = null;
+		resolve?.();
+	}
+
+	function clearSpeechQueue() {
+		speechGen.current += 1;
+		speechChain.current = Promise.resolve();
+		const resolve = voiceSpeechResolve.current;
+		voiceSpeechResolve.current = null;
+		resolve?.();
+		stopVoiceSpeech();
 	}
 
 	function stopVoiceEngine() {
@@ -1127,6 +1154,7 @@ export default function Code() {
 	}
 
 	async function finishVoice(uri: string) {
+		clearSpeechQueue();
 		try {
 			const heard = (
 				await transcribeCode(
@@ -1147,8 +1175,10 @@ export default function Code() {
 			setError(shownError(caught instanceof Error ? caught.message : ""));
 		} finally {
 			voiceHandling.current = false;
-			if (voiceModeRef.current) {
+			if (voiceModeRef.current || pttRef.current) {
 				startVoiceCapture();
+			} else if (!voiceModeRef.current) {
+				stopVoiceEngineRef.current();
 			}
 		}
 	}
@@ -1157,55 +1187,152 @@ export default function Code() {
 	startVoiceCaptureRef.current = startVoiceCapture;
 	stopVoiceEngineRef.current = stopVoiceEngine;
 
-	async function speakReply(text: string) {
-		try {
-			const audio = (await speakCode(token, text, locale)).audio;
-			if (!audio || !voiceModeRef.current) {
+	function beginPtt() {
+		if (voiceHandling.current || pttRef.current) {
+			return;
+		}
+		pttRef.current = true;
+		setPttHeld(true);
+		voiceArmAt.current = 0;
+		if (recorder.isRecording) {
+			return;
+		}
+		void (async () => {
+			const perm = await requestRecordingPermissionsAsync();
+			if (!pttRef.current) {
 				return;
 			}
-			stopVoiceSpeech();
-			let replyPath = "";
-			try {
-				const file = new File(Paths.cache, "code-reply.mp3");
-				try {
-					file.delete();
-				} catch {
-					// absent
-				}
-				file.write(decodeBase64(audio));
-				replyPath = file.uri;
-			} catch {
-				replyPath = "";
+			if (!perm.granted) {
+				pttRef.current = false;
+				setPttHeld(false);
+				setError(t("code.micDenied"));
+				return;
 			}
-			const player = createAudioPlayer(
-				{ uri: replyPath || `data:audio/mpeg;base64,${audio}` },
-				{ updateInterval: 200 },
-			);
-			voiceSpeaking.current = player;
-			setVoiceSpeakingNow(true);
-			const sub = player.addListener("playbackStatusUpdate", (status) => {
-				if (!status.didJustFinish) {
-					return;
+			await setAudioModeAsync({
+				allowsRecording: true,
+				playsInSilentMode: true,
+			}).catch(() => {});
+			if (!pttRef.current) {
+				return;
+			}
+			startVoiceCaptureRef.current();
+		})();
+	}
+
+	function endPtt() {
+		pttRef.current = false;
+		setPttHeld(false);
+		voiceArmAt.current = 0;
+		void (async () => {
+			try {
+				if (recorder.isRecording) {
+					await recorder.stop();
 				}
-				sub.remove();
-				if (voiceSpeaking.current === player) {
-					voiceSpeaking.current = null;
-					try {
-						player.remove();
-					} catch {
-						// released
-					}
-					setVoiceSpeakingNow(false);
-				}
-			});
-			player.play();
-		} catch (caught) {
-			setError(shownError(caught instanceof Error ? caught.message : ""));
+			} catch {
+				// ignore
+			}
+			const uri = recorder.uri;
+			if (
+				voiceSource.current === "ptt" &&
+				voiceSpeech.current &&
+				uri &&
+				voiceUri.current !== uri
+			) {
+				voiceUri.current = uri;
+				voiceHandling.current = true;
+				voiceSpeech.current = false;
+				void finishVoiceRef.current(uri);
+				return;
+			}
+			if (!voiceModeRef.current) {
+				stopVoiceEngineRef.current();
+			}
+		})();
+	}
+
+	beginPttRef.current = beginPtt;
+	endPttRef.current = endPtt;
+
+	function speakReply(text: string, gen: number): Promise<void> {
+		if (gen !== speechGen.current) {
+			return Promise.resolve();
 		}
+		return new Promise<void>((resolve) => {
+			void (async () => {
+				try {
+					const audio = (await speakCode(token, text, locale)).audio;
+					if (!audio || gen !== speechGen.current || !voiceModeRef.current) {
+						resolve();
+						return;
+					}
+					stopVoiceSpeech();
+					let replyPath = "";
+					try {
+						const file = new File(Paths.cache, "code-reply.mp3");
+						try {
+							file.delete();
+						} catch {
+							// absent
+						}
+						file.write(decodeBase64(audio));
+						replyPath = file.uri;
+					} catch {
+						replyPath = "";
+					}
+					const player = createAudioPlayer(
+						{ uri: replyPath || `data:audio/mpeg;base64,${audio}` },
+						{ updateInterval: 200 },
+					);
+					const done = () => {
+						const settle = voiceSpeechResolve.current;
+						voiceSpeechResolve.current = null;
+						if (voiceSpeaking.current === player) {
+							voiceSpeaking.current = null;
+							try {
+								player.remove();
+							} catch {
+								// released
+							}
+							setVoiceSpeakingNow(false);
+						}
+						settle?.();
+						resolve();
+					};
+					voiceSpeaking.current = player;
+					voiceSpeechResolve.current = done;
+					setVoiceSpeakingNow(true);
+					const sub = player.addListener("playbackStatusUpdate", (status) => {
+						if (!status.didJustFinish) {
+							return;
+						}
+						sub.remove();
+						done();
+					});
+					player.play();
+				} catch (caught) {
+					setError(shownError(caught instanceof Error ? caught.message : ""));
+					resolve();
+				}
+			})();
+		});
+	}
+
+	function enqueueSpeech(text: string) {
+		const clean = codeSpokenText(text).trim();
+		if (!clean) {
+			return;
+		}
+		const gen = speechGen.current;
+		speechChain.current = speechChain.current
+			.then(() => speakReply(clean, gen))
+			.catch(() => {});
 	}
 
 	function voiceTick() {
-		if (!voiceModeRef.current || voiceHandling.current) {
+		if (!voiceModeRef.current && !pttRef.current) {
+			return;
+		}
+		if (voiceHandling.current) {
 			return;
 		}
 		const state = recStateRef.current;
@@ -1217,19 +1344,24 @@ export default function Code() {
 				voiceBarge.current += 1;
 				if (voiceBarge.current >= 3) {
 					voiceBarge.current = 0;
-					stopVoiceSpeech();
+					clearSpeechQueue();
 				}
 			} else {
 				voiceBarge.current = 0;
 			}
 			return;
 		}
+		const now = Date.now();
 		if (loud) {
-			voiceLastVoice.current = Date.now();
-			if (!voiceSpeech.current) {
+			if (!voiceArmAt.current) {
+				voiceArmAt.current = now;
+			} else if (now - voiceArmAt.current >= CODE_VOICE_ARM_MS) {
 				voiceSpeech.current = true;
+				voiceLastVoice.current = now;
 				setVoiceListening(true);
 			}
+		} else {
+			voiceArmAt.current = 0;
 		}
 		if (!state.isRecording) {
 			if (voiceSpeech.current) {
@@ -1241,14 +1373,15 @@ export default function Code() {
 					void finishVoiceRef.current(uri);
 					return;
 				}
+			} else if (voiceModeRef.current || pttRef.current) {
+				startVoiceCaptureRef.current();
 			}
-			startVoiceCaptureRef.current();
 			return;
 		}
 		if (
 			voiceSpeech.current &&
 			state.durationMillis > CODE_VOICE_MIN_MS &&
-			Date.now() - voiceLastVoice.current > CODE_VOICE_SILENCE_MS
+			now - voiceLastVoice.current > CODE_VOICE_SILENCE_MS
 		) {
 			void recorder.stop().catch(() => {});
 		}
@@ -1260,12 +1393,15 @@ export default function Code() {
 	useEffect(() => {
 		voiceModeRef.current = voiceMode;
 		if (!voiceMode || mode === "home") {
-			stopVoiceEngineRef.current();
+			if (!pttRef.current) {
+				stopVoiceEngineRef.current();
+			}
 			return;
 		}
 		for (const turn of view.turns) {
 			if (turn.role === "assistant") {
 				voiceSpoken.current.add(turn.id);
+				speechSpoken.current.set(turn.id, codeSpeechBlocks(turn.text).length);
 			}
 		}
 		let cancelled = false;
@@ -1288,17 +1424,25 @@ export default function Code() {
 			}
 			startVoiceCaptureRef.current();
 		})();
-		const timer = setInterval(() => voiceTickRef.current(), 200);
 		return () => {
 			cancelled = true;
-			clearInterval(timer);
-			stopVoiceEngineRef.current();
+			if (!pttRef.current) {
+				stopVoiceEngineRef.current();
+			}
 		};
 	}, [voiceMode, mode]);
 
+	useEffect(() => {
+		if ((!voiceMode && !pttHeld) || mode === "home") {
+			return;
+		}
+		const timer = setInterval(() => voiceTickRef.current(), 200);
+		return () => clearInterval(timer);
+	}, [voiceMode, pttHeld, mode]);
+
 	// biome-ignore lint/correctness/useExhaustiveDependencies: drains the voice queue through refs and send()
 	useEffect(() => {
-		if (!voiceMode || view.busy || uploading) {
+		if (view.busy || uploading) {
 			return;
 		}
 		if (voiceQueue.current.length === 0) {
@@ -1310,18 +1454,36 @@ export default function Code() {
 			return;
 		}
 		const timer = setTimeout(() => {
-			if (!voiceModeRef.current) {
-				return;
-			}
 			void send(next);
 		}, 200);
 		return () => clearTimeout(timer);
-	}, [voiceMode, view.busy, uploading, view.sessionID]);
+	}, [view.busy, uploading, view.sessionID]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: streams <speech> blocks through refs and enqueueSpeech()
+	useEffect(() => {
+		if (!voiceMode) {
+			return;
+		}
+		for (const turn of view.turns) {
+			if (turn.role !== "assistant") {
+				continue;
+			}
+			const blocks = codeSpeechBlocks(turn.text);
+			const spoken = speechSpoken.current.get(turn.id) ?? 0;
+			if (blocks.length <= spoken) {
+				continue;
+			}
+			speechSpoken.current.set(turn.id, blocks.length);
+			for (let index = spoken; index < blocks.length; index += 1) {
+				enqueueSpeech(blocks[index] ?? "");
+			}
+		}
+	}, [voiceMode, view.turns]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
 	useEffect(() => {
 		if (!voiceMode) {
-			stopVoiceSpeech();
+			clearSpeechQueue();
 			return;
 		}
 		if (voiceSpeaking.current || voiceHandling.current) {
@@ -1348,11 +1510,16 @@ export default function Code() {
 			return;
 		}
 		voiceSpoken.current.add(turn.id);
-		const text = codeSpokenText(turn.text);
-		if (!text) {
+		const blocks = codeSpeechBlocks(turn.text);
+		if (blocks.length > 0) {
+			const spoken = speechSpoken.current.get(turn.id) ?? 0;
+			for (let index = spoken; index < blocks.length; index += 1) {
+				enqueueSpeech(blocks[index] ?? "");
+			}
+			speechSpoken.current.set(turn.id, blocks.length);
 			return;
 		}
-		void speakReply(text);
+		enqueueSpeech(turn.text);
 	}, [
 		voiceMode,
 		view.busy,
@@ -1400,6 +1567,10 @@ export default function Code() {
 		let text = "";
 		try {
 			text = codeAttachPrompt(typed, staged);
+			text = codeAppendSpeechDirective(
+				text,
+				Boolean(override) || voiceModeRef.current,
+			);
 		} catch (caught) {
 			setPrompt(typed);
 			setFiles(staged);
@@ -1682,13 +1853,14 @@ export default function Code() {
 			mentionLive && mention
 				? filterCodeMentions(boardPaths, mention.query)
 				: [];
-		const voicePhase = voiceListening
-			? "listening"
-			: voiceSpeakingNow
-				? "speaking"
-				: view.busy || uploading
-					? "waiting"
-					: "idle";
+		const voicePhase =
+			pttHeld || voiceListening
+				? "listening"
+				: voiceSpeakingNow
+					? "speaking"
+					: view.busy || uploading
+						? "waiting"
+						: "idle";
 		const voiceLabel = voiceSpeakingNow
 			? t("code.voiceSpeaking")
 			: voiceListening || voicePhase === "idle"
@@ -1925,6 +2097,59 @@ export default function Code() {
 							}}
 						>
 							{recording ? "●" : "M"}
+						</Text>
+					</Pressable>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={
+							voiceMode ? t("code.voiceStop") : t("code.voiceMode")
+						}
+						accessibilityState={{ selected: voiceMode }}
+						disabled={toolsDisabled}
+						onPress={() => setVoiceMode((current) => !current)}
+						style={{
+							width: 28,
+							height: 28,
+							alignItems: "center",
+							justifyContent: "center",
+							borderRadius: 8,
+							backgroundColor: voiceMode ? colors.text : "transparent",
+							opacity: toolsDisabled ? 0.35 : 1,
+						}}
+					>
+						<Text
+							style={{
+								color: voiceMode ? colors.surface : colors.text,
+								fontSize: 11,
+							}}
+						>
+							∿
+						</Text>
+					</Pressable>
+					<Pressable
+						accessibilityRole="button"
+						accessibilityLabel={t("code.ptt")}
+						accessibilityState={{ selected: pttHeld }}
+						disabled={toolsDisabled}
+						onPressIn={() => beginPttRef.current()}
+						onPressOut={() => endPttRef.current()}
+						style={{
+							width: 28,
+							height: 28,
+							alignItems: "center",
+							justifyContent: "center",
+							borderRadius: 8,
+							backgroundColor: pttHeld ? colors.text : "transparent",
+							opacity: toolsDisabled ? 0.35 : 1,
+						}}
+					>
+						<Text
+							style={{
+								color: pttHeld ? colors.surface : colors.text,
+								fontSize: 13,
+							}}
+						>
+							●
 						</Text>
 					</Pressable>
 					<Pressable

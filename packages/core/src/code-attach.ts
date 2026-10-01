@@ -18,13 +18,14 @@ export const CODE_TTS_MODEL = "@cf/myshell-ai/melotts";
 export const CODE_TTS_USD_PER_MINUTE = 0.000205;
 export const CODE_TTS_CHARS_PER_MINUTE = 900;
 export const CODE_TTS_MAX_CHARS = 4000;
-export const CODE_VOICE_RMS = 0.015;
-export const CODE_VOICE_BARGE_RMS = 0.045;
+export const CODE_VOICE_RMS = 0.025;
+export const CODE_VOICE_BARGE_RMS = 0.06;
 export const CODE_VOICE_SILENCE_MS = 1200;
 export const CODE_VOICE_MIN_MS = 400;
 export const CODE_VOICE_MAX_MS = CODE_STT_MAX_MS;
-export const CODE_VOICE_METER_DB = -35;
-export const CODE_VOICE_BARGE_DB = -22;
+export const CODE_VOICE_ARM_MS = 140;
+export const CODE_VOICE_METER_DB = -32;
+export const CODE_VOICE_BARGE_DB = -20;
 export const CODE_ATTACH_ACCEPT =
 	".c,.h,.hh,.hpp,.cc,.cpp,.cxx,.ino,.txt,.text,.md,.markdown,.ts,.tsx,.mts,.cts,.js,.jsx,.mjs,.cjs,.json,.css,.scss,.html,.htm,.yml,.yaml,.toml,.xml,.svg,.py,.sh,.bash,.rs,.go,.csv,.png,.jpg,.jpeg,.gif,.webp,.pdf";
 
@@ -388,6 +389,39 @@ export function codeSpokenText(text: string): string {
 		.replace(/\s+/g, " ")
 		.trim();
 	return stripped.slice(0, CODE_TTS_MAX_CHARS);
+}
+
+export const CODE_SPEECH_DIRECTIVE = [
+	"Speech mode is on: the user listens to your reply by voice.",
+	"Read the speech-mode skill first and follow it.",
+	"Narrate what you are doing in short plain sentences as you work.",
+	"Wrap every part meant to be spoken aloud in <speech>...</speech> tags -",
+	"one short spoken idea per tag, no code or file paths inside.",
+	"Keep technical detail outside the tags; the client reads only the tagged parts aloud.",
+].join(" ");
+
+export function codeAppendSpeechDirective(
+	text: string,
+	speech: boolean,
+): string {
+	if (!speech || text.includes("<speech>") || text.includes("speech-mode")) {
+		return text;
+	}
+	return `${text}\n\n${CODE_SPEECH_DIRECTIVE}`;
+}
+
+export function codeSpeechBlocks(text: string): string[] {
+	const out: string[] = [];
+	const pattern = /<speech>([\s\S]*?)<\/speech>/g;
+	let match = pattern.exec(text);
+	while (match) {
+		const content = (match[1] ?? "").trim();
+		if (content) {
+			out.push(content);
+		}
+		match = pattern.exec(text);
+	}
+	return out;
 }
 
 export function codeSttMicros(

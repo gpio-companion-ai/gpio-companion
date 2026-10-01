@@ -12,12 +12,14 @@ import {
 	CODE_ATTACH_ACCEPT,
 	CODE_DEFAULT_MODEL,
 	CODE_STT_MAX_MS,
+	CODE_VOICE_ARM_MS,
 	CODE_VOICE_BARGE_RMS,
 	CODE_VOICE_MAX_MS,
 	CODE_VOICE_MIN_MS,
 	CODE_VOICE_RMS,
 	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
+	codeAppendSpeechDirective,
 	codeAttachPrompt,
 	codeComposerErrorKey,
 	codeMentionAt,
@@ -27,6 +29,7 @@ import {
 	codeRepoOwner,
 	codeScrollKey,
 	codeSessionTitle,
+	codeSpeechBlocks,
 	codeSpokenText,
 	emptyOpencodeView,
 	encodeBase64,
@@ -194,6 +197,14 @@ function WaveIcon() {
 	return (
 		<svg viewBox="0 0 24 24" aria-hidden="true">
 			<path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
+		</svg>
+	);
+}
+
+function PttIcon() {
+	return (
+		<svg viewBox="0 0 24 24" aria-hidden="true">
+			<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none" />
 		</svg>
 	);
 }
@@ -534,6 +545,7 @@ export default function OpenCodeSession({
 	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
 	const [voiceMode, setVoiceMode] = useState(false);
+	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
 	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
@@ -567,13 +579,24 @@ export default function OpenCodeSession({
 		recorder: MediaRecorder;
 		started: number;
 		voiceAt: number;
+		source: "auto" | "ptt";
 		cancel(): void;
 	} | null>(null);
 	const voiceSpeaking = useRef<HTMLAudioElement | null>(null);
+	const voiceSpeechResolve = useRef<(() => void) | null>(null);
+	const speechSpoken = useRef(new Map<string, number>());
+	const speechChain = useRef<Promise<void>>(Promise.resolve());
+	const speechGen = useRef(0);
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
 	const voiceBarge = useRef(0);
+	const voiceArm = useRef(0);
+	const voiceShown = useRef(-1);
 	const voiceModeRef = useRef(false);
+	const pttRef = useRef(false);
+	const voiceTickRef = useRef<() => void>(() => {});
+	const beginPttRef = useRef<() => void>(() => {});
+	const endPttRef = useRef<() => void>(() => {});
 	const finishVoiceRef = useRef<(blob: Blob) => void>(() => {});
 	const menuRef = useRef<HTMLDivElement>(null);
 	const prompts = useRef<OpencodePromptEpoch>({
@@ -1188,7 +1211,7 @@ export default function OpenCodeSession({
 		}
 	}
 
-	function startVoiceUtterance() {
+	function startVoiceUtterance(source: "auto" | "ptt") {
 		const engine = voiceEngine.current;
 		if (!engine || voiceUtter.current) {
 			return;
@@ -1205,16 +1228,24 @@ export default function OpenCodeSession({
 			rec.onstop = () => {
 				voiceUtter.current = null;
 				setVoiceListening(false);
-				if (cancelled || !voiceModeRef.current) {
+				voiceArm.current = 0;
+				if (cancelled) {
+					return;
+				}
+				if (source === "auto" && !voiceModeRef.current) {
 					return;
 				}
 				const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
 				void finishVoiceRef.current(blob);
+				if (!voiceModeRef.current && !pttRef.current) {
+					stopVoiceEngine();
+				}
 			};
 			voiceUtter.current = {
 				recorder: rec,
 				started: Date.now(),
 				voiceAt: Date.now(),
+				source,
 				cancel() {
 					cancelled = true;
 					try {
@@ -1250,10 +1281,21 @@ export default function OpenCodeSession({
 		voiceSpeaking.current = null;
 		if (player) {
 			player.onended = null;
-			player.onerror = null;
 			player.pause();
 		}
 		setVoiceSpeakingNow(false);
+		const resolve = voiceSpeechResolve.current;
+		voiceSpeechResolve.current = null;
+		resolve?.();
+	}
+
+	function clearSpeechQueue() {
+		speechGen.current += 1;
+		speechChain.current = Promise.resolve();
+		const resolve = voiceSpeechResolve.current;
+		voiceSpeechResolve.current = null;
+		resolve?.();
+		stopVoiceSpeech();
 	}
 
 	function stopVoiceEngine() {
@@ -1268,15 +1310,70 @@ export default function OpenCodeSession({
 		}
 		voiceUtter.current?.cancel();
 		voiceUtter.current = null;
+		voiceArm.current = 0;
 		stopVoiceSpeech();
 		setVoiceListening(false);
 		setVoiceLevel(0);
 	}
 
-	async function finishVoice(blob: Blob) {
-		if (voiceSpeaking.current) {
-			stopVoiceSpeech();
+	function beginPtt() {
+		if (voiceUtter.current || pttRef.current) {
+			return;
 		}
+		pttRef.current = true;
+		setPttHeld(true);
+		voiceArm.current = 0;
+		if (voiceEngine.current) {
+			return;
+		}
+		void (async () => {
+			try {
+				const stream = await navigator.mediaDevices.getUserMedia({
+					audio: true,
+				});
+				const context = new AudioContext();
+				await context.resume().catch(() => {});
+				const analyser = context.createAnalyser();
+				analyser.fftSize = 512;
+				context.createMediaStreamSource(stream).connect(analyser);
+				const data = new Float32Array(analyser.fftSize);
+				const engine = { stream, context, analyser, data, raf: 0 };
+				voiceEngine.current = engine;
+				const tick = () => {
+					if (voiceEngine.current !== engine) {
+						return;
+					}
+					voiceTickRef.current();
+					engine.raf = requestAnimationFrame(tick);
+				};
+				engine.raf = requestAnimationFrame(tick);
+			} catch {
+				pttRef.current = false;
+				setPttHeld(false);
+				setError(t("code.micDenied"));
+			}
+		})();
+	}
+
+	function endPtt() {
+		pttRef.current = false;
+		setPttHeld(false);
+		voiceArm.current = 0;
+		const utter = voiceUtter.current;
+		if (utter?.source === "ptt") {
+			stopVoiceUtterance();
+			return;
+		}
+		if (!voiceModeRef.current && !voiceUtter.current) {
+			stopVoiceEngine();
+		}
+	}
+
+	beginPttRef.current = beginPtt;
+	endPttRef.current = endPtt;
+
+	async function finishVoice(blob: Blob) {
+		clearSpeechQueue();
 		try {
 			const result = await transcribe({
 				audio: encodeBase64(new Uint8Array(await blob.arrayBuffer())),
@@ -1303,43 +1400,133 @@ export default function OpenCodeSession({
 
 	finishVoiceRef.current = finishVoice;
 
-	async function speakReply(text: string) {
-		try {
-			const result = await speak({ text, locale });
-			if (!result.ok) {
-				setError(shownError(result.error));
-				return;
-			}
-			if (!voiceModeRef.current) {
-				return;
-			}
-			const player = new Audio(`data:audio/mpeg;base64,${result.data.audio}`);
-			const done = () => {
-				if (voiceSpeaking.current === player) {
-					voiceSpeaking.current = null;
-					setVoiceSpeakingNow(false);
+	function speakReply(text: string, gen: number): Promise<void> {
+		if (gen !== speechGen.current) {
+			return Promise.resolve();
+		}
+		return new Promise<void>((resolve) => {
+			void (async () => {
+				try {
+					const result = await speak({ text, locale });
+					if (!result.ok) {
+						setError(shownError(result.error));
+						resolve();
+						return;
+					}
+					if (gen !== speechGen.current || !voiceModeRef.current) {
+						resolve();
+						return;
+					}
+					const player = new Audio(
+						`data:audio/mpeg;base64,${result.data.audio}`,
+					);
+					const done = () => {
+						const settle = voiceSpeechResolve.current;
+						voiceSpeechResolve.current = null;
+						if (voiceSpeaking.current === player) {
+							voiceSpeaking.current = null;
+							setVoiceSpeakingNow(false);
+						}
+						settle?.();
+						resolve();
+					};
+					player.onended = done;
+					player.addEventListener("error", done);
+					voiceSpeaking.current = player;
+					voiceSpeechResolve.current = done;
+					setVoiceSpeakingNow(true);
+					await player.play();
+				} catch (caught) {
+					setError(shownError(caught instanceof Error ? caught.message : ""));
+					resolve();
 				}
-			};
-			player.onended = done;
-			player.addEventListener("error", done);
-			voiceSpeaking.current = player;
-			setVoiceSpeakingNow(true);
-			await player.play();
-		} catch (caught) {
-			setError(shownError(caught instanceof Error ? caught.message : ""));
+			})();
+		});
+	}
+
+	function enqueueSpeech(text: string) {
+		const clean = codeSpokenText(text).trim();
+		if (!clean) {
+			return;
+		}
+		const gen = speechGen.current;
+		speechChain.current = speechChain.current
+			.then(() => speakReply(clean, gen))
+			.catch(() => {});
+	}
+
+	function voiceTick() {
+		const live = voiceEngine.current;
+		if (!live) {
+			return;
+		}
+		live.analyser.getFloatTimeDomainData(live.data);
+		let sum = 0;
+		for (let i = 0; i < live.data.length; i += 1) {
+			const sample = live.data[i] ?? 0;
+			sum += sample * sample;
+		}
+		const rms = Math.sqrt(sum / live.data.length);
+		const level = Math.max(0, Math.min(1, rms * 8));
+		const bucket = Math.round(level * 12);
+		if (bucket !== voiceShown.current) {
+			voiceShown.current = bucket;
+			setVoiceLevel(level);
+		}
+		const now = Date.now();
+		const utter = voiceUtter.current;
+		if (utter) {
+			if (rms >= CODE_VOICE_RMS) {
+				utter.voiceAt = now;
+				voiceArm.current = 0;
+			}
+			const elapsed = now - utter.started;
+			const quiet = now - utter.voiceAt;
+			if (
+				elapsed > CODE_VOICE_MAX_MS ||
+				(elapsed > CODE_VOICE_MIN_MS && quiet > CODE_VOICE_SILENCE_MS)
+			) {
+				stopVoiceUtterance();
+			}
+		} else if (pttRef.current || voiceModeRef.current) {
+			if (rms >= CODE_VOICE_RMS) {
+				if (!voiceArm.current) {
+					voiceArm.current = now;
+				} else if (now - voiceArm.current >= CODE_VOICE_ARM_MS) {
+					startVoiceUtterance(pttRef.current ? "ptt" : "auto");
+				}
+			} else {
+				voiceArm.current = 0;
+			}
+		}
+		if (voiceSpeaking.current) {
+			if (rms >= CODE_VOICE_BARGE_RMS) {
+				voiceBarge.current += 1;
+				if (voiceBarge.current >= 4) {
+					voiceBarge.current = 0;
+					clearSpeechQueue();
+				}
+			} else {
+				voiceBarge.current = 0;
+			}
 		}
 	}
+
+	voiceTickRef.current = voiceTick;
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: voice engine is ref-driven and reads the latest render through refs
 	useEffect(() => {
 		voiceModeRef.current = voiceMode;
 		if (!voiceMode || mode === "home") {
-			stopVoiceEngine();
+			if (!pttRef.current) {
+				stopVoiceEngine();
+			}
 			return;
 		}
 		for (const turn of view.turns) {
 			if (turn.role === "assistant") {
 				voiceSpoken.current.add(turn.id);
+				speechSpoken.current.set(turn.id, codeSpeechBlocks(turn.text).length);
 			}
 		}
 		let cancelled = false;
@@ -1362,53 +1549,11 @@ export default function OpenCodeSession({
 				const data = new Float32Array(analyser.fftSize);
 				const engine = { stream, context, analyser, data, raf: 0 };
 				voiceEngine.current = engine;
-				let shown = -1;
 				const tick = () => {
-					const live = voiceEngine.current;
-					if (!live || cancelled) {
+					if (voiceEngine.current !== engine || cancelled) {
 						return;
 					}
-					live.analyser.getFloatTimeDomainData(live.data);
-					let sum = 0;
-					for (let i = 0; i < live.data.length; i += 1) {
-						const sample = live.data[i] ?? 0;
-						sum += sample * sample;
-					}
-					const rms = Math.sqrt(sum / live.data.length);
-					const level = Math.max(0, Math.min(1, rms * 8));
-					const bucket = Math.round(level * 12);
-					if (bucket !== shown) {
-						shown = bucket;
-						setVoiceLevel(level);
-					}
-					const now = Date.now();
-					const utter = voiceUtter.current;
-					if (utter) {
-						if (rms >= CODE_VOICE_RMS) {
-							utter.voiceAt = now;
-						}
-						const elapsed = now - utter.started;
-						const quiet = now - utter.voiceAt;
-						if (
-							elapsed > CODE_VOICE_MAX_MS ||
-							(elapsed > CODE_VOICE_MIN_MS && quiet > CODE_VOICE_SILENCE_MS)
-						) {
-							stopVoiceUtterance();
-						}
-					} else if (rms >= CODE_VOICE_RMS) {
-						startVoiceUtterance();
-					}
-					if (voiceSpeaking.current) {
-						if (rms >= CODE_VOICE_BARGE_RMS) {
-							voiceBarge.current += 1;
-							if (voiceBarge.current >= 4) {
-								voiceBarge.current = 0;
-								stopVoiceSpeech();
-							}
-						} else {
-							voiceBarge.current = 0;
-						}
-					}
+					voiceTickRef.current();
 					engine.raf = requestAnimationFrame(tick);
 				};
 				engine.raf = requestAnimationFrame(tick);
@@ -1426,7 +1571,7 @@ export default function OpenCodeSession({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: drains the voice queue through refs and send()
 	useEffect(() => {
-		if (!voiceMode || view.busy || uploading) {
+		if (view.busy || uploading) {
 			return;
 		}
 		if (voiceQueue.current.length === 0) {
@@ -1438,20 +1583,38 @@ export default function OpenCodeSession({
 			return;
 		}
 		const timer = window.setTimeout(() => {
-			if (!voiceModeRef.current) {
-				return;
-			}
 			void send(next);
 		}, 200);
 		return () => {
 			window.clearTimeout(timer);
 		};
-	}, [voiceMode, view.busy, uploading, view.sessionID]);
+	}, [view.busy, uploading, view.sessionID]);
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: streams <speech> blocks through refs and enqueueSpeech()
+	useEffect(() => {
+		if (!voiceMode) {
+			return;
+		}
+		for (const turn of view.turns) {
+			if (turn.role !== "assistant") {
+				continue;
+			}
+			const blocks = codeSpeechBlocks(turn.text);
+			const spoken = speechSpoken.current.get(turn.id) ?? 0;
+			if (blocks.length <= spoken) {
+				continue;
+			}
+			speechSpoken.current.set(turn.id, blocks.length);
+			for (let index = spoken; index < blocks.length; index += 1) {
+				enqueueSpeech(blocks[index] ?? "");
+			}
+		}
+	}, [voiceMode, view.turns]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and speakReply()
 	useEffect(() => {
 		if (!voiceMode) {
-			stopVoiceSpeech();
+			clearSpeechQueue();
 			return;
 		}
 		if (voiceSpeaking.current || voiceUtter.current) {
@@ -1478,11 +1641,16 @@ export default function OpenCodeSession({
 			return;
 		}
 		voiceSpoken.current.add(turn.id);
-		const text = codeSpokenText(turn.text);
-		if (!text) {
+		const blocks = codeSpeechBlocks(turn.text);
+		if (blocks.length > 0) {
+			const spoken = speechSpoken.current.get(turn.id) ?? 0;
+			for (let index = spoken; index < blocks.length; index += 1) {
+				enqueueSpeech(blocks[index] ?? "");
+			}
+			speechSpoken.current.set(turn.id, blocks.length);
 			return;
 		}
-		void speakReply(text);
+		enqueueSpeech(turn.text);
 	}, [
 		voiceMode,
 		view.busy,
@@ -1492,6 +1660,53 @@ export default function OpenCodeSession({
 		view.permissions,
 		view.sessionID,
 	]);
+
+	useEffect(() => {
+		function typing(event: Event) {
+			const target = event.target as HTMLElement | null;
+			return Boolean(
+				target &&
+					(target.tagName === "INPUT" ||
+						target.tagName === "TEXTAREA" ||
+						target.isContentEditable),
+			);
+		}
+		function onDown(event: KeyboardEvent) {
+			if (event.code !== "Space" || mode === "home" || typing(event)) {
+				return;
+			}
+			event.preventDefault();
+			if (event.repeat) {
+				return;
+			}
+			beginPttRef.current();
+		}
+		function onUp(event: KeyboardEvent) {
+			if (event.code !== "Space" || !pttRef.current) {
+				return;
+			}
+			endPttRef.current();
+		}
+		document.addEventListener("keydown", onDown);
+		document.addEventListener("keyup", onUp);
+		return () => {
+			document.removeEventListener("keydown", onDown);
+			document.removeEventListener("keyup", onUp);
+		};
+	}, [mode]);
+
+	useEffect(() => {
+		if (!pttHeld) {
+			return;
+		}
+		const release = () => endPttRef.current();
+		window.addEventListener("pointerup", release);
+		window.addEventListener("pointercancel", release);
+		return () => {
+			window.removeEventListener("pointerup", release);
+			window.removeEventListener("pointercancel", release);
+		};
+	}, [pttHeld]);
 
 	async function send(override?: string) {
 		const typed = (override ?? prompt).trim();
@@ -1520,6 +1735,10 @@ export default function OpenCodeSession({
 		let text = "";
 		try {
 			text = codeAttachPrompt(typed, staged);
+			text = codeAppendSpeechDirective(
+				text,
+				Boolean(override) || voiceModeRef.current,
+			);
 		} catch (caught) {
 			setPrompt(typed);
 			setFiles(staged);
@@ -1781,13 +2000,14 @@ export default function OpenCodeSession({
 				? filterCodeMentions(boardPaths, mention.query)
 				: [];
 		const active = matches.length === 0 ? 0 : mentionIndex % matches.length;
-		const voicePhase = voiceListening
-			? "listening"
-			: voiceSpeakingNow
-				? "speaking"
-				: view.busy || uploading
-					? "waiting"
-					: "idle";
+		const voicePhase =
+			pttHeld || voiceListening
+				? "listening"
+				: voiceSpeakingNow
+					? "speaking"
+					: view.busy || uploading
+						? "waiting"
+						: "idle";
 		const voiceLabel = voiceSpeakingNow
 			? t("code.voiceSpeaking")
 			: voiceListening || voicePhase === "idle"
@@ -1963,6 +2183,19 @@ export default function OpenCodeSession({
 						onClick={() => setVoiceMode((current) => !current)}
 					>
 						<WaveIcon />
+					</button>
+					<button
+						type="button"
+						className={`oc-tool${pttHeld ? " is-on" : ""}`}
+						aria-label={t("code.ptt")}
+						title={t("code.pttHint")}
+						disabled={toolsDisabled}
+						onPointerDown={(event) => {
+							event.preventDefault();
+							beginPttRef.current();
+						}}
+					>
+						<PttIcon />
 					</button>
 					<textarea
 						ref={field}

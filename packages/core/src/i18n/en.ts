@@ -1118,6 +1118,8 @@ export const en = {
 		dictating: "Stop dictation",
 		voiceMode: "Voice mode",
 		voiceStop: "Stop voice mode",
+		ptt: "Push to talk",
+		pttHint: "Hold to talk — Space",
 		voiceListening: "Listening…",
 		voiceThinking: "The agent is answering…",
 		voiceSpeaking: "Reading the reply…",

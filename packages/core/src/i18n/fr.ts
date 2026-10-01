@@ -1146,6 +1146,8 @@ export const fr = {
 		dictating: "Arrêter la dictée",
 		voiceMode: "Mode voix",
 		voiceStop: "Arrêter le mode voix",
+		ptt: "Pousser pour parler",
+		pttHint: "Maintenez pour parler — Espace",
 		voiceListening: "À l’écoute…",
 		voiceThinking: "L’agent répond…",
 		voiceSpeaking: "Lecture de la réponse…",
