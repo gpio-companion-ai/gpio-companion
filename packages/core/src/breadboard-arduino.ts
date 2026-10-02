@@ -53,6 +53,15 @@ export function arduinoProxyBoardLayout(
 	const resolved = arduinoProxyBoard(board ?? "");
 	const pins = resolved ? arduinoProxyPins(resolved) : [];
 	const layout = arduinoProxyHeaderLayout(pins, board);
+	// The Live GPIO layout contains signal pins only on Mega. Wiring maps
+	// also need the power-header sockets so GND/5V jumpers have real endpoints.
+	if (resolved?.id === "mega") {
+		layout.left.push(
+			...(["IOREF", "RESET", "3V3", "5V", "GND", "GND", "VIN"] as const).map(
+				(name) => ({ kind: "label" as const, name }),
+			),
+		);
+	}
 	const byPhysical = new Map(pins.map((pin) => [pin.physical, pin]));
 	const used = new Map<string, number>();
 	const pads: ArduinoProxyPad[] = [];

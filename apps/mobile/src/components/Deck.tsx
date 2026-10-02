@@ -64,6 +64,7 @@ import { useConsoleTunnel } from "../lib/use-console-tunnel.ts";
 import { useDeviceHub as useLiveHub } from "../lib/use-device-hub.ts";
 import { useGpioTunnel } from "../lib/use-gpio-tunnel.ts";
 import { useUiSocket } from "../lib/use-ui-socket.ts";
+import BoardPresenceAlerts from "./BoardPresenceAlerts.tsx";
 import { ErrorText, PrimaryButton, TextButton } from "./ui.tsx";
 
 const logo = require("../../assets/logo.png");
@@ -154,7 +155,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 	const insets = useSafeAreaInsets();
 	const { width: windowWidth } = useWindowDimensions();
 	const t = useDeckT();
-	const { boards } = useUserBoards();
+	const { boards, refetch: refreshPresenceBoards } = useUserBoards();
 	const { uuid: selectedBoardUuid, setUuid: selectBoard } = useBoardSelection();
 	const {
 		workItems,
@@ -624,6 +625,16 @@ function DeckFrame({ children }: { children: ReactNode }) {
 				</Pressable>
 			</Modal>
 
+			<BoardPresenceAlerts
+				token={auth.token}
+				boards={boards.map((board) => ({
+					uuid: board.device.uuid,
+					name: publicBoardName(board, !isEasy, t("deck.unnamed")),
+				}))}
+				onChangeStatus={() => {
+					void refreshPresenceBoards({ force: true }).catch(() => undefined);
+				}}
+			/>
 			{uiToast ? (
 				<View
 					pointerEvents="none"

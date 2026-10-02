@@ -53,7 +53,7 @@ export default function AuthCallbackPage() {
 				<Typography color="error" className="mb-4">
 					{error}
 				</Typography>
-				<Button href="/login" variant="contained">
+				<Button href="/project" variant="contained">
 					{t("auth.backToLogin")}
 				</Button>
 			</Paper>

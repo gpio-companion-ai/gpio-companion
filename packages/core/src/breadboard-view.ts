@@ -25,6 +25,10 @@ export {
 	isEmbedPath,
 	parseBreadboardEmbedMessage,
 } from "./breadboard-embed.ts";
+export {
+	breadboardEndpointLabel,
+	resolveBreadboardEndpoint,
+} from "./breadboard-endpoint.ts";
 export { isHardwareId } from "./config.ts";
 export {
 	type GpioPinState,

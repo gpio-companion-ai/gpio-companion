@@ -4,6 +4,7 @@ import {
 } from "frame-master-plugin-apply-react/router";
 import { SSRPropsProvider } from "frame-master-plugin-cloudflare-pages-dynamic-ssr/client/context";
 import type { PropsData } from "frame-master-plugin-cloudflare-pages-dynamic-ssr/provider/utils";
+import { isEmbedPath } from "gpio-companion";
 import {
 	type JSX,
 	StrictMode,
@@ -13,12 +14,13 @@ import {
 	useState,
 } from "react";
 import { createClient, type PublicSession } from "./auth.ts";
+import LoginDialog from "./components/LoginDialog.tsx";
 import { AuthCtx, AuthSessionCtx } from "./hooks/useAuth.ts";
 import { BoardSelectionProvider } from "./hooks/useBoardSelection.tsx";
 import { ColorModeProvider } from "./hooks/useColorMode.tsx";
 import { DashboardModeProvider } from "./hooks/useDashboardMode.tsx";
 import { LocaleProvider } from "./hooks/useLocale.tsx";
-import { PathnameProvider } from "./hooks/usePathname.tsx";
+import { PathnameProvider, usePathname } from "./hooks/usePathname.tsx";
 import {
 	identityToPublicSession,
 	resolveUserIdentity,
@@ -26,7 +28,8 @@ import {
 import {
 	attachAccessCookieSync,
 	installAuthAwareFetch,
-	redirectToLogin,
+	LOGIN_REQUIRED_EVENT,
+	requireLogin,
 	syncAccessCookie,
 } from "./lib/auth/refresh.ts";
 import { stashGithubAppCallbackFromLocation } from "./lib/github-app-callback.ts";
@@ -97,55 +100,79 @@ export default function ClientWrapper({ children }: { children: JSX.Element }) {
 }
 
 function AuthProvider({ children }: { children: JSX.Element }) {
+	const [session, setSession] = useState<PublicSession | null>(null);
+	const [ready, setReady] = useState(false);
+	const pathname = usePathname();
 	const auth = useRef(
 		createClient({
 			onLoginRequired(client) {
-				client.logout();
-				redirectToLogin();
+				requireLogin(client);
+				setSession(null);
 			},
 		}),
 	);
-	const [session, setSession] = useState<PublicSession | null>(null);
 
 	useEffect(() => {
 		const client = auth.current;
+		const onLoginRequired = () => setSession(null);
+		window.addEventListener(LOGIN_REQUIRED_EVENT, onLoginRequired);
 		attachAccessCookieSync(client);
 		const uninstallFetch = installAuthAwareFetch(client);
 		let cancelled = false;
 		stashGithubAppCallbackFromLocation();
 		client
 			.init()
-			.then(async (ready) => {
+			.then(async (readyClient) => {
 				if (cancelled) {
 					return;
 				}
-				syncAccessCookie(ready);
-				const identity = await resolveUserIdentity(ready);
+				syncAccessCookie(readyClient);
+				const identity = await resolveUserIdentity(readyClient);
 				if (cancelled) {
 					return;
 				}
-				if (!identity.id && !identity.email) {
+				if (!readyClient.getToken() || (!identity.id && !identity.email)) {
 					setSession(null);
-					return;
+				} else {
+					setSession(identityToPublicSession(identity));
 				}
-				setSession(identityToPublicSession(identity));
+				setReady(true);
 			})
 			.catch(() => {
 				if (!cancelled) {
 					setSession(null);
+					setReady(true);
 				}
 			});
 		return () => {
 			cancelled = true;
 			uninstallFetch();
+			window.removeEventListener(LOGIN_REQUIRED_EVENT, onLoginRequired);
 		};
 	}, []);
+
+	// Blocking sign-in modal instead of a /login page: shown once auth init
+	// finished with no session (signed out, or refresh token unrecoverable).
+	// Embed routes stay clean for iframe/WebView hosts.
+	const showLogin =
+		ready && !session && !isEmbedPath(pathname) && !isAuthFlowPath(pathname);
 
 	return (
 		<AuthCtx.Provider value={auth.current}>
 			<AuthSessionCtx.Provider value={session}>
-				{children}
+				<div inert={showLogin} style={{ display: "contents" }}>
+					{children}
+				</div>
+				<LoginDialog open={showLogin} />
 			</AuthSessionCtx.Provider>
 		</AuthCtx.Provider>
+	);
+}
+
+function isAuthFlowPath(pathname: string): boolean {
+	return (
+		pathname === "/callback" ||
+		pathname.startsWith("/callback/") ||
+		pathname.startsWith("/auth/")
 	);
 }

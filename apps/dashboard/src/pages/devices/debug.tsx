@@ -11,6 +11,7 @@ import { SelectSkeleton } from "../../components/skeletons.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
 import { useAuthSession } from "../../hooks/useAuth.ts";
 import { useT } from "../../hooks/useLocale.tsx";
+import { openLoginDialog } from "../../lib/auth/refresh.ts";
 import { isAdmin } from "../../lib/auth/role.ts";
 import type { DebugBoard } from "../../lib/debug-live.ts";
 
@@ -63,7 +64,7 @@ export default function DeviceDebugPage() {
 			<Stack spacing={1.5}>
 				{!loggedIn ? (
 					<Alert severity="info">
-						<Button href="/login" variant="text">
+						<Button onClick={openLoginDialog} variant="text">
 							{t("auth.signIn")}
 						</Button>{" "}
 						{t("auth.toDebug")}

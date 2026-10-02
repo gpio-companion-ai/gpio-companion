@@ -21,6 +21,7 @@ import { useBoardSelection } from "../hooks/useBoardSelection.tsx";
 import { useT } from "../hooks/useLocale.tsx";
 import { useOfflineBleKey } from "../hooks/useOfflineBleKey.ts";
 import { unwrapAction } from "../lib/action.ts";
+import { openLoginDialog } from "../lib/auth/refresh.ts";
 import { withOfflineSign } from "../lib/offline-ble.ts";
 import type { StoredPairing } from "../lib/pairing-store.ts";
 import {
@@ -68,7 +69,7 @@ export default function WifiBleForm() {
 	if (!session.data?.id && !session.data?.email) {
 		return (
 			<Typography color="secondary">
-				<Button href="/login" variant="text">
+				<Button onClick={openLoginDialog} variant="text">
 					{t("auth.signIn")}
 				</Button>{" "}
 				{t("auth.toWifi")}

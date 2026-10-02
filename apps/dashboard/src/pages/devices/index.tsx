@@ -25,6 +25,7 @@ import { useDashboardMode } from "../../hooks/useDashboardMode.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
 import useMobile from "../../hooks/useMobile.ts";
 import { useWorkbench } from "../../hooks/useWorkbench.tsx";
+import { openLoginDialog } from "../../lib/auth/refresh.ts";
 
 export default function DevicesPage() {
 	const session = useAuthSession();
@@ -112,7 +113,7 @@ export default function DevicesPage() {
 
 			{!loggedIn ? (
 				<Alert severity="info">
-					<Button href="/login" variant="text">
+					<Button onClick={openLoginDialog} variant="text">
 						{t("auth.signIn")}
 					</Button>{" "}
 					{t("auth.toManageBoards")}

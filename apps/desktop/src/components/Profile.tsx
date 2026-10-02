@@ -20,6 +20,7 @@ import { CACHE_KEYS, useCachedQuery } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useT } from "../locale";
 import AddressForm from "./AddressForm";
+import BoardAlertSettings from "./BoardAlertSettings";
 import DebugLog from "./DebugLog";
 import Keys from "./Keys";
 import LanguageCard from "./LanguageCard";
@@ -70,6 +71,7 @@ export default function Profile({
 			<div id="profile-voice">
 				<VoiceCard />
 			</div>
+			<BoardAlertSettings />
 			<Paper id="profile-account" sx={{ p: 1.5 }} elevation={1}>
 				<Stack spacing={0.5}>
 					<Typography variant="subtitle1">{t("profile.account")}</Typography>

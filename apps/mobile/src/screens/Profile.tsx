@@ -2,6 +2,7 @@ import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { findNodeHandle, Linking, type ScrollView, View } from "react-native";
 import AddressForm from "../components/AddressForm.tsx";
+import BoardAlertSettings from "../components/BoardAlertSettings.tsx";
 import LanguageCard from "../components/LanguageCard.tsx";
 import UsageChartsWebView from "../components/UsageChartsWebView.tsx";
 import {
@@ -98,6 +99,7 @@ export default function Profile() {
 			</ErrorText>
 			<LanguageCard />
 			{token ? <VoiceCard token={token} /> : null}
+			{token ? <BoardAlertSettings /> : null}
 			<View
 				collapsable={false}
 				ref={(node) => {

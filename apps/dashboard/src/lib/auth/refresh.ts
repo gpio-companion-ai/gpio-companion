@@ -6,6 +6,13 @@ export type AuthRefreshClient = {
 };
 
 const RETRY_HEADER = "x-gpio-auth-retry";
+export const LOGIN_REQUIRED_EVENT = "gpio-login-required";
+
+export function openLoginDialog(): void {
+	if (typeof window !== "undefined") {
+		window.dispatchEvent(new Event(LOGIN_REQUIRED_EVENT));
+	}
+}
 
 export function isLoginRequiredError(message: string): boolean {
 	const normalized = message.trim().toLowerCase();
@@ -43,32 +50,10 @@ export function clearAccessCookie(): void {
 	document.cookie = "access_token=; Max-Age=0; path=/";
 }
 
-let loginRedirectStarted = false;
-
-export function redirectToLogin(): void {
-	clearAccessCookie();
-	if (typeof window === "undefined") {
-		return;
-	}
-	const path = window.location.pathname;
-	if (
-		path === "/login" ||
-		path === "/callback" ||
-		path.startsWith("/callback/") ||
-		path.startsWith("/auth/")
-	) {
-		return;
-	}
-	if (loginRedirectStarted) {
-		return;
-	}
-	loginRedirectStarted = true;
-	window.location.assign("/login");
-}
-
-export function requireLogin(auth: AuthRefreshClient): void {
+export function requireLogin(auth: Pick<AuthRefreshClient, "logout">): void {
 	auth.logout();
-	redirectToLogin();
+	clearAccessCookie();
+	openLoginDialog();
 }
 
 const cookieSynced = new WeakSet<object>();

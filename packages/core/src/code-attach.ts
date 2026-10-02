@@ -418,15 +418,38 @@ export function codeTtsMicros(
 	return applyMarkup(raw === 0 ? 1 : raw, markup);
 }
 
+export {
+	type CodeSpeechPlayer,
+	CodeSpeechQueue,
+	type CodeSpeechStatus,
+} from "./code-speech.ts";
+
 export function codeSpokenText(text: string): string {
-	const stripped = text
+	return spokenText(text).slice(0, CODE_TTS_MAX_CHARS);
+}
+
+// Keep complete replies, but never exceed the TTS endpoint's per-request cap.
+export function codeSpeechChunks(text: string): string[] {
+	let remaining = spokenText(text);
+	const chunks: string[] = [];
+	while (remaining.length > CODE_TTS_MAX_CHARS) {
+		const space = remaining.lastIndexOf(" ", CODE_TTS_MAX_CHARS);
+		const end = space > 0 ? space : CODE_TTS_MAX_CHARS;
+		chunks.push(remaining.slice(0, end));
+		remaining = remaining.slice(end).trimStart();
+	}
+	if (remaining) chunks.push(remaining);
+	return chunks;
+}
+
+function spokenText(text: string): string {
+	return text
 		.replace(/```[\s\S]*?```/g, " ")
 		.replace(/`[^`\n]+`/g, " ")
 		.replace(/https?:\/\/\S+/g, " ")
 		.replace(/[#*_>|~-]+/g, " ")
 		.replace(/\s+/g, " ")
 		.trim();
-	return stripped.slice(0, CODE_TTS_MAX_CHARS);
 }
 
 export const CODE_SPEECH_DIRECTIVE = [

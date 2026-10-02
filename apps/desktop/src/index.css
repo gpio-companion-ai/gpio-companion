@@ -7,12 +7,14 @@
 	--surface-rgb: 22, 32, 34;
 	--text-rgb: 226, 235, 232;
 	--error-rgb: 242, 139, 130;
+	--audio-agent: #c7a2ff;
 }
 
 :root[data-theme="light"] {
 	--surface-rgb: 249, 251, 250;
 	--text-rgb: 23, 33, 31;
 	--error-rgb: 197, 34, 31;
+	--audio-agent: #7651b0;
 }
 
 :root[data-theme="dark"] {
@@ -2187,6 +2189,145 @@ button.oc-chip,
 	padding: 5px 10px;
 	color: rgb(var(--text-primary));
 	background: rgba(var(--text-primary), 0.06);
+}
+
+.oc-audio-toolbar {
+	display: flex;
+	width: calc(100% - 32px);
+	max-width: 780px;
+	align-items: center;
+	justify-content: space-between;
+	flex-wrap: wrap;
+	gap: 4px 12px;
+	margin: 0 auto 6px;
+}
+
+.oc-read-aloud,
+.oc-audio-controls button {
+	display: inline-flex;
+	min-height: 36px;
+	align-items: center;
+	gap: 8px;
+	border: 0;
+	border-radius: 8px;
+	padding: 4px 8px;
+	background: transparent;
+	color: rgba(var(--text-main), 0.7);
+	font-size: 12px;
+	cursor: pointer;
+}
+
+.oc-read-aloud[aria-checked="true"],
+.oc-audio-controls button {
+	color: var(--audio-agent);
+}
+
+.oc-read-aloud:hover,
+.oc-audio-controls button:hover {
+	background: rgba(var(--text-main), 0.06);
+}
+
+.oc-read-aloud:focus-visible,
+.oc-audio-controls button:focus-visible {
+	outline: 2px solid var(--audio-agent);
+	outline-offset: 2px;
+}
+
+.oc-read-aloud:disabled,
+.oc-audio-controls button:disabled {
+	opacity: 0.4;
+	cursor: default;
+}
+
+.oc-audio-controls {
+	display: flex;
+	gap: 4px;
+	margin-left: auto;
+}
+
+.oc-audio-switch {
+	display: inline-flex;
+	width: 28px;
+	height: 16px;
+	flex: none;
+	align-items: center;
+	border-radius: 10px;
+	padding: 2px;
+	background: rgba(var(--text-main), 0.2);
+}
+
+.oc-audio-switch::after {
+	content: "";
+	width: 12px;
+	height: 12px;
+	border-radius: 50%;
+	background: currentColor;
+	transition: transform 120ms ease;
+}
+
+.oc-read-aloud[aria-checked="true"] .oc-audio-switch {
+	background: var(--audio-agent);
+}
+
+.oc-read-aloud[aria-checked="true"] .oc-audio-switch::after {
+	background: rgb(var(--bg-surface));
+	transform: translateX(12px);
+}
+
+.oc-voice.oc-audio-strip {
+	border-color: rgba(var(--text-main), 0.15);
+	background: rgba(var(--text-main), 0.03);
+	color: rgb(var(--text-main));
+}
+
+.oc-user-wave {
+	color: rgb(var(--text-primary));
+}
+
+.oc-user-wave.is-processing i {
+	animation: oc-voice-pulse 1.2s ease-in-out infinite;
+}
+
+.oc-agent-label,
+.oc-agent-wave {
+	color: var(--audio-agent);
+	text-align: right;
+}
+
+.oc-agent-wave i {
+	transform: scaleY(0.2);
+}
+
+.oc-agent-wave.is-playing i,
+.oc-agent-wave.is-paused i {
+	animation: oc-voice-pulse 0.8s ease-in-out infinite;
+	opacity: 1;
+}
+
+.oc-agent-wave.is-paused i {
+	animation-play-state: paused;
+}
+
+@media (max-width: 760px) {
+	.oc-audio-toolbar {
+		width: calc(100% - 16px);
+	}
+	.oc-read-aloud,
+	.oc-audio-controls button {
+		min-height: 44px;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.oc-agent-wave.is-playing i,
+	.oc-agent-wave.is-paused i,
+	.oc-user-wave.is-processing i {
+		animation: none;
+		transform: scaleY(0.5);
+	}
+	.oc-audio-switch::after {
+		transition: none;
+	}
 }
 
 .oc-voice.is-speaking {

@@ -38,6 +38,7 @@ export type FlashSketchPreselect = { dir: string; project: string };
 type WorkbenchValue = {
 	boards: FleetBoard[];
 	refreshBoards: () => void;
+	setBoardPresence: (uuid: string, online: boolean) => void;
 	project: string;
 	setProject: (name: string) => void;
 	flashSketch: FlashSketchPreselect | null;
@@ -68,6 +69,7 @@ const EMPTY_SIDEBAR: SidebarEntry[] = [];
 const fallback: WorkbenchValue = {
 	boards: EMPTY_BOARDS,
 	refreshBoards: () => undefined,
+	setBoardPresence: () => undefined,
 	project: "",
 	setProject: () => undefined,
 	flashSketch: null,
@@ -133,6 +135,13 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 	const [arduinoLivePins, setArduinoPins] = useState<Record<number, 0 | 1>>({});
 	const [verifyResults, setVerifyResults] = useState<CircuitVerifyItem[]>([]);
 	const loadId = useRef(0);
+	const setBoardPresence = useCallback((uuid: string, online: boolean) => {
+		setBoards((items) =>
+			items.map((board) =>
+				board.uuid === uuid ? { ...board, online } : board,
+			),
+		);
+	}, []);
 
 	const refreshBoards = useCallback(() => {
 		const userId = session.data?.id;
@@ -207,6 +216,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 		() => ({
 			boards,
 			refreshBoards,
+			setBoardPresence,
 			project,
 			setProject,
 			flashSketch,
@@ -233,6 +243,7 @@ export function WorkbenchProvider({ children }: { children: ReactNode }) {
 		[
 			boards,
 			refreshBoards,
+			setBoardPresence,
 			project,
 			setProject,
 			flashSketch,

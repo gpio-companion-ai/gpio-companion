@@ -1,5 +1,4 @@
 import { GET as getCredits } from "@api/credits";
-import LoginPanel from "@components/LoginPanel";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
@@ -11,6 +10,7 @@ import Typography from "@shpaw415/mui-lite/Typography";
 import { translateError } from "gpio-companion/i18n";
 import { useEffect, useState } from "react";
 import AddressForm from "../../components/AddressForm.tsx";
+import BoardAlertSettings from "../../components/BoardAlertSettings.tsx";
 import LanguageCard from "../../components/LanguageCard.tsx";
 import VoiceCard from "../../components/VoiceCard.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
@@ -18,6 +18,7 @@ import { useAuth, useAuthSession } from "../../hooks/useAuth.ts";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
 import { useWorkbench } from "../../hooks/useWorkbench.tsx";
+import { requireLogin } from "../../lib/auth/refresh.ts";
 import { formatUsd } from "../../lib/credits.ts";
 import { clearOfflineKeys } from "../../lib/offline-keys.ts";
 import { supportAccepted } from "../../lib/support.ts";
@@ -60,19 +61,16 @@ export default function ProfilePage() {
 
 	function signOut() {
 		void clearOfflineKeys();
-		auth?.logout();
-		document.cookie = "access_token=; Max-Age=0; path=/";
-		window.location.assign("/project");
+		if (auth) requireLogin(auth);
 	}
 
 	return (
 		<Stack spacing={1.5}>
 			<LanguageCard />
 			{loggedIn ? <VoiceCard /> : null}
+			{loggedIn ? <BoardAlertSettings /> : null}
 
-			{!loggedIn ? (
-				<LoginPanel />
-			) : (
+			{loggedIn ? (
 				<>
 					<Paper className="w-full p-3" elevation={1}>
 						<Stack spacing={1}>
@@ -137,7 +135,7 @@ export default function ProfilePage() {
 					<AddressForm />
 					<BugReportForm />
 				</>
-			)}
+			) : null}
 		</Stack>
 	);
 }

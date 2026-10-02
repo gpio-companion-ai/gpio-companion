@@ -6,9 +6,16 @@ import type {
 } from "./api";
 
 const START_MS = 500;
+
+import {
+	asBoardPresence,
+	type BoardPresence,
+} from "../../../packages/core/src/board-presence.ts";
+
 const MAX_MS = 10_000;
 
 export type HubHandlers = {
+	onPresence?: (presence: BoardPresence) => void;
 	onFlash?: (status: FlashStatus) => void;
 	onRun?: (status: RunStatus) => void;
 	onArduinoProxy?: (status: ArduinoProxyStatus) => void;
@@ -41,6 +48,7 @@ export function parseHubMessage(input: unknown): HubMessage | null {
 		record.type !== "run" &&
 		record.type !== "arduinoProxy" &&
 		record.type !== "hello" &&
+		record.type !== "presence" &&
 		record.type !== "ping"
 	) {
 		return null;
@@ -298,6 +306,12 @@ export function startHubClient(options: {
 		onMessage(data) {
 			const message = parseHubMessage(data);
 			if (!message) {
+				return;
+			}
+			if (message.type === "presence") {
+				const presence = asBoardPresence(message.payload);
+				if (presence?.uuid === options.uuid)
+					options.handlers.onPresence?.(presence);
 				return;
 			}
 			if (message.type === "flash") {

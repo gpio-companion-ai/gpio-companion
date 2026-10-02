@@ -53,6 +53,7 @@ import {
 	PROFILE_TABS,
 	type SectionTab,
 } from "../../lib/dashboard-mode.ts";
+import BoardPresenceAlerts from "../BoardPresenceAlerts.tsx";
 import DockBody from "./DockBody.tsx";
 
 const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
@@ -1086,6 +1087,18 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				</div>
 			) : null}
 
+			<BoardPresenceAlerts
+				enabled={Boolean(session.data?.id)}
+				boards={boards.map((board) => ({
+					uuid: board.uuid,
+					name: publicBoardName(
+						board,
+						mode === "expert",
+						t("deck.status.unnamed"),
+					),
+				}))}
+				onStatus={workbench.setBoardPresence}
+			/>
 			<Snackbar
 				open={Boolean(uiToast)}
 				autoHideDuration={4000}

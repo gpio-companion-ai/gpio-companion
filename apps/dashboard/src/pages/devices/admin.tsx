@@ -35,6 +35,7 @@ import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
 import useMobile from "../../hooks/useMobile.ts";
 import { unwrapAction } from "../../lib/action.ts";
+import { openLoginDialog } from "../../lib/auth/refresh.ts";
 import { isAdmin } from "../../lib/auth/role.ts";
 import {
 	deviceDisplayName,
@@ -148,7 +149,7 @@ export default function AdminDevicesPage() {
 			<Stack spacing={1.5}>
 				{!session.data?.id && !session.data?.email ? (
 					<Alert severity="info">
-						<Button href="/login" variant="text">
+						<Button onClick={openLoginDialog} variant="text">
 							{t("auth.signIn")}
 						</Button>{" "}
 						{t("auth.toAdmin")}

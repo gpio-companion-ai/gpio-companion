@@ -1,4 +1,5 @@
 import { Tabs } from "expo-router";
+import { Modal } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import Deck from "../../src/components/Deck.tsx";
 import Login from "../../src/components/Login.tsx";
@@ -6,10 +7,6 @@ import { useAuth } from "../../src/lib/auth.tsx";
 
 export default function TabsLayout() {
 	const auth = useAuth();
-
-	if (!auth.ready || !auth.token) {
-		return <Login />;
-	}
 
 	return (
 		<KeyboardAvoidingView behavior="padding" style={{ flex: 1 }}>
@@ -28,6 +25,14 @@ export default function TabsLayout() {
 					<Tabs.Screen name="profile" />
 				</Tabs>
 			</Deck>
+			<Modal
+				visible={!auth.ready || !auth.token}
+				transparent
+				animationType="fade"
+				onRequestClose={() => undefined}
+			>
+				<Login />
+			</Modal>
 		</KeyboardAvoidingView>
 	);
 }

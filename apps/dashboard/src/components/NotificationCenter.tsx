@@ -12,6 +12,7 @@ import { useAuthSession } from "../hooks/useAuth.ts";
 import { useT } from "../hooks/useLocale.tsx";
 import useMobile from "../hooks/useMobile.ts";
 import { unwrapAction } from "../lib/action.ts";
+import { openLoginDialog } from "../lib/auth/refresh.ts";
 import { ListSkeleton } from "./skeletons.tsx";
 
 type Item = {
@@ -51,7 +52,7 @@ export default function NotificationCenter() {
 	if (!session.data?.id) {
 		return (
 			<Typography color="secondary">
-				<Button href="/login" variant="text">
+				<Button onClick={openLoginDialog} variant="text">
 					{t("auth.signIn")}
 				</Button>{" "}
 				{t("auth.toRequests")}

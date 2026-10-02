@@ -1,5 +1,5 @@
-import Box from "@shpaw415/mui-lite/Box";
 import CssBaseline from "@shpaw415/mui-lite/CssBaseline";
+import Dialog from "@shpaw415/mui-lite/Dialog";
 import { CircularProgress } from "@shpaw415/mui-lite/Progress";
 import Stack from "@shpaw415/mui-lite/Stack";
 import { useEffect, useState } from "react";
@@ -19,8 +19,10 @@ import Profile from "./components/Profile";
 import Project from "./components/Project";
 import { ApiCacheProvider } from "./hooks/useApiCache";
 import { BoardSelectionProvider } from "./hooks/useBoardSelection";
+import { useT } from "./locale";
 
 export default function App() {
+	const t = useT();
 	const { isDark, toggleMode } = useColorMode();
 	const [ready, setReady] = useState(false);
 	const [signedIn, setSignedIn] = useState(false);
@@ -31,6 +33,7 @@ export default function App() {
 	useEffect(() => {
 		void authToken()
 			.then((token) => setSignedIn(Boolean(token)))
+			.catch(() => setSignedIn(false))
 			.finally(() => setReady(true));
 		return onAuthRequired(() => setSignedIn(false));
 	}, []);
@@ -71,8 +74,9 @@ export default function App() {
 			<ApiCacheProvider signedIn={signedIn}>
 				{signedIn ? <GithubAppCallbackBridge /> : null}
 				<CssBaseline />
-				{signedIn ? (
+				<div inert={!signedIn} style={{ display: "contents" }}>
 					<DeckShell
+						signedIn={signedIn}
 						section={section}
 						deviceTab={deviceTab}
 						admin={Boolean(admin)}
@@ -81,7 +85,7 @@ export default function App() {
 						onDeviceTab={setDeviceTab}
 						onToggleTheme={toggleMode}
 					>
-						{section === "project" ? (
+						{!signedIn ? null : section === "project" ? (
 							<Project onOpenProfile={() => setSection("profile")} />
 						) : section === "profile" ? (
 							<Profile
@@ -89,8 +93,6 @@ export default function App() {
 								onSignOut={() => {
 									void authLogout().then(() => {
 										setSignedIn(false);
-										setSection("devices");
-										setDeviceTab("overview");
 									});
 								}}
 							/>
@@ -103,19 +105,34 @@ export default function App() {
 							/>
 						)}
 					</DeckShell>
-				) : (
-					<Box
-						className="workbench-bg"
-						sx={{ height: "100%", overflow: "auto", p: 1.5 }}
-					>
-						<Login
-							onSignedIn={() => {
-								setSignedIn(true);
-								setSection("devices");
-							}}
-						/>
-					</Box>
-				)}
+				</div>
+				<Dialog
+					open={!signedIn}
+					onBackdropClick={(event) =>
+						event.currentTarget
+							.querySelector<HTMLButtonElement>("[role='dialog'] button")
+							?.focus()
+					}
+					fullWidth
+					sx={{ zIndex: 1500 }}
+					slotProps={{
+						paper: {
+							"aria-label": t("auth.signInWithGithub"),
+							sx: {
+								width: "calc(100% - 32px)",
+								maxWidth: 448,
+								maxHeight: "calc(100dvh - 32px)",
+								overflowY: "auto",
+							},
+						},
+					}}
+				>
+					<Login
+						onSignedIn={() => {
+							setSignedIn(true);
+						}}
+					/>
+				</Dialog>
 			</ApiCacheProvider>
 		</BoardSelectionProvider>
 	);

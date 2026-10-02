@@ -5,7 +5,7 @@ import Typography from "@shpaw415/mui-lite/Typography";
 import { LOCALES } from "gpio-companion-i18n";
 import { asLocale, useLocale } from "../locale";
 
-export default function LanguageCard() {
+export default function LanguageCard({ menuZIndex }: { menuZIndex?: number }) {
 	const { locale, setLocale, t } = useLocale();
 
 	return (
@@ -17,6 +17,11 @@ export default function LanguageCard() {
 			>
 				<Typography variant="subtitle1">{t("language.title")}</Typography>
 				<Select
+					SlotProps={
+						menuZIndex
+							? { "dropdown-wrapper": { sx: { zIndex: menuZIndex } } }
+							: undefined
+					}
 					name="locale"
 					label={t("language.title")}
 					value={locale}

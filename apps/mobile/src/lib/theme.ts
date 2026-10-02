@@ -8,6 +8,7 @@ export type Colors = {
 	placeholder: string;
 	border: string;
 	primary: string;
+	voiceAgent: string;
 	primaryText: string;
 	danger: string;
 	success: string;
@@ -24,6 +25,7 @@ export const palettes: Record<ColorMode, Colors> = {
 		placeholder: "#5a6966",
 		border: "#c5d0cd",
 		primary: "#006b60",
+		voiceAgent: "#7651b0",
 		primaryText: "#ffffff",
 		danger: "#c5221f",
 		success: "#176b45",
@@ -38,6 +40,7 @@ export const palettes: Record<ColorMode, Colors> = {
 		placeholder: "#8595a8",
 		border: "#1e2836",
 		primary: "#00d4ff",
+		voiceAgent: "#c7a2ff",
 		primaryText: "#04121a",
 		danger: "#f85149",
 		success: "#3fb950",

@@ -14,6 +14,9 @@ import {
 	CODE_DEFAULT_MODEL,
 	CODE_VOICE_MAX_MS,
 	type CodeAttachDraft,
+	type CodeSpeechPlayer,
+	CodeSpeechQueue,
+	type CodeSpeechStatus,
 	type CodeVoiceProvider,
 	codeAppendSpeechDirective,
 	codeAttachPrompt,
@@ -27,7 +30,7 @@ import {
 	codeScrollKey,
 	codeSessionTitle,
 	codeSpeechBlocks,
-	codeSpokenText,
+	codeSpeechChunks,
 	codeVoiceProvider,
 	codeVoiceUtterance,
 	emptyOpencodeView,
@@ -100,13 +103,6 @@ const PROJECT_KEY = "gpio-companion-selected-project";
 type Repo = { owner: string; name: string };
 type Mode = "home" | "draft" | "session";
 type ChipMenuId = "model" | "effort" | "permission" | "project";
-type SpeechItem = {
-	text: string;
-	gen: number;
-	state: "queued" | "fetching" | "ready" | "failed";
-	promise: Promise<void>;
-	audio: string;
-};
 
 export function ChipMenu({
 	open,
@@ -407,7 +403,14 @@ export default function OpenCodeSession({
 	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
-	const [voiceSpeakingNow, setVoiceSpeakingNow] = useState(false);
+	const [speechStatus, setSpeechStatus] = useState<CodeSpeechStatus>({
+		speaking: false,
+		paused: false,
+		preparing: false,
+		canReplay: false,
+	});
+	const voiceSpeakingNow = speechStatus.speaking;
+	const [readAloud, setReadAloud] = useState(false);
 	const [voiceQueued, setVoiceQueued] = useState(0);
 	const [voiceTranscribing, setVoiceTranscribing] = useState(false);
 	const [voiceReply, setVoiceReply] = useState(false);
@@ -448,16 +451,37 @@ export default function OpenCodeSession({
 		cancel(): void;
 	} | null>(null);
 	const voiceSpeaking = useRef<HTMLAudioElement | null>(null);
-	const voiceSpeechResolve = useRef<(() => void) | null>(null);
 	const speechSpoken = useRef(new Map<string, number>());
-	const speechPrefetch = useRef<SpeechItem[]>([]);
-	const speechPlaying = useRef(false);
-	const speechFetching = useRef(false);
-	const speechGen = useRef(0);
+	const speechQueue = useRef<CodeSpeechQueue | null>(null);
+	const speechIo = useRef({
+		fetch: async (text: string) => {
+			const result = await speak({ text, locale });
+			if (!result.ok) throw new Error(result.error);
+			return result.data.audio;
+		},
+		play: playSpeech,
+		changed: setSpeechStatus,
+		failed: (caught: unknown) =>
+			setError(shownError(caught instanceof Error ? caught.message : "")),
+	});
+	speechIo.current.fetch = async (text) => {
+		const result = await speak({ text, locale });
+		if (!result.ok) throw new Error(result.error);
+		return result.data.audio;
+	};
+	speechIo.current.failed = (caught) =>
+		setError(shownError(caught instanceof Error ? caught.message : ""));
+	if (!speechQueue.current)
+		speechQueue.current = new CodeSpeechQueue({
+			fetch: (text) => speechIo.current.fetch(text),
+			play: (audio) => speechIo.current.play(audio),
+			changed: (status) => speechIo.current.changed(status),
+			failed: (caught) => speechIo.current.failed(caught),
+		});
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
 	const voiceShown = useRef(-1);
-	const voiceReplyRef = useRef(false);
+	const speechScope = useRef({ uuid, repo, mode, sessionID: view.sessionID });
 	const speechDirectiveSentRef = useRef<string | null>(null);
 	const pttRef = useRef(false);
 	const pttParts = useRef(new Map<number, string>());
@@ -645,6 +669,7 @@ export default function OpenCodeSession({
 	}, [repo]);
 
 	function openSession(sessionID: string) {
+		if (mode !== "session" || sessionID !== view.sessionID) resetAudioSession();
 		setQuery("");
 		clearQuestionDraft();
 		setView((current) =>
@@ -1227,26 +1252,52 @@ export default function OpenCodeSession({
 	}
 
 	function stopVoiceSpeech() {
-		const player = voiceSpeaking.current;
-		voiceSpeaking.current = null;
-		if (player) {
-			player.onended = null;
-			player.pause();
-		}
-		setVoiceSpeakingNow(false);
-		const resolve = voiceSpeechResolve.current;
-		voiceSpeechResolve.current = null;
-		resolve?.();
+		speechQueue.current?.cancel();
 	}
 
 	function clearSpeechQueue() {
-		speechGen.current += 1;
-		speechPrefetch.current = [];
-		const resolve = voiceSpeechResolve.current;
-		voiceSpeechResolve.current = null;
-		resolve?.();
 		stopVoiceSpeech();
 	}
+
+	function markExistingSpeech() {
+		for (const turn of view.turns) {
+			if (turn.role !== "assistant") continue;
+			if (!turn.pending) voiceSpoken.current.add(turn.id);
+			speechSpoken.current.set(turn.id, codeSpeechBlocks(turn.text).length);
+		}
+	}
+
+	function toggleReadAloud() {
+		markExistingSpeech();
+		setReadAloud(!readAloud);
+		setVoiceReply(!readAloud);
+		if (readAloud) clearSpeechQueue();
+	}
+
+	function resetAudioSession() {
+		speechQueue.current?.reset();
+		setReadAloud(false);
+		setVoiceReply(false);
+		voiceSpoken.current.clear();
+		speechSpoken.current.clear();
+		voiceQueue.current = [];
+		setVoiceQueued(0);
+	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reset only on navigation; draft -> newly created session keeps its setting
+	useEffect(() => {
+		const previous = speechScope.current;
+		if (
+			previous.uuid !== uuid ||
+			previous.repo !== repo ||
+			(mode === "home" && previous.mode !== "home") ||
+			(previous.mode === "session" &&
+				(mode !== "session" || previous.sessionID !== view.sessionID))
+		) {
+			resetAudioSession();
+		}
+		speechScope.current = { uuid, repo, mode, sessionID: view.sessionID };
+	}, [uuid, repo, mode, view.sessionID]);
 
 	function stopVoiceEngine() {
 		const engine = voiceEngine.current;
@@ -1270,6 +1321,7 @@ export default function OpenCodeSession({
 			return;
 		}
 		pttRef.current = true;
+		clearSpeechQueue();
 		pttParts.current.clear();
 		setPttHeld(true);
 		if (voiceEngine.current) {
@@ -1396,156 +1448,60 @@ export default function OpenCodeSession({
 		};
 	}, []);
 
-	function makeSpeechItem(text: string, gen: number): SpeechItem {
+	function playSpeech(audio: string): CodeSpeechPlayer {
+		const player = new Audio(`data:audio/mpeg;base64,${audio}`);
+		let finish = () => {};
+		let fail = (_error: unknown) => {};
+		const finished = new Promise<void>((resolve, reject) => {
+			finish = resolve;
+			fail = reject;
+		});
+		let released = false;
+		let paused = false;
+		const done = (error?: unknown) => {
+			if (released) return;
+			released = true;
+			player.onended = null;
+			player.onerror = null;
+			player.onplaying = null;
+			player.onwaiting = null;
+			player.pause();
+			if (voiceSpeaking.current === player) voiceSpeaking.current = null;
+			if (error) fail(error);
+			else finish();
+		};
+		const failedPlay = (error: unknown) => {
+			if (
+				paused &&
+				error instanceof DOMException &&
+				error.name === "AbortError"
+			)
+				return;
+			done(error);
+		};
+		player.onended = () => done();
+		player.onerror = () => done(new Error("speech failed"));
+		player.onplaying = () => speechQueue.current?.playback(true);
+		player.onwaiting = () => speechQueue.current?.playback(false, true);
+		voiceSpeaking.current = player;
+		void player.play().catch(failedPlay);
 		return {
-			text,
-			gen,
-			state: "queued",
-			promise: Promise.resolve(),
-			audio: "",
+			finished,
+			pause: () => {
+				paused = true;
+				player.pause();
+			},
+			resume: () => {
+				paused = false;
+				void player.play().catch(failedPlay);
+			},
+			stop: () => done(),
 		};
 	}
 
-	async function fetchSpeech(item: SpeechItem): Promise<void> {
-		if (item.state !== "queued") {
-			return;
-		}
-		let settle = () => {};
-		item.promise = new Promise<void>((resolve) => {
-			settle = resolve;
-		});
-		item.state = "fetching";
-		try {
-			const result = await speak({ text: item.text, locale });
-			if (!result.ok) {
-				setError(shownError(result.error));
-				item.state = "failed";
-				return;
-			}
-			if (item.gen !== speechGen.current) {
-				item.state = "failed";
-				return;
-			}
-			item.audio = result.data.audio;
-			item.state = "ready";
-		} catch (caught) {
-			setError(shownError(caught instanceof Error ? caught.message : ""));
-			item.state = "failed";
-		} finally {
-			settle();
-		}
-	}
-
-	async function prefetchSpeechQueue(): Promise<void> {
-		if (speechFetching.current) {
-			return;
-		}
-		speechFetching.current = true;
-		try {
-			while (speechPrefetch.current.length > 0) {
-				const item = speechPrefetch.current.find(
-					(entry) => entry.state === "queued",
-				);
-				if (!item) {
-					return;
-				}
-				await fetchSpeech(item);
-			}
-		} finally {
-			speechFetching.current = false;
-		}
-	}
-
-	function playSpeech(item: SpeechItem): Promise<void> {
-		return new Promise<void>((resolve) => {
-			try {
-				const player = new Audio(`data:audio/mpeg;base64,${item.audio}`);
-				const done = () => {
-					const settle = voiceSpeechResolve.current;
-					voiceSpeechResolve.current = null;
-					if (voiceSpeaking.current === player) {
-						voiceSpeaking.current = null;
-						setVoiceSpeakingNow(false);
-					}
-					settle?.();
-					resolve();
-				};
-				player.onended = done;
-				player.addEventListener("error", done);
-				voiceSpeaking.current = player;
-				voiceSpeechResolve.current = done;
-				setVoiceSpeakingNow(true);
-				player.play().catch(() => {
-					done();
-				});
-			} catch (caught) {
-				setError(shownError(caught instanceof Error ? caught.message : ""));
-				resolve();
-			}
-		});
-	}
-
-	function dropSpeechItem(item: SpeechItem) {
-		const index = speechPrefetch.current.indexOf(item);
-		if (index !== -1) {
-			speechPrefetch.current.splice(index, 1);
-		}
-	}
-
-	function pumpSpeech() {
-		if (speechPlaying.current) {
-			void prefetchSpeechQueue();
-			return;
-		}
-		if (speechPrefetch.current.length === 0) {
-			return;
-		}
-		speechPlaying.current = true;
-		void (async () => {
-			try {
-				while (speechPrefetch.current.length > 0) {
-					const item = speechPrefetch.current[0];
-					if (!item) {
-						break;
-					}
-					if (
-						item.gen !== speechGen.current ||
-						item.state === "failed" ||
-						!voiceReplyRef.current
-					) {
-						dropSpeechItem(item);
-						continue;
-					}
-					if (item.state === "queued") {
-						await fetchSpeech(item);
-					} else if (item.state === "fetching") {
-						await item.promise;
-					}
-					if (
-						item.gen !== speechGen.current ||
-						item.state !== "ready" ||
-						!voiceReplyRef.current
-					) {
-						dropSpeechItem(item);
-						continue;
-					}
-					void prefetchSpeechQueue();
-					await playSpeech(item);
-					dropSpeechItem(item);
-				}
-			} finally {
-				speechPlaying.current = false;
-			}
-		})();
-	}
-
 	function enqueueSpeech(text: string) {
-		const clean = codeSpokenText(text).trim();
-		if (!clean) {
-			return;
-		}
-		speechPrefetch.current.push(makeSpeechItem(clean, speechGen.current));
-		pumpSpeech();
+		for (const chunk of codeSpeechChunks(text))
+			speechQueue.current?.enqueue(chunk);
 	}
 
 	function voiceTick() {
@@ -1630,10 +1586,9 @@ export default function OpenCodeSession({
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and enqueueSpeech()
 	useEffect(() => {
 		if (!voiceReply) {
-			clearSpeechQueue();
 			return;
 		}
-		if (voiceSpeaking.current || voiceUtter.current) {
+		if (voiceUtter.current) {
 			return;
 		}
 		if (view.busy || uploading) {
@@ -1751,8 +1706,7 @@ export default function OpenCodeSession({
 		let text = "";
 		// Speech directive is injected once per session: the first voice-directed
 		// message carries it, later turns keep it from the transcript.
-		// Only PTT (hold mic) sends voice-directed messages now.
-		const wantsSpeech = Boolean(override);
+		const wantsSpeech = readAloud || Boolean(override);
 		const existingSessionID = mode === "session" ? view.sessionID : "";
 		const injectSpeechDirective =
 			wantsSpeech &&
@@ -1765,22 +1719,9 @@ export default function OpenCodeSession({
 				injectSpeechDirective,
 				voiceProvider,
 			);
-			if (override) {
-				voiceReplyRef.current = true;
-				setVoiceReply(true);
-				for (const turn of view.turns) {
-					if (turn.role === "assistant") {
-						voiceSpoken.current.add(turn.id);
-						speechSpoken.current.set(
-							turn.id,
-							codeSpeechBlocks(turn.text).length,
-						);
-					}
-				}
-			} else if (!override) {
-				voiceReplyRef.current = false;
-				setVoiceReply(false);
-			}
+			speechQueue.current?.reset();
+			markExistingSpeech();
+			setVoiceReply(wantsSpeech);
 		} catch (caught) {
 			setPrompt(typed);
 			setFiles(staged);
@@ -2115,11 +2056,20 @@ export default function OpenCodeSession({
 							: "idle";
 		const voiceLabel = voiceTranscribing
 			? t("code.voiceTranscribing")
-			: voiceSpeakingNow
-				? t("code.voiceSpeaking")
-				: voiceListening
-					? t("code.voiceListening")
-					: t("code.voiceThinking");
+			: pttHeld || voiceListening
+				? t("code.voiceListening")
+				: t("code.voiceUser");
+		const agentLabel = speechStatus.paused
+			? t("code.voicePaused")
+			: speechStatus.preparing
+				? t("code.voicePreparing")
+				: voiceSpeakingNow
+					? t("code.voiceSpeaking")
+					: view.busy && voiceReply
+						? t("code.voiceThinking")
+						: speechStatus.canReplay
+							? t("code.voiceReady")
+							: t("code.voiceAgent");
 		return (
 			<div
 				className="oc-compose"
@@ -2216,18 +2166,68 @@ export default function OpenCodeSession({
 						))}
 					</div>
 				) : null}
-				{voiceTranscribing || pttHeld || voiceSpeakingNow ? (
-					<div className={`oc-voice is-${voicePhase}`} aria-live="polite">
-						<span className="oc-voice-bars" aria-hidden="true">
+				<div className="oc-audio-toolbar">
+					<button
+						type="button"
+						className="oc-read-aloud"
+						role="switch"
+						aria-checked={readAloud}
+						title={t("code.readAloudHint")}
+						disabled={disabled}
+						onClick={toggleReadAloud}
+					>
+						<span className="oc-audio-switch" aria-hidden="true" />
+						{t("code.readAloud")}
+					</button>
+					{speechStatus.canReplay ? (
+						<div className="oc-audio-controls">
+							{speechStatus.paused ||
+							speechStatus.speaking ||
+							speechStatus.preparing ? (
+								<button
+									type="button"
+									disabled={pttHeld || voiceTranscribing}
+									onClick={() =>
+										speechStatus.paused
+											? speechQueue.current?.resume()
+											: speechQueue.current?.pause()
+									}
+								>
+									{t(
+										speechStatus.paused
+											? "code.voiceResume"
+											: "code.voicePause",
+									)}
+								</button>
+							) : null}
+							<button
+								type="button"
+								disabled={pttHeld || voiceTranscribing}
+								onClick={() => speechQueue.current?.replay()}
+							>
+								{t("code.voiceReplay")}
+							</button>
+						</div>
+					) : null}
+				</div>
+				{readAloud || voiceTranscribing || pttHeld || speechStatus.canReplay ? (
+					<div className="oc-voice oc-audio-strip" aria-live="polite">
+						<span
+							className={`oc-voice-bars oc-user-wave is-${voicePhase}`}
+							aria-hidden="true"
+						>
 							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
 								<i
 									key={bar}
 									style={
-										voicePhase === "waiting" || voicePhase === "processing"
+										voiceTranscribing
 											? undefined
 											: {
 													transform: `scaleY(${(
-														0.2 + voiceLevel * (1 - Math.abs(bar - 3) / 4) * 0.8
+														0.2 +
+															(pttHeld ? voiceLevel : 0) *
+																(1 - Math.abs(bar - 3) / 4) *
+																0.8
 													).toFixed(2)})`,
 												}
 									}
@@ -2240,14 +2240,15 @@ export default function OpenCodeSession({
 								: ""}
 							{voiceLabel}
 						</span>
-						<button
-							type="button"
-							className="oc-voice-stop"
-							aria-label={t("code.voiceStop")}
-							onClick={() => clearSpeechQueue()}
+						<span className="oc-voice-label oc-agent-label">{agentLabel}</span>
+						<span
+							className={`oc-voice-bars oc-agent-wave${voiceSpeakingNow ? " is-playing" : ""}${speechStatus.paused ? " is-paused" : ""}`}
+							aria-hidden="true"
 						>
-							×
-						</button>
+							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
+								<i key={bar} style={{ animationDelay: `${bar * -0.13}s` }} />
+							))}
+						</span>
 					</div>
 				) : null}
 				<div className="oc-composer">

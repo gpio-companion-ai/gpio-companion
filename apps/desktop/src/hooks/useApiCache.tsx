@@ -34,6 +34,7 @@ export type UserBoards = {
 type ApiCacheValue = {
 	cache: QueryCache;
 	version: number;
+	signedIn: boolean;
 };
 
 const ApiCacheCtx = createContext<ApiCacheValue | null>(null);
@@ -61,7 +62,10 @@ export function ApiCacheProvider({
 			.catch(() => undefined);
 	}, [signedIn, cache]);
 
-	const value = useMemo(() => ({ cache, version }), [cache, version]);
+	const value = useMemo(
+		() => ({ cache, version, signedIn }),
+		[cache, version, signedIn],
+	);
 	return <ApiCacheCtx.Provider value={value}>{children}</ApiCacheCtx.Provider>;
 }
 
@@ -74,7 +78,7 @@ export function useApiCache(): ApiCacheValue {
 }
 
 export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>) {
-	const { cache, version } = useApiCache();
+	const { cache, version, signedIn } = useApiCache();
 	void version;
 	const hit = cache.peek<T>(key);
 	const [error, setError] = useState("");
@@ -82,6 +86,10 @@ export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>) {
 
 	useEffect(() => {
 		let cancelled = false;
+		if (!signedIn) {
+			setLoading(false);
+			return;
+		}
 		if (hit.hit) {
 			setLoading(false);
 			return;
@@ -107,7 +115,7 @@ export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>) {
 		return () => {
 			cancelled = true;
 		};
-	}, [cache, fetcher, hit.hit, key]);
+	}, [cache, fetcher, hit.hit, key, signedIn]);
 
 	const setData = useCallback(
 		(value: T | ((prev: T | undefined) => T)) => {
@@ -130,7 +138,7 @@ export function useCachedQuery<T>(key: string, fetcher: () => Promise<T>) {
 	);
 
 	return {
-		data: hit.hit ? hit.value : undefined,
+		data: signedIn && hit.hit ? hit.value : undefined,
 		error,
 		loading: !hit.hit && loading,
 		setData,

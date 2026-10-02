@@ -31,6 +31,7 @@ import {
 	type AiUsageSummary,
 	USAGE_DAY_OPTIONS,
 } from "../../lib/ai-usage.ts";
+import { openLoginDialog } from "../../lib/auth/refresh.ts";
 import { isAdmin } from "../../lib/auth/role.ts";
 import {
 	CREDIT_PACKS_USD,
@@ -151,7 +152,7 @@ export default function CreditsPage() {
 	if (!session.data?.id && !session.data?.email) {
 		return (
 			<Typography color="secondary">
-				<Button href="/login" variant="text">
+				<Button onClick={openLoginDialog} variant="text">
 					{t("auth.signIn")}
 				</Button>{" "}
 				{t("auth.toCredits")}

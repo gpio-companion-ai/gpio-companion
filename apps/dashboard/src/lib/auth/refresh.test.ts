@@ -3,6 +3,7 @@ import {
 	type AuthRefreshClient,
 	createAuthAwareFetch,
 	isLoginRequiredError,
+	LOGIN_REQUIRED_EVENT,
 	loginRequiredFromActionBody,
 	requireLogin,
 	syncAccessCookie,
@@ -116,7 +117,7 @@ describe("createAuthAwareFetch", () => {
 		expect(await response.json()).toEqual({ ok: true, data: { id: "u1" } });
 	});
 
-	test("redirects when the retry is still login first", async () => {
+	test("requires the login modal when the retry is still login first", async () => {
 		const auth = mockAuth({ refresh: true });
 		let calls = 0;
 		let redirects = 0;
@@ -143,7 +144,7 @@ describe("createAuthAwareFetch", () => {
 		});
 	});
 
-	test("redirects when refresh cannot recover", async () => {
+	test("requires the login modal when refresh cannot recover", async () => {
 		const auth = mockAuth({ refresh: false });
 		let calls = 0;
 		let redirects = 0;
@@ -226,11 +227,59 @@ describe("createAuthAwareFetch", () => {
 });
 
 describe("requireLogin", () => {
-	test("logs out before redirecting", () => {
+	test("clears auth and signals the modal without navigating away", () => {
 		const auth = mockAuth({ token: "abc" });
-		requireLogin(auth);
-		expect(auth.logouts).toBe(1);
-		expect(auth.getToken()).toBe(null);
+		const originalWindow = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"window",
+		);
+		const originalDocument = Object.getOwnPropertyDescriptor(
+			globalThis,
+			"document",
+		);
+		const target = new EventTarget();
+		let modalRequests = 0;
+		let navigations = 0;
+		let cookie = "access_token=abc";
+		target.addEventListener(LOGIN_REQUIRED_EVENT, () => {
+			modalRequests += 1;
+			expect(auth.getToken()).toBe(null);
+			expect(cookie).toBe("access_token=; Max-Age=0; path=/");
+		});
+		Object.defineProperty(globalThis, "window", {
+			configurable: true,
+			value: Object.assign(target, {
+				location: {
+					assign: () => {
+						navigations += 1;
+					},
+				},
+			}),
+		});
+		Object.defineProperty(globalThis, "document", {
+			configurable: true,
+			value: {
+				get cookie() {
+					return cookie;
+				},
+				set cookie(next) {
+					cookie = next;
+				},
+			},
+		});
+		try {
+			requireLogin(auth);
+			expect(auth.logouts).toBe(1);
+			expect(modalRequests).toBe(1);
+			expect(navigations).toBe(0);
+		} finally {
+			if (originalWindow)
+				Object.defineProperty(globalThis, "window", originalWindow);
+			else Reflect.deleteProperty(globalThis, "window");
+			if (originalDocument)
+				Object.defineProperty(globalThis, "document", originalDocument);
+			else Reflect.deleteProperty(globalThis, "document");
+		}
 	});
 });
 

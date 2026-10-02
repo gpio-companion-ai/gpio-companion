@@ -1,6 +1,5 @@
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
-import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { useState } from "react";
@@ -31,10 +30,7 @@ export default function LoginPanel() {
 	}
 
 	return (
-		<Paper
-			className="mx-auto w-full max-w-md p-6 min-[900px]:p-8"
-			elevation={2}
-		>
+		<>
 			<Typography variant="h5" Element="h1" align="center">
 				{t("auth.signIn")}
 			</Typography>
@@ -51,6 +47,6 @@ export default function LoginPanel() {
 					{error}
 				</Alert>
 			) : null}
-		</Paper>
+		</>
 	);
 }

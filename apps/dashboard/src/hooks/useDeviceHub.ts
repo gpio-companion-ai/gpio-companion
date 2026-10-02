@@ -9,8 +9,13 @@ import {
 	type RunStatus,
 } from "gpio-companion";
 import { useEffect } from "react";
+import {
+	asBoardPresence,
+	type BoardPresence,
+} from "../../../../packages/core/src/board-presence.ts";
 
 export type DeviceHubHandlers = {
+	onPresence?: (presence: BoardPresence) => void;
 	onFlash?: (status: FlashStatus) => void;
 	onRun?: (status: RunStatus) => void;
 	onArduinoProxy?: (status: ArduinoProxyStatus) => void;
@@ -23,6 +28,7 @@ export function hubBrowserUrl(uuid: string, location: Location): string {
 
 export function useDeviceHub(uuid: string, handlers: DeviceHubHandlers): void {
 	const onFlash = handlers.onFlash;
+	const onPresence = handlers.onPresence;
 	const onRun = handlers.onRun;
 	const onArduinoProxy = handlers.onArduinoProxy;
 
@@ -47,6 +53,11 @@ export function useDeviceHub(uuid: string, handlers: DeviceHubHandlers): void {
 			socket.addEventListener("message", (event) => {
 				const message = parseHubMessage(String(event.data ?? ""));
 				if (!message) {
+					return;
+				}
+				if (message.type === "presence") {
+					const presence = asBoardPresence(message.payload);
+					if (presence?.uuid === trimmed) onPresence?.(presence);
 					return;
 				}
 				if (message.type === "flash") {
@@ -87,5 +98,5 @@ export function useDeviceHub(uuid: string, handlers: DeviceHubHandlers): void {
 			window.clearTimeout(timer);
 			socket?.close();
 		};
-	}, [uuid, onFlash, onRun, onArduinoProxy]);
+	}, [uuid, onFlash, onRun, onArduinoProxy, onPresence]);
 }

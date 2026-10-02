@@ -1,6 +1,17 @@
 import type { Messages } from "./en.ts";
 
 export const fr = {
+	presence: {
+		online: "{name} est en ligne",
+		offline: "{name} est hors ligne",
+		dismiss: "Fermer la notification de la carte",
+		title: "Alertes des cartes",
+		sounds: "Jouer les sons de connexion et de déconnexion",
+		description:
+			"Recevoir une notification lorsqu’une carte associée passe en ligne ou hors ligne pendant que l’application est ouverte.",
+		previewOnline: "Écouter le son de connexion",
+		previewOffline: "Écouter le son de déconnexion",
+	},
 	nav: {
 		brand: "gpio-companion",
 		project: "Projet",
@@ -1080,6 +1091,17 @@ export const fr = {
 		rssi: " ({n} dBm)",
 	},
 	board: {
+		connections: "Connexions",
+		connectionHint:
+			"Sélectionnez une connexion pour repérer ses deux extrémités.",
+		physicalPin: "broche physique",
+		hole: "trou",
+		leftRail: "rail gauche",
+		rightRail: "rail droit",
+		unresolved: "Broche introuvable — vérifiez le schéma",
+		focusConnection: "Cadrer la connexion",
+		headerMap:
+			"Les cartes sont représentées par des plans simplifiés des connecteurs.",
 		breadboard: "Breadboard",
 		wiring: "Câblage breadboard",
 		previewAlt: "Aperçu breadboard",
@@ -1200,6 +1222,17 @@ export const fr = {
 		attach: "Joindre un fichier",
 		removeFile: "Retirer {name}",
 		voiceStop: "Arrêter la voix",
+		readAloud: "Lecture à voix haute",
+		readAloudHint:
+			"Lire automatiquement les nouvelles réponses de l’agent à voix haute",
+		voicePause: "Pause",
+		voiceResume: "Reprendre",
+		voiceReplay: "Réécouter",
+		voicePaused: "Lecture en pause",
+		voicePreparing: "Préparation de l’audio…",
+		voiceReady: "Audio de la réponse prêt",
+		voiceUser: "Vous",
+		voiceAgent: "Agent",
 		ptt: "Maintenez pour parler",
 		pttHint: "Maintenez le micro ou Espace pour parler — relâchez pour envoyer",
 		voiceListening: "À l’écoute…",

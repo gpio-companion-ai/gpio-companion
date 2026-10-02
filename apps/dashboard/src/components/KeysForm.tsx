@@ -12,6 +12,7 @@ import { useActionError } from "../hooks/useActionError.tsx";
 import { useAuthSession } from "../hooks/useAuth.ts";
 import { useT } from "../hooks/useLocale.tsx";
 import { unwrapAction } from "../lib/action.ts";
+import { openLoginDialog } from "../lib/auth/refresh.ts";
 import {
 	peekGithubAppCallback,
 	stashGithubAppCallbackFromLocation,
@@ -113,7 +114,7 @@ export default function KeysForm() {
 	if (!session.data?.id && !session.data?.email) {
 		return (
 			<Typography color="secondary">
-				<Button href="/login" variant="text">
+				<Button onClick={openLoginDialog} variant="text">
 					{t("auth.signIn")}
 				</Button>{" "}
 				{t("auth.toGithub")}

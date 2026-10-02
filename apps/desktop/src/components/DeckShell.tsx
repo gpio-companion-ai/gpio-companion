@@ -28,6 +28,7 @@ import {
 	isAllowedDeviceTab,
 } from "../lib/dashboard-mode";
 import { useT } from "../locale";
+import BoardPresenceAlerts from "./BoardPresenceAlerts";
 import DockBody from "./DockBody";
 
 export type DeckSection = "project" | "devices" | "profile";
@@ -86,6 +87,7 @@ function readContextOpen() {
 }
 
 export default function DeckShell({
+	signedIn,
 	section,
 	deviceTab,
 	admin,
@@ -95,6 +97,7 @@ export default function DeckShell({
 	onToggleTheme,
 	children,
 }: {
+	signedIn: boolean;
 	section: DeckSection;
 	deviceTab: DeviceTabId;
 	admin: boolean;
@@ -108,8 +111,10 @@ export default function DeckShell({
 	const { mode, isEasy, toggleMode } = useDashboardMode();
 	const { uuid, setUuid, dockTab, setDockTab, dockOpen, setDockOpen } =
 		useBoardSelection();
-	const { boards } = useUserBoards();
-	const tunnel = useConsoleTunnel(section === "profile" ? "" : uuid);
+	const { boards, refetch: refreshPresenceBoards } = useUserBoards();
+	const tunnel = useConsoleTunnel(
+		!signedIn || section === "profile" ? "" : uuid,
+	);
 	const [drawerOpen, setDrawerOpen] = useState(false);
 	const [contextOpen, setContextOpen] = useState(readContextOpen);
 	const [paletteOpen, setPaletteOpen] = useState(false);
@@ -124,7 +129,7 @@ export default function DeckShell({
 
 	const uiSocket = useUiSocket({
 		surface: "desktop",
-		enabled: Boolean(uuid),
+		enabled: signedIn && Boolean(uuid),
 		uuid,
 		isFocused: () => document.hasFocus(),
 		onCommand: (command) => {
@@ -634,7 +639,7 @@ export default function DeckShell({
 						{dockOpen ? (
 							<DockBody
 								tab={dockTab}
-								uuid={uuid}
+								uuid={signedIn ? uuid : ""}
 								log={tunnel.snapshot.host.log}
 								status={tunnel.status}
 								clear={tunnel.clear}
@@ -709,6 +714,15 @@ export default function DeckShell({
 				</div>
 			) : null}
 
+			<BoardPresenceAlerts
+				boards={boards.map((board) => ({
+					uuid: board.device.uuid,
+					name: boardName(board, !isEasy, t("deck.status.unnamed")),
+				}))}
+				onChangeStatus={() => {
+					void refreshPresenceBoards({ force: true }).catch(() => undefined);
+				}}
+			/>
 			<Snackbar
 				open={Boolean(uiToast)}
 				autoHideDuration={4000}

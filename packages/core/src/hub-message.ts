@@ -15,7 +15,7 @@ export type HubRole = "pi" | "dashboard";
 
 export type HubChannel = "flash" | "run" | "arduinoProxy";
 
-export type HubMessageType = HubChannel | "hello" | "ping";
+export type HubMessageType = HubChannel | "hello" | "ping" | "presence";
 
 export type HubMessage = {
 	v: 1;
@@ -30,6 +30,7 @@ const MESSAGE_TYPES = new Set<HubMessageType>([
 	"arduinoProxy",
 	"hello",
 	"ping",
+	"presence",
 ]);
 
 export function isHubChannel(value: unknown): value is HubChannel {

@@ -8,7 +8,7 @@ import { WorkbenchProvider } from "../hooks/useWorkbench.tsx";
 export default function Layout({ children }: { children: React.JSX.Element }) {
 	const pathname = usePathname();
 	const onEmbed = isEmbedPath(pathname);
-	const simple = onEmbed || pathname === "/login" || pathname === "/callback";
+	const simple = onEmbed || pathname === "/callback";
 
 	if (simple) {
 		return (

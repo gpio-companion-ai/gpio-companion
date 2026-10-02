@@ -1,5 +1,10 @@
 export const PACKAGE_NAME = "gpio-companion";
 export const VERSION = "0.0.0";
+export {
+	type CodeSpeechPlayer,
+	CodeSpeechQueue,
+	type CodeSpeechStatus,
+} from "./code-speech.ts";
 
 export function greet(from = PACKAGE_NAME): string {
 	return `hello from ${from}`;
@@ -288,6 +293,10 @@ export {
 	parseBreadboardEmbedMessage,
 } from "./breadboard-embed.ts";
 export {
+	breadboardEndpointLabel,
+	resolveBreadboardEndpoint,
+} from "./breadboard-endpoint.ts";
+export {
 	applyCodeMention,
 	CODE_ATTACH_ACCEPT,
 	CODE_STT_MAX_BYTES,
@@ -333,6 +342,7 @@ export {
 	codeHasSpeechDirective,
 	codeMentionAt,
 	codeSpeechBlocks,
+	codeSpeechChunks,
 	codeSpokenText,
 	codeSttLanguage,
 	codeSttMicros,

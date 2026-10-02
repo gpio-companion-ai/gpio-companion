@@ -18,6 +18,8 @@ function boardHint(item: StoredPairing) {
 	return item.label.trim() ? item.uuid.slice(0, 8) : undefined;
 }
 
+import { openLoginDialog } from "../../lib/auth/refresh.ts";
+
 export default function CodePage() {
 	const session = useAuthSession();
 	const { run } = useActionError();
@@ -117,9 +119,13 @@ export default function CodePage() {
 				<div className="oc-card">
 					<div className="oc-empty">
 						<p>{t("code.signIn")}</p>
-						<a className="oc-neutral" href="/login">
+						<button
+							type="button"
+							className="oc-neutral"
+							onClick={openLoginDialog}
+						>
 							{t("auth.signIn")}
-						</a>
+						</button>
 					</div>
 				</div>
 			) : loading ? (

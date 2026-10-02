@@ -16,6 +16,7 @@ import {
 	BREADBOARD_PITCH,
 	BREADBOARD_RAILS,
 	BREADBOARD_RIGHT_COLS,
+	breadboardEndpointLabel,
 	breadboardHasRails,
 	breadboardPinNames,
 	breadboardPinOffset,
@@ -36,6 +37,7 @@ import {
 	type Point,
 	parseWokwiDiagram,
 	partPinsFor,
+	resolveBreadboardEndpoint,
 	rotatePoint,
 	snapPartPlacement,
 	splitEndpoint,
@@ -92,6 +94,7 @@ type ZoomCamera = {
 	onPointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
 	onPointerMove: (event: ReactPointerEvent<HTMLDivElement>) => void;
 	onPointerUp: (event: ReactPointerEvent<HTMLDivElement>) => void;
+	suppressClick: React.RefObject<boolean>;
 };
 
 export default function BreadboardViewer({
@@ -178,8 +181,15 @@ function DiagramBoard({
 	const [expanded, setExpanded] = useState(false);
 	const [seed, setSeed] = useState<string[] | null>(null);
 	const [wireKey, setWireKey] = useState<string | null>(null);
+	useEffect(() => {
+		void diagram;
+		setWireKey(null);
+		setSeed(null);
+		setActiveStep(0);
+	}, [diagram]);
 	const [elementsReady, setElementsReady] = useState(0);
 	const partRefs = useRef(new Map<string, HTMLElement>());
+	const connectionPanelRef = useRef<HTMLDivElement>(null);
 	const stepRefs = useRef<(HTMLButtonElement | null)[]>([]);
 	const pins = collectPins(diagram, partRefs.current, boardModel);
 	const bounds = canvasBounds(diagram, partRefs.current, boardModel);
@@ -188,6 +198,30 @@ function DiagramBoard({
 		setWireKey(null);
 	});
 	const highlight = seed ?? diagram.steps?.[activeStep]?.highlight ?? [];
+	const label = (endpoint: string) =>
+		breadboardEndpointLabel(diagram, endpoint, boardModel, {
+			physical: t("board.physicalPin"),
+			hole: t("board.hole"),
+			leftRail: t("board.leftRail"),
+			rightRail: t("board.rightRail"),
+		});
+	const selected = diagram.connections.find(
+		([from, to]) => `${from}->${to}` === wireKey,
+	);
+	const point = (endpoint: string) =>
+		endpointPoint(diagram, endpoint, pins, boardModel);
+	const focusConnection = () => {
+		if (!selected) return;
+		const a = point(selected[0]);
+		const b = point(selected[1]);
+		if (a && b)
+			camera.fitTo({
+				x: Math.min(a.x, b.x) - 30,
+				y: Math.min(a.y, b.y) - 30,
+				width: Math.abs(a.x - b.x) + 60,
+				height: Math.abs(a.y - b.y) + 60,
+			});
+	};
 
 	useEffect(() => {
 		void import("@wokwi/elements").then(() => {
@@ -214,6 +248,7 @@ function DiagramBoard({
 	}
 
 	function selectWire(from: string, to: string) {
+		connectionPanelRef.current?.scrollTo({ top: 0 });
 		setWireKey(`${from}->${to}`);
 		setSeed([splitEndpoint(from).partId, splitEndpoint(to).partId]);
 	}
@@ -277,20 +312,21 @@ function DiagramBoard({
 					{diagram.parts
 						.filter((part) => isBreadboardType(part.type))
 						.map(partNode)}
+					{/* biome-ignore lint/a11y/useSemanticElements: interactive SVG group cannot be an HTML fieldset */}
 					<svg
 						aria-label={t("board.wiring")}
 						className="pointer-events-none absolute left-0 top-0"
 						height={bounds.height * camera.view.scale}
 						key={elementsReady}
-						role="img"
+						role="group"
 						viewBox={`0 0 ${bounds.width} ${bounds.height}`}
 						width={bounds.width * camera.view.scale}
 					>
 						<title>{t("board.wiring")}</title>
 						{diagram.connections.map((connection) => {
 							const [from, to, color, instructions] = connection;
-							const start = endpointPoint(diagram, from, pins);
-							const end = endpointPoint(diagram, to, pins);
+							const start = point(from);
+							const end = point(to);
 							if (!start || !end) {
 								return null;
 							}
@@ -307,36 +343,193 @@ function DiagramBoard({
 							const hot = wireHot(from, to, highlight, wireKey, key);
 							const verifyColor = circuitVerifyColor(verifyOverlay?.wires[key]);
 							return (
-								// biome-ignore lint/a11y/useSemanticElements: SVG stroke hit target
-								<polyline
-									key={key}
-									fill="none"
-									onClick={(event) => {
-										event.stopPropagation();
-										selectWire(from, to);
-									}}
-									onKeyDown={(event) => {
-										if (event.key === "Enter" || event.key === " ") {
-											event.preventDefault();
+								<g key={key}>
+									<polyline
+										points={points}
+										fill="none"
+										stroke="#111827"
+										strokeWidth={hot ? 5 : 3}
+										strokeOpacity={hot ? 0.85 : 0.3}
+										vectorEffect="non-scaling-stroke"
+									/>
+									<polyline
+										points={points}
+										fill="none"
+										stroke={verifyColor || color || "#22c55e"}
+										strokeWidth={hot ? 3 : 2}
+										strokeOpacity={hot ? 1 : 0.35}
+										vectorEffect="non-scaling-stroke"
+									/>
+									{/* biome-ignore lint/a11y/useSemanticElements: SVG hit target with equivalent HTML buttons below */}
+									<polyline
+										key={key}
+										aria-label={`${label(from)} ↔ ${label(to)}`}
+										aria-pressed={wireKey === key}
+										vectorEffect="non-scaling-stroke"
+										fill="none"
+										onClick={(event) => {
+											event.stopPropagation();
 											selectWire(from, to);
-										}
-									}}
-									points={points}
-									role="button"
-									stroke={verifyColor || color || "#22c55e"}
-									strokeOpacity={hot ? 1 : 0.35}
-									strokeWidth={hot ? 3 : 1.5}
-									style={{ pointerEvents: "stroke", cursor: "pointer" }}
-									tabIndex={0}
-								/>
+										}}
+										onKeyDown={(event) => {
+											if (event.key === "Enter" || event.key === " ") {
+												event.preventDefault();
+												selectWire(from, to);
+											}
+										}}
+										points={points}
+										role="button"
+										stroke="transparent"
+										strokeOpacity={hot ? 1 : 0.35}
+										strokeWidth={16}
+										style={{ pointerEvents: "stroke", cursor: "pointer" }}
+										tabIndex={0}
+									>
+										<title>{`${label(from)} ↔ ${label(to)}`}</title>
+									</polyline>
+								</g>
 							);
 						})}
 					</svg>
 					{diagram.parts
 						.filter((part) => !isBreadboardType(part.type))
 						.map(partNode)}
+					{selected ? (
+						<svg
+							aria-hidden="true"
+							className="pointer-events-none absolute left-0 top-0"
+							width={bounds.width * camera.view.scale}
+							height={bounds.height * camera.view.scale}
+							viewBox={`0 0 ${bounds.width} ${bounds.height}`}
+						>
+							{selected.slice(0, 2).map((endpoint, index) => {
+								const p = point(endpoint as string);
+								return p ? (
+									<g key={endpoint as string}>
+										<circle
+											cx={p.x}
+											cy={p.y}
+											r={5}
+											fill="none"
+											stroke="#111827"
+											strokeWidth={5}
+											vectorEffect="non-scaling-stroke"
+										/>
+										<circle
+											cx={p.x}
+											cy={p.y}
+											r={5}
+											fill="none"
+											stroke="#fff"
+											strokeWidth={2}
+											vectorEffect="non-scaling-stroke"
+										/>
+										<text
+											x={p.x + 8}
+											y={p.y - 8}
+											fontSize={12 / camera.view.scale}
+											fontWeight={700}
+											fill="#fff"
+											stroke="#111827"
+											strokeWidth={3 / camera.view.scale}
+											paintOrder="stroke"
+										>
+											{index === 0 ? "A" : "B"}:{" "}
+											{splitEndpoint(endpoint as string).pin}
+										</text>
+									</g>
+								) : null;
+							})}
+						</svg>
+					) : null}
 				</div>
 			</ZoomSurface>
+			<div
+				ref={connectionPanelRef}
+				style={{
+					flexShrink: 0,
+					maxHeight: expanded || fill ? "30%" : 220,
+					display: "flex",
+					flexDirection: "column",
+					overflowY: "auto",
+					paddingTop: 8,
+				}}
+			>
+				<details style={{ order: 1, flexShrink: 0 }}>
+					<summary style={{ cursor: "pointer", padding: "8px 0" }}>
+						{t("board.connections")} ({diagram.connections.length})
+					</summary>
+					<Typography variant="caption" color="secondary">
+						{t("board.connectionHint")}
+						<br />
+						{t("board.headerMap")}
+					</Typography>
+					{diagram.connections.map(([from, to, color], index) => (
+						<button
+							key={`${from}->${to}`}
+							type="button"
+							aria-pressed={wireKey === `${from}->${to}`}
+							onClick={() => selectWire(from, to)}
+							style={{
+								display: "block",
+								width: "100%",
+								minHeight: 44,
+								textAlign: "left",
+								padding: 8,
+								marginTop: 4,
+								color: "rgb(var(--text-primary))",
+								background:
+									wireKey === `${from}->${to}`
+										? "rgba(var(--text-primary),0.12)"
+										: "transparent",
+								border: "1px solid rgba(var(--text-primary),0.25)",
+								borderRadius: 6,
+								overflowWrap: "anywhere",
+							}}
+						>
+							<span
+								aria-hidden="true"
+								style={{
+									display: "inline-block",
+									width: 12,
+									height: 12,
+									background: color || "#22c55e",
+									border: "1px solid currentColor",
+									marginRight: 8,
+								}}
+							/>
+							{index + 1}. A: {label(from)} ↔ B: {label(to)}
+							{!point(from) || !point(to) ? (
+								<span style={{ display: "block" }}>
+									{t("board.unresolved")} ({!point(from) ? from : to})
+								</span>
+							) : null}
+						</button>
+					))}
+				</details>
+				{selected ? (
+					<div
+						role="status"
+						style={{
+							order: 0,
+							flexShrink: 0,
+							padding: "8px 0",
+							overflowWrap: "anywhere",
+						}}
+					>
+						<div>A: {label(selected[0])}</div>
+						<div>B: {label(selected[1])}</div>
+						<button
+							type="button"
+							onClick={focusConnection}
+							disabled={!point(selected[0]) || !point(selected[1])}
+							style={{ minHeight: 44, padding: 8 }}
+						>
+							{t("board.focusConnection")}
+						</button>
+					</div>
+				) : null}
+			</div>
 			{diagram.steps?.length ? (
 				<div
 					className={
@@ -557,18 +750,25 @@ function ZoomSurface({
 	}, [camera]);
 
 	return (
+		// biome-ignore lint/a11y/useSemanticElements: zoom camera requires the same div ref and pointer target
 		<div
 			aria-label={t("board.canvas")}
 			className={`relative breadboard-canvas min-h-0 touch-none overflow-hidden ${
 				expanded || fill ? "flex-1" : "h-[320px] min-[900px]:h-[520px]"
 			}`}
 			onDoubleClick={() => camera.fit()}
+			onClickCapture={(event) => {
+				if (camera.suppressClick.current) {
+					event.preventDefault();
+					event.stopPropagation();
+				}
+			}}
 			onPointerDown={camera.onPointerDown}
 			onPointerMove={camera.onPointerMove}
 			onPointerUp={camera.onPointerUp}
 			onPointerCancel={camera.onPointerUp}
 			ref={camera.viewportRef}
-			role="application"
+			role="region"
 			style={{ cursor: "grab" }}
 		>
 			<div
@@ -594,8 +794,15 @@ function useZoomCamera(
 	const [view, setView] = useState<Viewport>({ scale: 1, x: 0, y: 0 });
 	const viewRef = useRef(view);
 	viewRef.current = view;
-	const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+	const drag = useRef<{
+		x: number;
+		y: number;
+		startX: number;
+		startY: number;
+		moved: boolean;
+	} | null>(null);
 	const pointers = useRef(new Map<number, { x: number; y: number }>());
+	const suppressClick = useRef(false);
 	const pinch = useRef<{
 		distance: number;
 		view: Viewport;
@@ -637,18 +844,29 @@ function useZoomCamera(
 
 	const onPointerDown = useCallback(
 		(event: ReactPointerEvent<HTMLDivElement>) => {
-			event.currentTarget.setPointerCapture(event.pointerId);
+			suppressClick.current = false;
+			// Preserve taps on child controls; capture only a background drag.
+			if (event.target === event.currentTarget)
+				event.currentTarget.setPointerCapture(event.pointerId);
 			pointers.current.set(event.pointerId, {
 				x: event.clientX,
 				y: event.clientY,
 			});
 			if (pointers.current.size === 1) {
-				drag.current = { x: event.clientX, y: event.clientY, moved: false };
+				drag.current = {
+					x: event.clientX,
+					y: event.clientY,
+					startX: event.clientX,
+					startY: event.clientY,
+					moved: false,
+				};
 				pinch.current = null;
 				event.currentTarget.style.cursor = "grabbing";
 			} else {
 				drag.current = null;
 				const pts = [...pointers.current.values()];
+				if (!pts[0] || !pts[1]) return;
+				suppressClick.current = true;
 				pinch.current = {
 					distance: Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1,
 					view: viewRef.current,
@@ -669,6 +887,7 @@ function useZoomCamera(
 			});
 			if (pointers.current.size === 2 && pinch.current) {
 				const pts = [...pointers.current.values()];
+				if (!pts[0] || !pts[1]) return;
 				const distance =
 					Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y) || 1;
 				const rect = event.currentTarget.getBoundingClientRect();
@@ -690,8 +909,15 @@ function useZoomCamera(
 			}
 			const dx = event.clientX - active.x;
 			const dy = event.clientY - active.y;
-			if (Math.hypot(dx, dy) > 4) {
+			if (
+				Math.hypot(
+					event.clientX - active.startX,
+					event.clientY - active.startY,
+				) > 4
+			) {
 				active.moved = true;
+				suppressClick.current = true;
+				event.currentTarget.setPointerCapture(event.pointerId);
 			}
 			active.x = event.clientX;
 			active.y = event.clientY;
@@ -721,6 +947,7 @@ function useZoomCamera(
 	return useMemo(
 		() => ({
 			viewportRef,
+			suppressClick,
 			view,
 			percent: Math.round(view.scale * 100),
 			fit,
@@ -1083,6 +1310,12 @@ function HeaderSvg({
 			<text x={4} y={10} fill="#94a3b8" fontSize={8}>
 				{hardware === "orangepi" ? "Orange Pi" : "Raspberry Pi"}
 			</text>
+			<path
+				d={`M ${(headerPinOffset("1", pins.length)?.x ?? 48) - 4} 14 l 4 0 l -4 4 Z`}
+				fill="#fbbf24"
+			>
+				<title>{t("board.physicalPin")} 1</title>
+			</path>
 			{pins.map((pin) => {
 				const point = headerPinOffset(String(pin.physical), pins.length);
 				if (!point) {
@@ -1293,6 +1526,7 @@ function endpointPoint(
 	diagram: WokwiDiagram,
 	endpoint: string,
 	pins: Map<string, Point>,
+	boardModel?: string | null,
 ): Point | null {
 	const direct = pins.get(endpoint);
 	if (direct) {
@@ -1303,7 +1537,7 @@ function endpointPoint(
 	if (!part) {
 		return null;
 	}
-	return snapPartPlacement(part, diagram).origin;
+	return resolveBreadboardEndpoint(diagram, endpoint, boardModel);
 }
 
 function partSize(
