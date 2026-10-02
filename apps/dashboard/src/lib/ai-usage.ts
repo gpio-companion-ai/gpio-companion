@@ -3,7 +3,7 @@ import {
 	createDashboardDatabase,
 	type DashboardDatabase,
 } from "./db/client.ts";
-import { aiUsage, type AiUsageKind } from "./db/schema.ts";
+import { type AiUsageKind, aiUsage } from "./db/schema.ts";
 
 export type { AiUsageKind };
 
@@ -43,10 +43,7 @@ export async function recordAiUsage(
 				kind: record.kind,
 				model: record.model.trim() || "unknown",
 				promptTokens: Math.max(0, Math.floor(record.promptTokens ?? 0)),
-				completionTokens: Math.max(
-					0,
-					Math.floor(record.completionTokens ?? 0),
-				),
+				completionTokens: Math.max(0, Math.floor(record.completionTokens ?? 0)),
 				cachedTokens: Math.max(0, Math.floor(record.cachedTokens ?? 0)),
 				audioSeconds:
 					record.audioSeconds == null || !Number.isFinite(record.audioSeconds)
@@ -84,6 +81,8 @@ export type AiUsageByKind = {
 	micros: number;
 	promptTokens: number;
 	completionTokens: number;
+	audioSeconds: number;
+	chars: number;
 };
 
 export type AiUsageByModel = {
@@ -106,6 +105,14 @@ export type AiUsageRecent = {
 	micros: number;
 };
 
+export type AiUsageDaily = {
+	date: string;
+	chat: number;
+	embedding: number;
+	stt: number;
+	tts: number;
+};
+
 export type AiUsageSummary = {
 	days: number;
 	since: string;
@@ -114,6 +121,7 @@ export type AiUsageSummary = {
 	byKind: AiUsageByKind[];
 	byModel: AiUsageByModel[];
 	recent: AiUsageRecent[];
+	daily: AiUsageDaily[];
 };
 
 function toSummaryRow(row: {
@@ -121,7 +129,12 @@ function toSummaryRow(row: {
 	micros?: number | null;
 	promptTokens?: number | null;
 	completionTokens?: number | null;
-}): { calls: number; micros: number; promptTokens: number; completionTokens: number } {
+}): {
+	calls: number;
+	micros: number;
+	promptTokens: number;
+	completionTokens: number;
+} {
 	return {
 		calls: Number(row.calls ?? 0),
 		micros: Number(row.micros ?? 0),
@@ -144,13 +157,17 @@ export async function getAiUsageSummary(
 	const since = usageSinceIso(windowDays, now);
 	const scope = and(eq(aiUsage.userId, id), gte(aiUsage.createdAt, since));
 
-	const [totals, kinds, models, recent] = await Promise.all([
+	const [totals, kinds, models, recent, dayRows] = await Promise.all([
 		db
 			.select({
 				calls: sql<number | null>`count(*)`,
 				micros: sql<number | null>`coalesce(sum(${aiUsage.micros}), 0)`,
-				promptTokens: sql<number | null>`coalesce(sum(${aiUsage.promptTokens}), 0)`,
-				completionTokens: sql<number | null>`coalesce(sum(${aiUsage.completionTokens}), 0)`,
+				promptTokens: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.promptTokens}), 0)`,
+				completionTokens: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.completionTokens}), 0)`,
 			})
 			.from(aiUsage)
 			.where(scope),
@@ -159,8 +176,16 @@ export async function getAiUsageSummary(
 				kind: aiUsage.kind,
 				calls: sql<number | null>`count(*)`,
 				micros: sql<number | null>`coalesce(sum(${aiUsage.micros}), 0)`,
-				promptTokens: sql<number | null>`coalesce(sum(${aiUsage.promptTokens}), 0)`,
-				completionTokens: sql<number | null>`coalesce(sum(${aiUsage.completionTokens}), 0)`,
+				promptTokens: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.promptTokens}), 0)`,
+				completionTokens: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.completionTokens}), 0)`,
+				audioSeconds: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.audioSeconds}), 0)`,
+				chars: sql<number | null>`coalesce(sum(${aiUsage.chars}), 0)`,
 			})
 			.from(aiUsage)
 			.where(scope)
@@ -171,8 +196,12 @@ export async function getAiUsageSummary(
 				kind: aiUsage.kind,
 				calls: sql<number | null>`count(*)`,
 				micros: sql<number | null>`coalesce(sum(${aiUsage.micros}), 0)`,
-				promptTokens: sql<number | null>`coalesce(sum(${aiUsage.promptTokens}), 0)`,
-				completionTokens: sql<number | null>`coalesce(sum(${aiUsage.completionTokens}), 0)`,
+				promptTokens: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.promptTokens}), 0)`,
+				completionTokens: sql<
+					number | null
+				>`coalesce(sum(${aiUsage.completionTokens}), 0)`,
 			})
 			.from(aiUsage)
 			.where(scope)
@@ -193,6 +222,25 @@ export async function getAiUsageSummary(
 			.where(scope)
 			.orderBy(desc(aiUsage.id))
 			.limit(MAX_RECENT_ROWS),
+		db
+			.select({
+				date: sql<string>`substr(${aiUsage.createdAt}, 1, 10)`,
+				chat: sql<
+					number | null
+				>`coalesce(sum(case when ${aiUsage.kind} = 'chat' then ${aiUsage.micros} else 0 end), 0)`,
+				embedding: sql<
+					number | null
+				>`coalesce(sum(case when ${aiUsage.kind} = 'embedding' then ${aiUsage.micros} else 0 end), 0)`,
+				stt: sql<
+					number | null
+				>`coalesce(sum(case when ${aiUsage.kind} = 'stt' then ${aiUsage.micros} else 0 end), 0)`,
+				tts: sql<
+					number | null
+				>`coalesce(sum(case when ${aiUsage.kind} = 'tts' then ${aiUsage.micros} else 0 end), 0)`,
+			})
+			.from(aiUsage)
+			.where(scope)
+			.groupBy(sql`substr(${aiUsage.createdAt}, 1, 10)`),
 	]);
 	const total = toSummaryRow(totals[0] ?? {});
 	return {
@@ -203,6 +251,8 @@ export async function getAiUsageSummary(
 		byKind: kinds.map((row) => ({
 			kind: row.kind as AiUsageKind,
 			...toSummaryRow(row),
+			audioSeconds: Number(row.audioSeconds ?? 0),
+			chars: Number(row.chars ?? 0),
 		})),
 		byModel: models.map((row) => ({
 			model: row.model,
@@ -219,5 +269,50 @@ export async function getAiUsageSummary(
 			chars: row.chars,
 			micros: Number(row.micros ?? 0),
 		})),
+		daily: fillDaily(windowDays, since, now, dayRows),
 	};
+}
+
+function toDayIso(timestamp: number): string {
+	return new Date(timestamp).toISOString().slice(0, 10);
+}
+
+function fillDaily(
+	windowDays: number,
+	since: string,
+	now: number,
+	rows: {
+		date: string;
+		chat: number | null;
+		embedding: number | null;
+		stt: number | null;
+		tts: number | null;
+	}[],
+): AiUsageDaily[] {
+	const byDate = new Map(
+		rows.map((row) => [
+			row.date,
+			{
+				chat: Number(row.chat ?? 0),
+				embedding: Number(row.embedding ?? 0),
+				stt: Number(row.stt ?? 0),
+				tts: Number(row.tts ?? 0),
+			},
+		]),
+	);
+	const startDay = toDayIso(Date.parse(since));
+	const endDay = toDayIso(now);
+	const out: AiUsageDaily[] = [];
+	for (
+		let day = startDay;
+		day <= endDay;
+		day = toDayIso(Date.parse(day) + 86_400_000)
+	) {
+		const entry = byDate.get(day) ?? { chat: 0, embedding: 0, stt: 0, tts: 0 };
+		out.push({ date: day, ...entry });
+		if (out.length > windowDays + 1) {
+			break;
+		}
+	}
+	return out;
 }

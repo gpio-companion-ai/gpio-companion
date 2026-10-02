@@ -1,9 +1,12 @@
+import { boardFileRelative } from "./board-files.ts";
 import { debugAuthQuery } from "./debug.ts";
 import type { DeviceAuthHeaders } from "./device-auth.ts";
+import { parseGithubRepoName } from "./project-files.ts";
 
 export const UI_PATH = "/v1/ui";
 export const UI_REPLY_PREFIX = "/v1/ui/reply/";
 export const UI_MAX_SOCKETS = 8;
+export const UI_PREVIEW_PATH_MAX = 512;
 export const UI_TITLE_MAX = 80;
 export const UI_BODY_MAX = 500;
 export const UI_BUTTON_LABEL_MAX = 40;
@@ -44,12 +47,19 @@ export type UiModalCommand = {
 	buttons: string[];
 };
 
+export type UiPreviewCommand = {
+	type: "preview";
+	repo: string;
+	path: string;
+};
+
 export type UiCommand =
 	| UiNavigateCommand
 	| UiDockCommand
 	| UiPaletteCommand
 	| UiToastCommand
-	| UiModalCommand;
+	| UiModalCommand
+	| UiPreviewCommand;
 
 export const UI_NAVIGATE_TARGETS = [
 	"project",
@@ -177,6 +187,8 @@ export function parseUiCommand(input: unknown): UiCommand {
 			};
 		case "modal":
 			return parseModal(record);
+		case "preview":
+			return parsePreview(record);
 		default:
 			throw new UiError("unknown ui command");
 	}
@@ -278,4 +290,31 @@ function parseModal(record: Record<string, unknown>): UiModalCommand {
 			capText(label, UI_BUTTON_LABEL_MAX, "button"),
 		),
 	};
+}
+
+function parsePreview(record: Record<string, unknown>): UiPreviewCommand {
+	if (typeof record.repo !== "string" || !record.repo.trim()) {
+		throw new UiError("preview repo is required");
+	}
+	let repo: string;
+	try {
+		repo = parseGithubRepoName(record.repo);
+	} catch (error) {
+		throw new UiError(
+			error instanceof Error ? error.message : "preview repo is invalid",
+		);
+	}
+	if (typeof record.path !== "string" || !record.path.trim()) {
+		throw new UiError("preview path is required");
+	}
+	let path: string;
+	try {
+		path = boardFileRelative(record.path.trim());
+	} catch {
+		throw new UiError("preview path is invalid");
+	}
+	if (path.length > UI_PREVIEW_PATH_MAX) {
+		throw new UiError("preview path is too long");
+	}
+	return { type: "preview", repo, path };
 }

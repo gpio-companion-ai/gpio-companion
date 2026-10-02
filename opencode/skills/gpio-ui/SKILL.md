@@ -3,8 +3,8 @@ name: gpio-ui
 description: >-
   Act on the open gpio-companion dashboard app (web, desktop, or mobile):
   always GET /v1/ui first on user-visible tasks; when sockets are non-empty,
-  navigate, open a dock panel, open/close the command palette, toast, and ask
-  a modal question when advantageous. Signed /v1/ui WebSocket channel; the
+  navigate, open a dock panel, open/close the command palette, toast, preview
+  a board file, and ask a modal question when advantageous. Signed /v1/ui WebSocket channel; the
   agent posts unsigned to loopback only. Use after starting, flashing, or
   verifying so the user can watch. Not DeviceHub. Never start sketches, flash,
   unpair, delete, order, or change WiFi through this channel.
@@ -53,6 +53,7 @@ Response: `{ "delivered": 1, "fallback": false }`.
 | `dock` | `{"type":"dock","tab":"console"}` | Open the bottom dock on console, gpio, flash, actions, or problems |
 | `palette` | `{"type":"palette","open":true}` | Open or close the command palette |
 | `toast` | `{"type":"toast","text":"..."}` | Short text (max 160 chars) |
+| `preview` | see below | Open a board file in the Code view |
 | `modal` | see below | Title + body + up to 3 buttons, waits for a click |
 
 Known `navigate` targets (unknown ones are ignored): `project`, `code`,
@@ -63,6 +64,25 @@ for a non-admin. The channel never flips Easy/Expert.
 Caps: title 80, body 500, button label 40, toast 160 characters. No URLs, no
 HTML, no script — plain text only. Up to 8 app sockets; extra ones are
 refused.
+
+## Preview a file
+
+```sh
+curl -s -X POST http://127.0.0.1:4150/v1/ui \
+  -H 'content-type: application/json' \
+  -d '{"type":"preview","repo":"blink-led","path":"host/blink/main.c"}'
+```
+
+- `repo` is the GitHub repo name (the `~/projects/<repo>` checkout).
+- `path` is the board-relative file path (e.g. `host/blink/main.c`,
+  `breadboard/diagram.json`, `pcb/circuit.json`). No `..`, no absolute
+  paths, max 512 chars.
+- The app jumps to the Code view, switches to that repo when it is a known
+  project, and opens the file in the explorer (text, 3D, or Markdown
+  preview). An unknown repo or missing file shows an error note instead.
+- Use it when the user needs to see the file you are working on — after
+  writing a sketch, updating a diagram, or when pointing at a specific file
+  in chat. Do not spam one preview per edit.
 
 ## Modal questions
 
@@ -90,6 +110,7 @@ Open the matching dock so the user can watch hardware you already started:
 - Circuit verify `/v1/verify` → `dock` `problems`.
 - Live GPIO work → `dock` `gpio`.
 - Ask permission with `modal`; confirm small completions with `toast`.
+- Show the file you are working on with `preview` (Code view, repo + path).
 
 This channel **never** starts a sketch, flashes, unpairs, deletes a project,
 orders parts, or changes WiFi. Hardware goes through `POST /v1/run`,

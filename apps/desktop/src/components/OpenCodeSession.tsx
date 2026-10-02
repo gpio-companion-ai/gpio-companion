@@ -412,7 +412,15 @@ export default function OpenCodeSession({
 		textFor: async () => {
 			throw new Error("file is missing");
 		},
+		openPath: async () => {
+			throw new Error("file is missing");
+		},
 	});
+	const previewPending = useRef<{ repo: string; path: string } | null>(null);
+	const repoRef = useRef(repo);
+	repoRef.current = repo;
+	const reposRef = useRef(repos);
+	reposRef.current = repos;
 	const rememberEntries = useCallback(
 		(entries: { type: string; path: string }[]) => {
 			setBoardPaths(
@@ -622,6 +630,64 @@ export default function OpenCodeSession({
 		clearQuestionDraft();
 		leaveChat();
 	}
+
+	function requestPreview(repoName: string, path: string) {
+		if (!repoName || !path) {
+			return;
+		}
+		if (!reposRef.current.some((item) => item.name === repoName)) {
+			setError(t("code.noProjects"));
+			return;
+		}
+		if (repoName !== repoRef.current) {
+			previewPending.current = { repo: repoName, path };
+			selectRepo(repoName);
+			return;
+		}
+		previewPending.current = null;
+		void filesBridge.current.openPath(path).catch(() => undefined);
+	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: shell event wiring mounts once
+	useEffect(() => {
+		function onPreview(event: Event) {
+			const detail = (event as CustomEvent<{ repo?: unknown; path?: unknown }>)
+				.detail;
+			if (
+				!detail ||
+				typeof detail.repo !== "string" ||
+				typeof detail.path !== "string"
+			) {
+				return;
+			}
+			requestPreview(detail.repo, detail.path);
+		}
+		// Sticky request set by the app shell when it navigates to Code first.
+		try {
+			const win = window as unknown as {
+				__gpioUiPreview?: { repo: string; path: string };
+			};
+			const sticky = win.__gpioUiPreview;
+			if (sticky) {
+				win.__gpioUiPreview = undefined;
+				requestPreview(sticky.repo, sticky.path);
+			}
+		} catch {
+			undefined;
+		}
+		window.addEventListener("gpio-ui-preview", onPreview);
+		return () => {
+			window.removeEventListener("gpio-ui-preview", onPreview);
+		};
+	}, []);
+
+	useEffect(() => {
+		const pending = previewPending.current;
+		if (pending && pending.repo === repo) {
+			previewPending.current = null;
+			void filesBridge.current.openPath(pending.path).catch(() => undefined);
+		}
+	}, [repo]);
 
 	function openSession(sessionID: string) {
 		setQuery("");

@@ -13,7 +13,6 @@ import type { ActionResult } from "../lib/action.ts";
 import { deviceDisplayName, type StoredPairing } from "../lib/pairing-store.ts";
 import DeviceCompanionInfo from "./DeviceCompanionInfo.tsx";
 import DeviceLabelField from "./DeviceLabelField.tsx";
-import FlashProxyButton from "./FlashProxyButton.tsx";
 import GpioPanel from "./GpioPanel.tsx";
 
 export type DeviceStatus = {
@@ -63,6 +62,14 @@ export default function DeviceBoardCard({
 					? t("devices.wifiSsid", { ssid: status.network.ssid.trim() })
 					: t("nav.wifi")
 				: "";
+	const isSelected = Boolean(selected) || device.uuid === selectedUuid;
+	const summaryMeta = [
+		status?.model || status?.hardware || device.uuid.slice(0, 8),
+		networkLabel || "",
+		isSelected ? t("devices.selected") : "",
+	]
+		.filter(Boolean)
+		.join(" • ");
 	function toggle() {
 		const next = !open;
 		setOpen(next);
@@ -91,7 +98,7 @@ export default function DeviceBoardCard({
 							{deviceDisplayName(device)}
 						</Typography>
 						<Typography color="secondary" variant="caption" noWrap>
-							{status?.model || status?.hardware || device.uuid.slice(0, 8)}
+							{summaryMeta}
 						</Typography>
 					</span>
 					<span
@@ -178,12 +185,6 @@ export default function DeviceBoardCard({
 									key={device.uuid}
 									uuid={selectedUuid || device.uuid}
 									loadInfo={loadInfo}
-								/>
-							) : null}
-							{live ? (
-								<FlashProxyButton
-									uuid={selectedUuid || device.uuid}
-									connected={online}
 								/>
 							) : null}
 							{isEasy || !live ? null : (

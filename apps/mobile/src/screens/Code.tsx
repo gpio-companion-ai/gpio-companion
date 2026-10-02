@@ -96,6 +96,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	Alert,
 	BackHandler,
+	DeviceEventEmitter,
 	Modal,
 	Pressable,
 	ScrollView,
@@ -105,7 +106,9 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Blocks } from "../components/OcMarkdown.tsx";
-import ProjectFiles from "../components/ProjectFiles.tsx";
+import ProjectFiles, {
+	type CodeFilesBridge,
+} from "../components/ProjectFiles.tsx";
 import {
 	getVoiceSettings,
 	listBoardFiles,
@@ -124,6 +127,7 @@ import { useColors } from "../lib/color-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { useLocale, useT } from "../lib/locale.tsx";
 import { storageGet, storageSet } from "../lib/storage.ts";
+import { takePendingUiPreview } from "../lib/ui-preview.ts";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
@@ -263,6 +267,14 @@ export default function Code() {
 	const [pane, setPane] = useState<"chat" | "files">("chat");
 	const [filesDirty, setFilesDirty] = useState(false);
 	const [filesStale, setFilesStale] = useState(false);
+	const filesBridge = useRef<CodeFilesBridge>({
+		openPath: async () => undefined,
+	});
+	const previewPending = useRef<{ repo: string; path: string } | null>(null);
+	const repoRef = useRef(repo);
+	repoRef.current = repo;
+	const reposRef = useRef(repos);
+	reposRef.current = repos;
 	const transcript = useRef<ScrollView>(null);
 	const prompts = useRef<OpencodePromptEpoch>({
 		epoch: 0,
@@ -477,6 +489,54 @@ export default function Code() {
 		}
 	}
 
+	function requestPreview(repoName: string, path: string) {
+		if (!repoName || !path) {
+			return;
+		}
+		if (!reposRef.current.some((item) => item.name === repoName)) {
+			setError(t("code.noProjects"));
+			return;
+		}
+		setPane("files");
+		if (repoName !== repoRef.current) {
+			previewPending.current = { repo: repoName, path };
+			selectRepo(repoName);
+			return;
+		}
+		previewPending.current = null;
+		void filesBridge.current.openPath(path).catch(() => undefined);
+	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: shell event wiring mounts once
+	useEffect(() => {
+		function onPreview(payload: unknown) {
+			const detail =
+				payload && typeof payload === "object"
+					? (payload as { repo?: unknown; path?: unknown })
+					: undefined;
+			if (
+				!detail ||
+				typeof detail.repo !== "string" ||
+				typeof detail.path !== "string"
+			) {
+				return;
+			}
+			requestPreview(detail.repo, detail.path);
+		}
+		// Sticky request set by the app shell when it navigates to Code first.
+		const sticky = takePendingUiPreview();
+		if (sticky) {
+			requestPreview(sticky.repo, sticky.path);
+		}
+		const subscription = DeviceEventEmitter.addListener(
+			"gpio-ui-preview",
+			onPreview,
+		);
+		return () => {
+			subscription.remove();
+		};
+	}, []);
+
 	const boardRef = useRef(selected);
 	useEffect(() => {
 		if (boardRef.current === selected) {
@@ -486,6 +546,14 @@ export default function Code() {
 		setMode("home");
 		replaceCodeNav({ mode: "home", sessionID: "" });
 	}, [selected]);
+
+	useEffect(() => {
+		const pending = previewPending.current;
+		if (pending && pending.repo === repo && pane === "files") {
+			previewPending.current = null;
+			void filesBridge.current.openPath(pending.path).catch(() => undefined);
+		}
+	}, [repo, pane]);
 
 	const leaveRef = useRef(leaveChat);
 	leaveRef.current = leaveChat;
@@ -2214,6 +2282,7 @@ export default function Code() {
 						uuid={selected}
 						owner={owner}
 						name={repo}
+						bridge={filesBridge}
 						onFileStateChange={({ dirty, stale }) => {
 							setFilesDirty(dirty);
 							setFilesStale(stale);

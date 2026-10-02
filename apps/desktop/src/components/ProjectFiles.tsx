@@ -58,6 +58,7 @@ import { MarkdownView } from "./OcMarkdown";
 
 export type CodeFilesBridge = {
 	textFor: (path: string) => Promise<string>;
+	openPath: (path: string) => Promise<void>;
 };
 
 type FileMenu = {
@@ -566,6 +567,7 @@ export default function ProjectFiles({
 
 	if (bridge) {
 		bridge.current.textFor = textFor;
+		bridge.current.openPath = (path: string) => openPathRef.current(path);
 	}
 
 	async function addToContext(path: string) {

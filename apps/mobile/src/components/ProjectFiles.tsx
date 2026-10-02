@@ -71,6 +71,7 @@ type Props = {
 	uuid: string;
 	owner: string;
 	name: string;
+	bridge?: { current: CodeFilesBridge };
 	onFileStateChange?: (state: { dirty: boolean; stale: boolean }) => void;
 	onEntries?: (entries: BoardFileEntry[]) => void;
 	onAddContext?: (path: string, text: string) => void;
@@ -91,11 +92,16 @@ type SketchAction = {
 	running: boolean;
 };
 
+export type CodeFilesBridge = {
+	openPath: (path: string) => Promise<void>;
+};
+
 export default function ProjectFiles({
 	token,
 	uuid,
 	owner,
 	name,
+	bridge,
 	onFileStateChange,
 	onEntries,
 	onAddContext,
@@ -362,6 +368,9 @@ export default function ProjectFiles({
 		await doOpen(path);
 	}
 	openPathRef.current = openPath;
+	if (bridge) {
+		bridge.current.openPath = (path: string) => openPathRef.current(path);
+	}
 
 	function reloadStale() {
 		const current = fileRef.current;

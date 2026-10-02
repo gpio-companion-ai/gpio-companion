@@ -13,6 +13,7 @@ import {
 	UI_MAX_SOCKETS,
 	UI_NAVIGATE_TARGETS,
 	UI_PATH,
+	UI_PREVIEW_PATH_MAX,
 	UI_REPLY_PREFIX,
 	UI_TITLE_MAX,
 	UI_TOAST_MAX,
@@ -98,6 +99,17 @@ describe("parseUiCommand", () => {
 			body: "B",
 			buttons: ["Yes", "No"],
 		});
+		expect(
+			parseUiCommand({
+				type: "preview",
+				repo: "blink-led",
+				path: "host/blink/main.c",
+			}),
+		).toEqual({
+			type: "preview",
+			repo: "blink-led",
+			path: "host/blink/main.c",
+		});
 	});
 
 	test("rejects unknown shapes", () => {
@@ -116,6 +128,28 @@ describe("parseUiCommand", () => {
 		expect(() => parseUiCommand({ type: "toast", text: "" })).toThrow(
 			"toast text",
 		);
+		expect(() =>
+			parseUiCommand({ type: "preview", repo: "", path: "a.c" }),
+		).toThrow("preview repo");
+		expect(() =>
+			parseUiCommand({ type: "preview", repo: "blink-led", path: "" }),
+		).toThrow("preview path");
+		expect(() =>
+			parseUiCommand({ type: "preview", repo: "blink-led", path: "../x" }),
+		).toThrow("preview path");
+		expect(
+			parseUiCommand({ type: "preview", repo: "blink-led", path: "/abs" }),
+		).toEqual({ type: "preview", repo: "blink-led", path: "abs" });
+		expect(() =>
+			parseUiCommand({ type: "preview", repo: "..", path: "a.c" }),
+		).toThrow();
+		expect(() =>
+			parseUiCommand({
+				type: "preview",
+				repo: "blink-led",
+				path: `a/${"x".repeat(UI_PREVIEW_PATH_MAX)}`,
+			}),
+		).toThrow("too long");
 	});
 
 	test("caps text lengths", () => {

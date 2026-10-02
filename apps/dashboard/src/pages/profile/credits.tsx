@@ -1,10 +1,10 @@
 import { GET as getCredits, POST as grantCredits } from "@api/credits";
-import { GET as getUsage } from "@api/credits/usage";
 import {
 	PUT as capturePaypalOrder,
 	POST as createPaypalOrder,
 	GET as getPaypalConfig,
 } from "@api/credits/paypal";
+import { GET as getUsage } from "@api/credits/usage";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
@@ -21,21 +21,22 @@ import Table, {
 import Typography from "@shpaw415/mui-lite/Typography";
 import { translateError } from "gpio-companion/i18n";
 import { useEffect, useRef, useState } from "react";
+import UsageCharts from "../../components/UsageCharts.tsx";
 import { useAuthSession } from "../../hooks/useAuth.ts";
 import { useColorMode } from "../../hooks/useColorMode.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
 import { unwrapAction } from "../../lib/action.ts";
+import {
+	type AiUsageKind,
+	type AiUsageSummary,
+	USAGE_DAY_OPTIONS,
+} from "../../lib/ai-usage.ts";
 import { isAdmin } from "../../lib/auth/role.ts";
 import {
 	CREDIT_PACKS_USD,
 	type CreditPackUsd,
 } from "../../lib/credit-packs.ts";
 import { formatUsd } from "../../lib/credits.ts";
-import {
-	USAGE_DAY_OPTIONS,
-	type AiUsageKind,
-	type AiUsageSummary,
-} from "../../lib/ai-usage.ts";
 import { loadPaypalSdk, paypalButtonsStyle } from "../../lib/paypal-sdk.ts";
 
 type PaypalConfig = {
@@ -211,14 +212,14 @@ export default function CreditsPage() {
 									});
 							}}
 						>
-						{t("credits.adminStub")}
-					</Button>
-				) : null}
-				{status ? <Alert severity="success">{status}</Alert> : null}
-				{error ? <Alert severity="error">{error}</Alert> : null}
-			</Stack>
-		</Paper>
-		<UsageSection userId={session.data?.id} />
+							{t("credits.adminStub")}
+						</Button>
+					) : null}
+					{status ? <Alert severity="success">{status}</Alert> : null}
+					{error ? <Alert severity="error">{error}</Alert> : null}
+				</Stack>
+			</Paper>
+			<UsageSection userId={session.data?.id} />
 		</Stack>
 	);
 }
@@ -231,7 +232,6 @@ function kindLabel(t: ReturnType<typeof useT>, kind: AiUsageKind): string {
 			return t("credits.usageKindStt");
 		case "tts":
 			return t("credits.usageKindTts");
-		case "chat":
 		default:
 			return t("credits.usageKindChat");
 	}
@@ -247,8 +247,7 @@ function usageDetail(
 	},
 ): string {
 	if (kind === "stt") {
-		const minutes =
-			row.audioSeconds == null ? 0 : row.audioSeconds / 60;
+		const minutes = row.audioSeconds == null ? 0 : row.audioSeconds / 60;
 		return `${minutes.toFixed(2)} min`;
 	}
 	if (kind === "tts") {
@@ -262,6 +261,7 @@ function usageDetail(
 
 function UsageSection({ userId }: { userId: string | undefined }) {
 	const t = useT();
+	const { isDark } = useColorMode();
 	const [days, setDays] = useState<number>(30);
 	const [usage, setUsage] = useState<AiUsageSummary | null>(null);
 	const [loading, setLoading] = useState(true);
@@ -342,41 +342,7 @@ function UsageSection({ userId }: { userId: string | undefined }) {
 						<Typography variant="subtitle1">
 							{t("credits.usageByModel")}
 						</Typography>
-						<TableContainer>
-							<Table size="small">
-								<TableHead>
-									<TableRow>
-										<TableCell>{t("credits.usageModel")}</TableCell>
-										<TableCell>{t("credits.usageInput")}</TableCell>
-										<TableCell>{t("credits.usageOutput")}</TableCell>
-										<TableCell>{t("credits.usageCost")}</TableCell>
-									</TableRow>
-								</TableHead>
-								<TableBody>
-									{usage.byModel.map((entry) => (
-										<TableRow key={`${entry.kind}:${entry.model}`}>
-											<TableCell>
-												<span className="break-all">{entry.model}</span>{" "}
-												<span className="opacity-70">
-													({kindLabel(t, entry.kind)} · {entry.calls})
-												</span>
-											</TableCell>
-											<TableCell>
-												{entry.kind === "tts"
-													? "—"
-													: entry.promptTokens.toLocaleString()}
-											</TableCell>
-											<TableCell>
-												{entry.kind === "chat"
-													? entry.completionTokens.toLocaleString()
-													: "—"}
-											</TableCell>
-											<TableCell>{formatUsd(entry.micros)}</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</TableContainer>
+						<UsageCharts summary={usage} dark={isDark} />
 						<Typography variant="subtitle1">
 							{t("credits.usageRecent")}
 						</Typography>
@@ -390,8 +356,10 @@ function UsageSection({ userId }: { userId: string | undefined }) {
 									</TableRow>
 								</TableHead>
 								<TableBody>
-									{usage.recent.map((entry, index) => (
-										<TableRow key={`${entry.createdAt}:${index}`}>
+									{usage.recent.map((entry) => (
+										<TableRow
+											key={`${entry.createdAt}:${entry.kind}:${entry.model}:${entry.micros}`}
+										>
 											<TableCell>
 												{new Date(entry.createdAt).toLocaleString()}
 											</TableCell>

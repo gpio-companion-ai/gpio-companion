@@ -928,6 +928,9 @@ export const en = {
 		usageWhen: "When",
 		usageDetail: "Detail",
 		usageView: "View usage",
+		usageDaily: "Daily spend",
+		usageLeaderboard: "Cost per model",
+		usageVoice: "Voice",
 	},
 	github: {
 		title: "GitHub",

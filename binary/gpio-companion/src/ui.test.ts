@@ -119,6 +119,30 @@ describe("ui hub", () => {
 		const hub = createUiHub();
 		expect(() => hub.command({ type: "flash" })).toThrow(UiError);
 		expect(() => hub.command({ type: "toast", text: "" })).toThrow(UiError);
+		expect(() =>
+			hub.command({ type: "preview", repo: "blink-led", path: "../x" }),
+		).toThrow(UiError);
+	});
+
+	test("delivers preview to focused sockets", () => {
+		const hub = createUiHub();
+		const web = fakeSocket();
+		hub.add(web);
+		hub.handle(
+			web,
+			JSON.stringify({ op: "hello", surface: "web", focused: true }),
+		);
+		const result = hub.command({
+			type: "preview",
+			repo: "blink-led",
+			path: "host/blink/main.c",
+		});
+		expect(result).toEqual({ delivered: 1, fallback: false });
+		expect(JSON.parse(web.sent[0])).toEqual({
+			type: "preview",
+			repo: "blink-led",
+			path: "host/blink/main.c",
+		});
 	});
 
 	test("hello re-focus updates delivery", () => {

@@ -201,6 +201,23 @@ export type CreditsUsageSummary = {
 		micros: number;
 		promptTokens: number;
 		completionTokens: number;
+		audioSeconds: number;
+		chars: number;
+	}[];
+	byModel: {
+		model: string;
+		kind: CreditsUsageKind;
+		calls: number;
+		micros: number;
+		promptTokens: number;
+		completionTokens: number;
+	}[];
+	daily: {
+		date: string;
+		chat: number;
+		embedding: number;
+		stt: number;
+		tts: number;
 	}[];
 };
 

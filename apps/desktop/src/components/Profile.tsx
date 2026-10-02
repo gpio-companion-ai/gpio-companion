@@ -12,10 +12,10 @@ import {
 	getCreditsUsage,
 	listDeviceStatus,
 	openExternal,
-	type CreditsUsageKind,
 	type Session,
 	submitBugReport,
 } from "../api";
+import { useColorMode } from "../color-mode";
 import { CACHE_KEYS, useCachedQuery } from "../hooks/useApiCache";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useT } from "../locale";
@@ -25,6 +25,7 @@ import Keys from "./Keys";
 import LanguageCard from "./LanguageCard";
 import { consumeProfileJump } from "./PartsSearchPanel";
 import { LinesSkeleton } from "./skeletons";
+import UsageCharts from "./UsageCharts.tsx";
 import VoiceCard from "./VoiceCard";
 
 export default function Profile({
@@ -38,6 +39,7 @@ export default function Profile({
 	const credits = creditsQuery.data ?? null;
 	const usageQuery = useCachedQuery(CACHE_KEYS.creditsUsage, getCreditsUsage);
 	const usage = usageQuery.data ?? null;
+	const { isDark } = useColorMode();
 	const t = useT();
 	const [error, setError] = useState("");
 	const loading = creditsQuery.loading;
@@ -91,122 +93,100 @@ export default function Profile({
 			<div id="profile-keys">
 				<Keys />
 			</div>
-		<Paper id="profile-credits" sx={{ p: 1.5 }} elevation={1}>
-			<Stack spacing={1}>
-				<Stack
-					direction="row"
-					spacing={1}
-					sx={{
-						alignItems: "center",
-						justifyContent: "space-between",
-						flexWrap: "wrap",
-					}}
-				>
-					<Stack spacing={0.25}>
-						<Typography variant="subtitle1">{t("credits.title")}</Typography>
-						{loading ? (
-							<LinesSkeleton lines={1} />
-						) : (
-							<Typography color="secondary">
-								{credits
-									? t("credits.balance", {
-											usd: credits.usd.toFixed(2),
-											micros: credits.micros,
-										})
-									: t("credits.noCredits")}
-							</Typography>
-						)}
+			<Paper id="profile-credits" sx={{ p: 1.5 }} elevation={1}>
+				<Stack spacing={1}>
+					<Stack
+						direction="row"
+						spacing={1}
+						sx={{
+							alignItems: "center",
+							justifyContent: "space-between",
+							flexWrap: "wrap",
+						}}
+					>
+						<Stack spacing={0.25}>
+							<Typography variant="subtitle1">{t("credits.title")}</Typography>
+							{loading ? (
+								<LinesSkeleton lines={1} />
+							) : (
+								<Typography color="secondary">
+									{credits
+										? t("credits.balance", {
+												usd: credits.usd.toFixed(2),
+												micros: credits.micros,
+											})
+										: t("credits.noCredits")}
+								</Typography>
+							)}
+						</Stack>
+						<Button
+							variant="contained"
+							size="small"
+							onClick={() => {
+								setError("");
+								void openExternal(`${DASHBOARD_URL}/profile/credits`).catch(
+									(caught) => {
+										setError(
+											caught instanceof Error
+												? caught.message
+												: t("errors.couldNotOpenCredits"),
+										);
+									},
+								);
+							}}
+						>
+							{t("credits.add")}
+						</Button>
 					</Stack>
-					<Button
-						variant="contained"
-						size="small"
-						onClick={() => {
-							setError("");
-							void openExternal(`${DASHBOARD_URL}/profile/credits`).catch(
-								(caught) => {
+					<Stack
+						direction="row"
+						spacing={1}
+						sx={{
+							alignItems: "center",
+							justifyContent: "space-between",
+							flexWrap: "wrap",
+						}}
+					>
+						<Stack spacing={0.25}>
+							<Typography variant="subtitle1">
+								{t("credits.usageTitle")}
+							</Typography>
+							{usageQuery.loading ? (
+								<LinesSkeleton lines={1} />
+							) : usage && usage.calls > 0 ? (
+								<UsageCharts summary={usage} dark={isDark} />
+							) : (
+								<Typography color="secondary">
+									{t("credits.usageEmpty")}
+								</Typography>
+							)}
+						</Stack>
+						<Button
+							variant="text"
+							color="secondary"
+							size="small"
+							onClick={() => {
+								setError("");
+								void openExternal(
+									`${DASHBOARD_URL}/profile/credits#usage`,
+								).catch((caught) => {
 									setError(
 										caught instanceof Error
 											? caught.message
 											: t("errors.couldNotOpenCredits"),
 									);
-								},
-							);
-						}}
-					>
-						{t("credits.add")}
-					</Button>
-				</Stack>
-				<Stack
-					direction="row"
-					spacing={1}
-					sx={{
-						alignItems: "center",
-						justifyContent: "space-between",
-						flexWrap: "wrap",
-					}}
-				>
-					<Stack spacing={0.25}>
-						<Typography variant="subtitle1">
-							{t("credits.usageTitle")}
-						</Typography>
-						{usageQuery.loading ? (
-							<LinesSkeleton lines={1} />
-						) : (
-							<Typography color="secondary">
-								{usage && usage.calls > 0
-									? `${t("credits.usageSpent")}: $${(usage.micros / 1_000_000).toFixed(4)} · ${t("credits.usageCalls", { count: usage.calls })} · ${usage.byKind
-											.map(
-												(entry) =>
-													`${usageKindLabel(t, entry.kind)} $${(entry.micros / 1_000_000).toFixed(4)}`,
-											)
-											.join(" · ")}`
-									: t("credits.usageEmpty")}
-							</Typography>
-						)}
+								});
+							}}
+						>
+							{t("credits.usageView")}
+						</Button>
 					</Stack>
-					<Button
-						variant="text"
-						color="secondary"
-						size="small"
-						onClick={() => {
-							setError("");
-							void openExternal(
-								`${DASHBOARD_URL}/profile/credits#usage`,
-							).catch((caught) => {
-								setError(
-									caught instanceof Error
-										? caught.message
-										: t("errors.couldNotOpenCredits"),
-								);
-							});
-						}}
-					>
-						{t("credits.usageView")}
-					</Button>
 				</Stack>
-			</Stack>
-		</Paper>
+			</Paper>
 			<AddressForm />
 			<BugReportForm />
 		</Stack>
 	);
-}
-
-function usageKindLabel(
-	t: ReturnType<typeof useT>,
-	kind: CreditsUsageKind,
-): string {
-	switch (kind) {
-		case "embedding":
-			return t("credits.usageKindEmbedding");
-		case "stt":
-			return t("credits.usageKindStt");
-		case "tts":
-			return t("credits.usageKindTts");
-		case "chat":
-		default:
-			return t("credits.usageKindChat");
-	}
 }
 
 function BugReportForm() {

@@ -242,6 +242,23 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				case "modal":
 					setUiModal(command);
 					return;
+				case "preview": {
+					navigate(UI_NAVIGATE_HREF.code);
+					const detail = { repo: command.repo, path: command.path };
+					try {
+						(
+							window as unknown as {
+								__gpioUiPreview?: typeof detail;
+							}
+						).__gpioUiPreview = detail;
+						window.dispatchEvent(
+							new CustomEvent("gpio-ui-preview", { detail }),
+						);
+					} catch {
+						undefined;
+					}
+					return;
+				}
 			}
 		},
 	});

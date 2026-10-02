@@ -935,7 +935,8 @@ export const fr = {
 		usageSpent: "Dépensé sur la période",
 		usageCalls: "{count} appels",
 		usageEmpty: "Aucune utilisation sur cette période.",
-		usageUnavailable: "L’historique d’utilisation n’est pas disponible sur cet hôte.",
+		usageUnavailable:
+			"L’historique d’utilisation n’est pas disponible sur cet hôte.",
 		usageKindChat: "Texte",
 		usageKindEmbedding: "Embeddings",
 		usageKindStt: "Transcription",
@@ -949,6 +950,9 @@ export const fr = {
 		usageWhen: "Quand",
 		usageDetail: "Détail",
 		usageView: "Voir l’utilisation",
+		usageDaily: "Dépenses quotidiennes",
+		usageLeaderboard: "Coût par modèle",
+		usageVoice: "Voix",
 	},
 	github: {
 		title: "GitHub",

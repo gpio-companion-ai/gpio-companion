@@ -48,6 +48,10 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/jlcpcb-parts.ts",
 			),
+			"gpio-companion-usage": path.resolve(
+				repoRoot,
+				"packages/core/src/usage-charts.ts",
+			),
 		},
 	},
 	clearScreen: false,

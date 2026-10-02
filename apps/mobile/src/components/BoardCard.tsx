@@ -13,7 +13,6 @@ import { useDashboardMode } from "../lib/dashboard-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { useT } from "../lib/locale.tsx";
 import CompanionInfo from "./CompanionInfo.tsx";
-import FlashProxyButton from "./FlashProxyButton.tsx";
 import GpioPanel from "./GpioPanel.tsx";
 import { Chip, Field, Paper, PrimaryButton, Row, TextButton } from "./ui.tsx";
 
@@ -49,6 +48,13 @@ export default function BoardCard({
 	const [saving, setSaving] = useState(false);
 	const [open, setOpen] = useState(false);
 	const expanded = open;
+	const summaryMeta = [
+		status?.model || status?.hardware || device.uuid.slice(0, 8),
+		networkLabel || "",
+		selected ? t("devices.selected") : "",
+	]
+		.filter(Boolean)
+		.join(" • ");
 
 	async function saveLabel() {
 		if (!auth.token) {
@@ -104,7 +110,7 @@ export default function BoardCard({
 						{deviceDisplayName(device)}
 					</Text>
 					<Text style={{ color: colors.muted, fontSize: 12 }} numberOfLines={1}>
-						{status?.model || status?.hardware || device.uuid.slice(0, 8)}
+						{summaryMeta}
 					</Text>
 				</View>
 				<View
@@ -185,9 +191,6 @@ export default function BoardCard({
 					{isEasy ? null : (
 						<CompanionInfo key={device.uuid} uuid={device.uuid} />
 					)}
-					{selected ? (
-						<FlashProxyButton uuid={device.uuid} connected={online} />
-					) : null}
 					{isEasy || !selected ? null : (
 						<GpioPanel
 							key={`${device.uuid}-gpio`}

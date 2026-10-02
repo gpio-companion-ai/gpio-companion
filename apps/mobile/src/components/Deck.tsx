@@ -59,6 +59,7 @@ import {
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { translateError, useT } from "../lib/locale.tsx";
 import { storageGet, storageSet } from "../lib/storage.ts";
+import { setPendingUiPreview } from "../lib/ui-preview.ts";
 import { useConsoleTunnel } from "../lib/use-console-tunnel.ts";
 import { useDeviceHub as useLiveHub } from "../lib/use-device-hub.ts";
 import { useGpioTunnel } from "../lib/use-gpio-tunnel.ts";
@@ -253,6 +254,14 @@ function DeckFrame({ children }: { children: ReactNode }) {
 				case "modal":
 					setUiModal(command);
 					return;
+				case "preview": {
+					setTab("code");
+					navigate("/");
+					const detail = { repo: command.repo, path: command.path };
+					setPendingUiPreview(detail);
+					DeviceEventEmitter.emit("gpio-ui-preview", detail);
+					return;
+				}
 			}
 		},
 	});

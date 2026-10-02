@@ -23,7 +23,6 @@ import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useDashboardMode } from "../hooks/useDashboardMode";
 import { useT } from "../locale";
 import CompanionInfo from "./CompanionInfo";
-import FlashProxyButton from "./FlashProxyButton";
 import GpioPanel from "./GpioPanel";
 
 function MemoryIcon() {
@@ -67,6 +66,13 @@ export default function BoardCard({
 	const { device, status } = board;
 	const online = Boolean(status);
 	const networkLabel = formatNetworkLabel(status?.network, t);
+	const summaryMeta = [
+		status?.model || status?.hardware || device.uuid.slice(0, 8),
+		networkLabel || "",
+		selected ? t("devices.selected") : "",
+	]
+		.filter(Boolean)
+		.join(" • ");
 	const [label, setLabel] = useState(device.label ?? "");
 	const [saving, setSaving] = useState(false);
 	const [open, setOpen] = useState(false);
@@ -111,7 +117,7 @@ export default function BoardCard({
 							{deviceDisplayName(device)}
 						</Typography>
 						<Typography color="secondary" variant="caption" noWrap>
-							{status?.model || status?.hardware || device.uuid.slice(0, 8)}
+							{summaryMeta}
 						</Typography>
 					</span>
 					<span
@@ -214,9 +220,6 @@ export default function BoardCard({
 							{isEasy ? null : (
 								<CompanionInfo key={device.uuid} uuid={device.uuid} />
 							)}
-							{selected ? (
-								<FlashProxyButton uuid={device.uuid} connected={online} />
-							) : null}
 							{isEasy || !selected ? null : (
 								<GpioPanel
 									key={`${device.uuid}-gpio`}

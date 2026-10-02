@@ -17,7 +17,12 @@ import { aiUsage } from "./db/schema.ts";
 function memoryDb(): DashboardDatabase {
 	const sqlite = new Database(":memory:");
 	sqlite.exec("PRAGMA foreign_keys = ON");
-	const dir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "drizzle");
+	const dir = join(
+		dirname(fileURLToPath(import.meta.url)),
+		"..",
+		"..",
+		"drizzle",
+	);
 	for (const file of readdirSync(dir)
 		.filter((name) => name.endsWith(".sql"))
 		.sort()) {
@@ -111,6 +116,8 @@ describe("ai usage history", () => {
 			promptTokens: 300,
 			completionTokens: 70,
 		});
+		const stt = summary.byKind.find((entry) => entry.kind === "stt");
+		expect(stt).toMatchObject({ calls: 1, micros: 5, audioSeconds: 30 });
 		const models = summary.byModel.map((entry) => entry.model);
 		expect(models).toEqual([
 			"@cf/zai-org/glm-5.3",
@@ -118,9 +125,13 @@ describe("ai usage history", () => {
 		]);
 		expect(summary.recent).toHaveLength(3);
 		expect(summary.recent[0]?.kind).toBe("stt");
-		expect(summary.recent[0]?.model).toBe(
-			"@cf/openai/whisper-large-v3-turbo",
-		);
+		expect(summary.recent[0]?.model).toBe("@cf/openai/whisper-large-v3-turbo");
+		const oct2 = summary.daily.find((row) => row.date === "2026-10-02");
+		expect(oct2).toMatchObject({ chat: 180, stt: 0, embedding: 0, tts: 0 });
+		const oct1 = summary.daily.find((row) => row.date === "2026-10-01");
+		expect(oct1).toMatchObject({ chat: 0, stt: 5, embedding: 0, tts: 0 });
+		expect(summary.daily[0]?.date).toBe("2026-09-02");
+		expect(summary.daily[summary.daily.length - 1]?.date).toBe("2026-10-02");
 
 		const week = await getAiUsageSummary(db, "user-1", 7, now);
 		expect(week.calls).toBe(3);

@@ -177,6 +177,24 @@ export default function DeckShell({
 				case "modal":
 					setUiModal(command);
 					return;
+				case "preview": {
+					onNavigate("devices");
+					onDeviceTab("code");
+					const detail = { repo: command.repo, path: command.path };
+					try {
+						(
+							window as unknown as {
+								__gpioUiPreview?: typeof detail;
+							}
+						).__gpioUiPreview = detail;
+						window.dispatchEvent(
+							new CustomEvent("gpio-ui-preview", { detail }),
+						);
+					} catch {
+						undefined;
+					}
+					return;
+				}
 			}
 		},
 	});
