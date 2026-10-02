@@ -42,6 +42,10 @@ export default function AdminProductsPage() {
 	const [descriptionEn, setDescriptionEn] = useState("");
 	const [descriptionFr, setDescriptionFr] = useState("");
 	const [price, setPrice] = useState("");
+	const [weight, setWeight] = useState("");
+	const [lengthCm, setLengthCm] = useState("");
+	const [widthCm, setWidthCm] = useState("");
+	const [heightCm, setHeightCm] = useState("");
 	const [statusFilter, setStatusFilter] = useState("all");
 	const [saving, setSaving] = useState(false);
 	const [images, setImages] = useState<ProductImage[]>([]);
@@ -81,6 +85,10 @@ export default function AdminProductsPage() {
 		setDescriptionEn(item.descriptionEn);
 		setDescriptionFr(item.descriptionFr);
 		setPrice(item.priceCents === null ? "" : String(item.priceCents));
+		setWeight(item.weightGrams === null || item.weightGrams === undefined ? "" : String(item.weightGrams));
+		setLengthCm(item.lengthCm === null || item.lengthCm === undefined ? "" : String(item.lengthCm));
+		setWidthCm(item.widthCm === null || item.widthCm === undefined ? "" : String(item.widthCm));
+		setHeightCm(item.heightCm === null || item.heightCm === undefined ? "" : String(item.heightCm));
 		setError(null);
 		void loadImages(item.id);
 	}
@@ -108,6 +116,8 @@ export default function AdminProductsPage() {
 	function draftInput() {
 		if (!selected) throw new Error("No product selected");
 		const priceCents = price.trim() === "" ? null : Number.parseInt(price, 10);
+		const parseOptional = (value: string) =>
+			value.trim() === "" ? null : Number.parseInt(value, 10);
 		return {
 			slug: selected.slug,
 			sku: selected.sku,
@@ -116,6 +126,10 @@ export default function AdminProductsPage() {
 			descriptionEn: descriptionEn.trim(),
 			descriptionFr: descriptionFr.trim(),
 			priceCents,
+			weightGrams: parseOptional(weight),
+			lengthCm: parseOptional(lengthCm),
+			widthCm: parseOptional(widthCm),
+			heightCm: parseOptional(heightCm),
 		};
 	}
 
@@ -124,6 +138,7 @@ export default function AdminProductsPage() {
 	);
 	const visible = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 	const priceNumber = Number.parseInt(price, 10);
+	const weightNumber = weight.trim() === "" ? null : Number.parseInt(weight, 10);
 	const gates = selected
 		? validateProductPublication({
 				slug: selected.slug,
@@ -133,6 +148,12 @@ export default function AdminProductsPage() {
 				descriptionEn,
 				descriptionFr,
 				priceCents: price.trim() === "" ? null : priceNumber,
+				weightGrams: weightNumber,
+				dimensionsConfigured: Boolean(
+					Number.parseInt(lengthCm, 10) > 0 &&
+						Number.parseInt(widthCm, 10) > 0 &&
+						Number.parseInt(heightCm, 10) > 0,
+				),
 				imageCount: images.length,
 				inventoryConfigured: true,
 			})
@@ -204,6 +225,32 @@ export default function AdminProductsPage() {
 						label={t("admin.skuSlug")}
 						value={selected ? `${selected.sku} / ${selected.slug}` : ""}
 						disabled
+					/>
+				</div>
+				<div className="market-form-row">
+					<TextField
+						label={t("admin.weightGrams")}
+						placeholder="850"
+						value={weight}
+						onChange={(event) => setWeight(event.target.value)}
+					/>
+					<TextField
+						label="L (cm)"
+						placeholder="30"
+						value={lengthCm}
+						onChange={(event) => setLengthCm(event.target.value)}
+					/>
+					<TextField
+						label="W (cm)"
+						placeholder="20"
+						value={widthCm}
+						onChange={(event) => setWidthCm(event.target.value)}
+					/>
+					<TextField
+						label="H (cm)"
+						placeholder="10"
+						value={heightCm}
+						onChange={(event) => setHeightCm(event.target.value)}
 					/>
 				</div>
 				<Typography variant="subtitle2">

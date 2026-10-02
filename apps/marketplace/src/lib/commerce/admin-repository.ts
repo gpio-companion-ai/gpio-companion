@@ -25,6 +25,10 @@ export interface ProductDraftInput {
 	descriptionEn: string;
 	descriptionFr: string;
 	priceCents: number | null;
+	weightGrams?: number | null;
+	lengthCm?: number | null;
+	widthCm?: number | null;
+	heightCm?: number | null;
 }
 
 export interface ProductImageInput {
@@ -56,8 +60,22 @@ function assertCents(value: number | null, nullable = false): void {
 	}
 }
 
+function assertPositiveAmount(
+	value: number | null | undefined,
+	label: string,
+): void {
+	if (value === null || value === undefined) return;
+	if (!Number.isSafeInteger(value) || value <= 0) {
+		throw new Error(`${label} must be a positive integer`);
+	}
+}
+
 function normalizeProductInput(input: ProductDraftInput): ProductDraftInput {
 	assertCents(input.priceCents, true);
+	assertPositiveAmount(input.weightGrams, "Shipping weight");
+	assertPositiveAmount(input.lengthCm, "Package length");
+	assertPositiveAmount(input.widthCm, "Package width");
+	assertPositiveAmount(input.heightCm, "Package height");
 	return {
 		slug: input.slug.trim().toLowerCase(),
 		sku: input.sku.trim().toUpperCase(),
@@ -66,7 +84,19 @@ function normalizeProductInput(input: ProductDraftInput): ProductDraftInput {
 		descriptionEn: input.descriptionEn.trim(),
 		descriptionFr: input.descriptionFr.trim(),
 		priceCents: input.priceCents,
+		weightGrams: input.weightGrams ?? null,
+		lengthCm: input.lengthCm ?? null,
+		widthCm: input.widthCm ?? null,
+		heightCm: input.heightCm ?? null,
 	};
+}
+
+function dimensionsConfigured(values: {
+	lengthCm?: number | null;
+	widthCm?: number | null;
+	heightCm?: number | null;
+}): boolean {
+	return Boolean(values.lengthCm && values.widthCm && values.heightCm);
 }
 
 export async function listAdminProducts(db: CommerceDatabase) {
@@ -132,6 +162,8 @@ export async function updateProduct(
 		]);
 		const errors = validateProductPublication({
 			...values,
+			weightGrams: values.weightGrams ?? null,
+			dimensionsConfigured: dimensionsConfigured(values),
 			imageCount: imageResult?.value ?? 0,
 			inventoryConfigured: stock !== undefined,
 		});
@@ -177,6 +209,7 @@ export async function setProductStatus(
 		]);
 		const errors = validateProductPublication({
 			...product,
+			dimensionsConfigured: dimensionsConfigured(product),
 			imageCount: imageResult?.value ?? 0,
 			inventoryConfigured: stock !== undefined,
 		});

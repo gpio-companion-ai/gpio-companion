@@ -1,29 +1,28 @@
 import { getContext } from "@next/action/context";
 import { commerceDb, requireAdmin } from "../../../lib/admin-auth.ts";
+import { listShippingRates } from "../../../lib/commerce/admin-repository.ts";
 import {
-	createShippingRate,
-	deleteShippingRate,
-	listShippingRates,
-	type ShippingRateInput,
-	updateShippingRate,
-} from "../../../lib/commerce/admin-repository.ts";
+	easyshipOrigin,
+	easyshipTokenConfigured,
+	itemCategory,
+} from "../../../lib/easyship.ts";
 
 export async function GET() {
 	const ctx = getContext<Env, never, never>(arguments);
-	return listShippingRates(commerceDb(ctx));
-}
-
-export async function POST(input: ShippingRateInput) {
-	const ctx = getContext<Env, never, never>(arguments);
-	return createShippingRate(commerceDb(ctx), input);
-}
-
-export async function PUT(id: string, input: ShippingRateInput) {
-	const ctx = getContext<Env, never, never>(arguments);
-	return updateShippingRate(commerceDb(ctx), id, input);
-}
-
-export async function DELETE(id: string) {
-	const ctx = getContext<Env, never, never>(arguments);
-	return deleteShippingRate(commerceDb(ctx), id);
+	const env = ctx.env as { EASYSHIP_API_TOKEN?: string };
+	const tokenConfigured = easyshipTokenConfigured(env);
+	const origin = easyshipOrigin(env);
+	return {
+		easyship: {
+			configured: tokenConfigured && origin !== null,
+			tokenConfigured,
+			originConfigured: origin !== null,
+			mode: env.EASYSHIP_API_TOKEN?.startsWith("sand_")
+				? "sandbox"
+				: "production",
+			origin,
+			itemCategory: itemCategory(env),
+		},
+		legacyRates: await listShippingRates(commerceDb(ctx)),
+	};
 }

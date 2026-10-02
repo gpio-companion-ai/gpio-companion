@@ -15,6 +15,13 @@
       "when": 1790203656559,
       "tag": "0001_nebulous_zodiak",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790975157626,
+      "tag": "0002_dashing_pyro",
+      "breakpoints": true
     }
   ]
 }

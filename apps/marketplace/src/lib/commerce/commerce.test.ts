@@ -97,6 +97,8 @@ describe("publication gates", () => {
 		descriptionEn: "Everything needed to begin.",
 		descriptionFr: "Tout le necessaire pour commencer.",
 		priceCents: 100,
+		weightGrams: 850,
+		dimensionsConfigured: true,
 		imageCount: 1,
 		inventoryConfigured: true,
 	};
@@ -113,10 +115,21 @@ describe("publication gates", () => {
 			nameFr: "",
 			descriptionEn: "",
 			priceCents: null,
+			weightGrams: null,
+			dimensionsConfigured: false,
 			imageCount: 0,
 			inventoryConfigured: false,
 		});
-		expect(errors).toHaveLength(7);
+		expect(errors).toHaveLength(9);
+	});
+
+	test("rejects zero or negative shipping weight", () => {
+		expect(
+			validateProductPublication({ ...complete, weightGrams: 0 }),
+		).toContain("A positive shipping weight in grams is required");
+		expect(
+			validateProductPublication({ ...complete, dimensionsConfigured: false }),
+		).toContain("Package dimensions (length, width, height) are required");
 	});
 });
 

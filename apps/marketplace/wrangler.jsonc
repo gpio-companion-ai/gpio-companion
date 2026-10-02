@@ -16,6 +16,11 @@
 		"PUBLIC_PAYPAL_CLIENT_ID": "BAABxmBqK6EERDGyRgTKlhLfu_RX3xOfuSJJj1i4QcrdUgfe4MR_LgAVC59uVJonileGPQJk0RLwkoGPbc"
 		// AUTH_SECRET Pages secret
 		// PAYPAL_CLIENT_SECRET Pages secret
+		// EASYSHIP_API_TOKEN Pages secret (prod_* or sand_ prefix; sand_ uses the sandbox API)
+		// EASYSHIP_ORIGIN_LINE1 / LINE2 / CITY / REGION / POSTAL_CODE / COUNTRY (vars or Pages secrets)
+		//   — seller ship-from address; LINE1, CITY, REGION, POSTAL_CODE, COUNTRY are required
+		// EASYSHIP_ORIGIN_CONTACT_NAME / CONTACT_EMAIL / CONTACT_PHONE (optional)
+		// EASYSHIP_ITEM_CATEGORY (optional, default "electronics" — must be an EasyShip item category slug)
 	},
 	"kv_namespaces": [
 		{

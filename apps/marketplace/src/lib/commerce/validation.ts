@@ -18,6 +18,8 @@ export interface PublicationCandidate {
 	descriptionEn: string;
 	descriptionFr: string;
 	priceCents: number | null;
+	weightGrams: number | null;
+	dimensionsConfigured: boolean;
 	imageCount: number;
 	inventoryConfigured: boolean;
 }
@@ -75,6 +77,16 @@ export function validateProductPublication(
 		candidate.priceCents < 0
 	) {
 		errors.push("A non-negative integer price is required");
+	}
+	if (
+		candidate.weightGrams === null ||
+		!Number.isSafeInteger(candidate.weightGrams) ||
+		candidate.weightGrams <= 0
+	) {
+		errors.push("A positive shipping weight in grams is required");
+	}
+	if (!candidate.dimensionsConfigured) {
+		errors.push("Package dimensions (length, width, height) are required");
 	}
 	if (candidate.imageCount < 1)
 		errors.push("At least one product image is required");
