@@ -196,8 +196,7 @@ describe("gpio-companion-bin", () => {
 				token: "tunnel-token",
 				hostname: "t3.gpio.example",
 			}),
-		});
-		expect(response.status).toBe(200);
+		});		expect(response.status).toBe(200);
 		const body = (await response.json()) as {
 			hardware: string;
 			tunnel: { token: string; hostname: string };
@@ -235,6 +234,48 @@ describe("gpio-companion-bin", () => {
 			ssid: "bench",
 			interface: "wlan0",
 			connection: "bench",
+		});
+	}	);
+
+	test("rejects unsigned profile write", async () => {
+		const response = await deviceFetch(
+			"v1/config/profile",
+			{
+				method: "PUT",
+				body: JSON.stringify({ level: "beginner", context: "home" }),
+			},
+			false,
+		);
+		expect(response.status).toBe(401);
+	});
+
+	test("sets and rejects invalid user profile", async () => {
+		const bad = await deviceFetch("v1/config/profile", {
+			method: "PUT",
+			body: JSON.stringify({ level: "guru", context: "home" }),
+		});
+		expect(bad.status).toBeGreaterThanOrEqual(400);
+
+		const response = await deviceFetch("v1/config/profile", {
+			method: "PUT",
+			body: JSON.stringify({ level: "beginner", context: "education" }),
+		});
+		expect(response.status).toBe(200);
+		const body = (await response.json()) as {
+			profile?: { level: string; context: string };
+		};
+		expect(body.profile).toEqual({
+			level: "beginner",
+			context: "education",
+		});
+
+		const config = await deviceFetch("v1/config");
+		const configBody = (await config.json()) as {
+			profile?: { level: string; context: string };
+		};
+		expect(configBody.profile).toEqual({
+			level: "beginner",
+			context: "education",
 		});
 	});
 

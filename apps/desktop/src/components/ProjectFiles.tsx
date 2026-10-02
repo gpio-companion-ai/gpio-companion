@@ -14,6 +14,7 @@ import {
 	boardFileDirty,
 	boardFileLanguage,
 	boardFileTree,
+	type CodeEditorSelection,
 	clampSplitPercent,
 	countBoardFiles,
 	filterBoardNodes,
@@ -90,6 +91,10 @@ type Props = {
 	bridge?: { current: CodeFilesBridge };
 	onEntries?: (entries: BoardFileEntry[]) => void;
 	onAddContext?: (path: string, text: string) => void;
+	onEditorSelection?: (
+		path: string,
+		selection: CodeEditorSelection | null,
+	) => void;
 	onContextRenamed?: (from: string, to: string) => void;
 	onContextRemoved?: (path: string) => void;
 };
@@ -109,6 +114,7 @@ export default function ProjectFiles({
 	bridge,
 	onEntries,
 	onAddContext,
+	onEditorSelection,
 	onContextRenamed,
 	onContextRemoved,
 }: Props) {
@@ -148,6 +154,8 @@ export default function ProjectFiles({
 	const draftRef = useRef(draft);
 	const mobileRef = useRef(mobile);
 	const stageRef = useRef<HTMLDivElement>(null);
+	const editorSelectionRef = useRef(onEditorSelection);
+	editorSelectionRef.current = onEditorSelection;
 	const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
 	const openedPath = useRef("");
 	fileRef.current = file;
@@ -312,6 +320,9 @@ export default function ProjectFiles({
 						return;
 					}
 					if (applied.action === "missing") {
+						if (current) {
+							editorSelectionRef.current?.(current.path, null);
+						}
 						setFile(null);
 						setDraft("");
 						setNote(t("code.fileMissing"));
@@ -362,6 +373,9 @@ export default function ProjectFiles({
 			!window.confirm(t("code.discardConfirm"))
 		) {
 			return;
+		}
+		if (current && current.path !== path) {
+			editorSelectionRef.current?.(current.path, null);
 		}
 		setFileLoading(true);
 		try {
@@ -1088,13 +1102,16 @@ export default function ProjectFiles({
 										<MarkdownView text={draft} />
 									</div>
 								) : (
-									<CodeEditor
-										path={file.path}
-										value={draft}
-										theme={mode === "dark" ? "vs-dark" : "vs"}
-										onChange={setDraft}
-										onSave={() => void saveBoard()}
-									/>
+								<CodeEditor
+									path={file.path}
+									value={draft}
+									theme={mode === "dark" ? "vs-dark" : "vs"}
+									onChange={setDraft}
+									onSave={() => void saveBoard()}
+									onSelection={(selectedPath, selection) =>
+										editorSelectionRef.current?.(selectedPath, selection)
+									}
+								/>
 								)}
 							</div>
 						</section>
@@ -1555,16 +1572,22 @@ function CodeEditor({
 	theme,
 	onChange,
 	onSave,
+	onSelection,
 }: {
 	path: string;
 	value: string;
 	theme: "vs-dark" | "vs";
 	onChange: (value: string) => void;
 	onSave: () => void;
+	onSelection: (path: string, selection: CodeEditorSelection | null) => void;
 }) {
 	const [Editor, setEditor] = useState<
 		typeof import("@monaco-editor/react").default | null
 	>(null);
+	const onSelectionRef = useRef(onSelection);
+	onSelectionRef.current = onSelection;
+	const pathRef = useRef(path);
+	pathRef.current = path;
 	useEffect(() => {
 		let closed = false;
 		void import("@monaco-editor/react").then((mod) => {
@@ -1589,6 +1612,19 @@ function CodeEditor({
 			onChange={(next) => onChange(next ?? "")}
 			onMount={(editor, monaco) => {
 				editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, onSave);
+				editor.onDidChangeCursorSelection(() => {
+					const selection = editor.getSelection();
+					const model = editor.getModel();
+					if (!selection || selection.isEmpty() || !model) {
+						onSelectionRef.current(pathRef.current, null);
+						return;
+					}
+					onSelectionRef.current(pathRef.current, {
+						startLine: selection.startLineNumber,
+						endLine: selection.endLineNumber,
+						text: model.getValueInRange(selection),
+					});
+				});
 			}}
 			options={{
 				fontSize: 13,

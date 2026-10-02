@@ -517,6 +517,27 @@ export function saveVoiceSettings(
 	);
 }
 
+export function getProfile(token: string) {
+	return request<{ level: string; context: string } | null>(
+		token,
+		"/api/mobile/profile",
+	);
+}
+
+export function saveProfile(
+	token: string,
+	profile: { level: string; context: string },
+) {
+	return request<{ level: string; context: string }>(
+		token,
+		"/api/mobile/profile",
+		{
+			method: "PUT",
+			body: JSON.stringify(profile),
+		},
+	);
+}
+
 export function submitBugReport(
 	token: string,
 	body: {

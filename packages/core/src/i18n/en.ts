@@ -252,6 +252,18 @@ export const en = {
 		bugSending: "Sending…",
 		bugSent: "Report sent.",
 		bugBoard: "Board: {board}",
+		experienceTitle: "Experience",
+		experienceHint:
+			"Tells the on-device agent how to talk to you. Locked hardware rules never change.",
+		experienceLevel: "Skill level",
+		experienceLevel_beginner: "Beginner",
+		experienceLevel_intermediate: "Intermediate",
+		experienceLevel_expert: "Expert",
+		experienceContext: "Context",
+		experienceContext_home: "Home hobbyist",
+		experienceContext_lab: "Lab / daily PCB work",
+		experienceContext_education: "Education",
+		experienceSaved: "Saved. Synced to your paired boards.",
 	},
 	parts: {
 		title: "Parts",
@@ -343,10 +355,13 @@ export const en = {
 		openCode: "Open Code",
 		setup: "Set up your board",
 		stepSignIn: "Sign in",
+		stepExperience: "Tell us about you",
 		stepPair: "Pair a board",
 		stepGithub: "Connect GitHub",
 		stepReady: "Ready to build",
 		hintSignIn: "Sign in with GitHub to start.",
+		hintExperience:
+			"Pick your skill level and context so the agent explains things your way.",
 		hintPair:
 			"Pair your board from Devices so you can flash sketches and see circuits.",
 		hintGithub: "Connect GitHub once so project files can appear here.",

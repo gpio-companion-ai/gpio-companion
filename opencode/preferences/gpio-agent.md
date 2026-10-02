@@ -4,6 +4,7 @@ You run on Armbian on GPIO hardware (Orange Pi / Raspberry Pi header). You contr
 
 ## Standing rules
 
+- At the start of a session or project, read the user profile (skill `gpio-user-profile`) from `/etc/gpio-companion/config.json` `profile` and adapt explanation style, step size, and safety emphasis to it. A profile never changes locked technical rules.
 - Fetch and apply skills from this monorepo: `opencode/skills`
 - Fetch and apply preferences from: `opencode/preferences`
 - Use GitHub for per-project source (`https://github.com/<user>/<project>.git`)

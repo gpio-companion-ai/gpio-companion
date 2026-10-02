@@ -257,6 +257,18 @@ export const fr = {
 		bugSending: "Envoi…",
 		bugSent: "Rapport envoyé.",
 		bugBoard: "Carte : {board}",
+		experienceTitle: "Expérience",
+		experienceHint:
+			"Indique à l’agent embarqué comment vous parler. Les règles matérielles verrouillées ne changent jamais.",
+		experienceLevel: "Niveau",
+		experienceLevel_beginner: "Débutant",
+		experienceLevel_intermediate: "Intermédiaire",
+		experienceLevel_expert: "Expert",
+		experienceContext: "Contexte",
+		experienceContext_home: "Passionné à la maison",
+		experienceContext_lab: "Labo / PCB au quotidien",
+		experienceContext_education: "Éducation",
+		experienceSaved: "Enregistré. Synchronisé avec vos cartes appariées.",
 	},
 	parts: {
 		title: "Composants",
@@ -349,10 +361,13 @@ export const fr = {
 		openCode: "Ouvrir Code",
 		setup: "Configurer votre carte",
 		stepSignIn: "Connexion",
+		stepExperience: "Parlez-nous de vous",
 		stepPair: "Associer une carte",
 		stepGithub: "Connecter GitHub",
 		stepReady: "Prêt à construire",
 		hintSignIn: "Connectez-vous avec GitHub pour commencer.",
+		hintExperience:
+			"Choisissez votre niveau et votre contexte pour que l’agent s’explique à votre façon.",
 		hintPair:
 			"Associez votre carte depuis Appareils pour graver des croquis et voir les circuits.",
 		hintGithub:

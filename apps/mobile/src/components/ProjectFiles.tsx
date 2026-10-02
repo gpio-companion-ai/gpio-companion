@@ -17,6 +17,7 @@ import {
 	boardFileApplyEvent,
 	boardFileDirty,
 	boardFileTree,
+	type CodeEditorSelection,
 	countBoardFiles,
 	EDITOR_EMBED_MESSAGE_TYPE,
 	EDITOR_EMBED_READY_TYPE,
@@ -28,6 +29,7 @@ import {
 	isMarkdownPath,
 	parseBoardFileEvent,
 	parseEditorEmbedChange,
+	parseEditorEmbedSelection,
 } from "gpio-companion-files";
 import { findSketchByName, sketchNameFromPath } from "gpio-companion-sketches";
 import { useEffect, useRef, useState } from "react";
@@ -75,6 +77,10 @@ type Props = {
 	onFileStateChange?: (state: { dirty: boolean; stale: boolean }) => void;
 	onEntries?: (entries: BoardFileEntry[]) => void;
 	onAddContext?: (path: string, text: string) => void;
+	onEditorSelection?: (
+		path: string,
+		selection: CodeEditorSelection | null,
+	) => void;
 	onContextRenamed?: (from: string, to: string) => void;
 	onContextRemoved?: (path: string) => void;
 };
@@ -94,6 +100,7 @@ type SketchAction = {
 
 export type CodeFilesBridge = {
 	openPath: (path: string) => Promise<void>;
+	textFor: (path: string) => Promise<string>;
 };
 
 export default function ProjectFiles({
@@ -105,6 +112,7 @@ export default function ProjectFiles({
 	onFileStateChange,
 	onEntries,
 	onAddContext,
+	onEditorSelection,
 	onContextRenamed,
 	onContextRemoved,
 }: Props) {
@@ -146,6 +154,8 @@ export default function ProjectFiles({
 	const draftRef = useRef(draft);
 	const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
 	const openedPath = useRef("");
+	const editorSelectionRef = useRef(onEditorSelection);
+	editorSelectionRef.current = onEditorSelection;
 	fileRef.current = file;
 	draftRef.current = draft;
 	const dirty = boardFileDirty(file?.kind ?? "", draft, file?.text ?? "");
@@ -265,6 +275,9 @@ export default function ProjectFiles({
 						return;
 					}
 					if (applied.action === "missing") {
+						if (current) {
+							editorSelectionRef.current?.(current.path, null);
+						}
 						setFile(null);
 						setDraft("");
 						setNote(t("code.fileMissing"));
@@ -362,14 +375,23 @@ export default function ProjectFiles({
 			current.path !== path &&
 			boardFileDirty(current.kind, draftRef.current, current.text)
 		) {
-			confirmDiscard(() => void doOpen(path));
+			confirmDiscard(() => {
+				if (current.path !== path) {
+					editorSelectionRef.current?.(current.path, null);
+				}
+				void doOpen(path);
+			});
 			return;
+		}
+		if (current && current.path !== path) {
+			editorSelectionRef.current?.(current.path, null);
 		}
 		await doOpen(path);
 	}
 	openPathRef.current = openPath;
 	if (bridge) {
 		bridge.current.openPath = (path: string) => openPathRef.current(path);
+		bridge.current.textFor = textFor;
 	}
 
 	function reloadStale() {
@@ -1026,13 +1048,16 @@ export default function ProjectFiles({
 							<MarkdownView text={draft} color={colors.text} />
 						</ScrollView>
 					) : (
-						<EditorFrame
-							locale={locale}
-							theme={mode}
-							payload={{ ...payload, text: draft, path: file.path }}
-							onChange={setDraft}
-							onSave={() => void saveBoard(draftRef.current)}
-						/>
+					<EditorFrame
+						locale={locale}
+						theme={mode}
+						payload={{ ...payload, text: draft, path: file.path }}
+						onChange={setDraft}
+						onSave={() => void saveBoard(draftRef.current)}
+						onSelection={(path, selection) =>
+							editorSelectionRef.current?.(path, selection)
+						}
+					/>
 					)}
 				</View>
 			) : (
@@ -1353,12 +1378,14 @@ function EditorFrame({
 	theme,
 	onChange,
 	onSave,
+	onSelection,
 }: {
 	payload: EditorEmbedPayload;
 	locale: string;
 	theme: string;
 	onChange: (text: string) => void;
 	onSave: () => void;
+	onSelection: (path: string, selection: CodeEditorSelection | null) => void;
 }) {
 	const webRef = useRef<WebView>(null);
 	const t = useT();
@@ -1409,6 +1436,13 @@ function EditorFrame({
 					}
 					if (isEditorEmbedSave(data)) {
 						onSave();
+						return;
+					}
+					const selection = parseEditorEmbedSelection(data);
+					if (selection !== undefined) {
+						if (payload.path) {
+							onSelection(payload.path, selection);
+						}
 						return;
 					}
 					const text = parseEditorEmbedChange(data);

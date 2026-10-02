@@ -8,6 +8,8 @@ import {
 	codeSttLanguage,
 	codeSttMicros,
 	filterCodeMentions,
+	hasBoardSelectionDraft,
+	replaceBoardContext,
 	renameContextDrafts,
 	stageBoardContext,
 	stageCodeAttach,
@@ -121,6 +123,45 @@ describe("code attach", () => {
 		expect(() =>
 			stageBoardContext({ path: "photo.png", text: "nope" }),
 		).toThrow("context file must be text");
+	});
+
+	test("stages a selection with line range and replaces whole-file context", () => {
+		const selection = stageBoardContext({
+			path: "src/blink.c",
+			text: "int x;\n",
+			startLine: 12,
+			endLine: 18,
+			id: "s",
+		});
+		expect(selection.startLine).toBe(12);
+		expect(selection.endLine).toBe(18);
+		expect(codeAttachPrompt("fix", [selection])).toBe(
+			"fix\n\nProject file src/blink.c, lines 12–18:\n```\nint x;\n\n```",
+		);
+		const whole = stageBoardContext({ path: "src/blink.c", text: "all\n" });
+		expect(whole.startLine).toBeUndefined();
+		expect(
+			codeAttachPrompt("", [whole]).startsWith("Project file src/blink.c:"),
+		).toBe(true);
+		const wholeFirst = stageBoardContext({
+			path: "src/blink.c",
+			text: "all\n",
+			id: "w",
+		});
+		expect(replaceBoardContext([wholeFirst], selection)[0]).toBe(selection);
+		expect(replaceBoardContext([selection], wholeFirst)).toEqual([wholeFirst]);
+		expect(replaceBoardContext([], wholeFirst)).toEqual([wholeFirst]);
+		expect(hasBoardSelectionDraft([selection], "src/blink.c")).toBe(true);
+		expect(hasBoardSelectionDraft([wholeFirst], "src/blink.c")).toBe(false);
+		expect(hasBoardSelectionDraft([wholeFirst], "other.c")).toBe(false);
+		expect(
+			stageBoardContext({
+				path: "src/blink.c",
+				text: "x",
+				startLine: 5,
+				endLine: 2,
+			}).startLine,
+		).toBeUndefined();
 	});
 
 	test("maps composer errors and bills speech by the second", () => {

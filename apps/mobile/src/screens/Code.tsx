@@ -16,6 +16,7 @@ import {
 	CODE_VOICE_ARM_MS,
 	CODE_VOICE_METER_DB,
 	type CodeAttachDraft,
+	type CodeEditorSelection,
 	type CodeSpeechPlayer,
 	CodeSpeechQueue,
 	type CodeSpeechStatus,
@@ -32,8 +33,10 @@ import {
 	decodeBase64,
 	encodeBase64,
 	filterCodeMentions,
+	hasBoardSelectionDraft,
 	removeContextDrafts,
 	renameContextDrafts,
+	replaceBoardContext,
 	stageBoardContext,
 	stageCodeAttach,
 } from "gpio-companion-attach";
@@ -294,6 +297,7 @@ export default function Code() {
 	const [filesStale, setFilesStale] = useState(false);
 	const filesBridge = useRef<CodeFilesBridge>({
 		openPath: async () => undefined,
+		textFor: async () => "",
 	});
 	const previewPending = useRef<{ repo: string; path: string } | null>(null);
 	const repoRef = useRef(repo);
@@ -906,6 +910,52 @@ export default function Code() {
 				: [...current, staged],
 		);
 		setError("");
+	}
+
+	function handleEditorSelection(
+		path: string,
+		selection: CodeEditorSelection | null,
+	) {
+		if (!path) {
+			return;
+		}
+		if (selection) {
+			try {
+				const staged = stageBoardContext({
+					path,
+					text: selection.text,
+					startLine: selection.startLine,
+					endLine: selection.endLine,
+				});
+				setFiles((current) => replaceBoardContext(current, staged));
+				setError("");
+			} catch {
+				// Selection too large for context; keep the previous draft.
+			}
+			return;
+		}
+		if (!hasBoardSelectionDraft(files, path)) {
+			return;
+		}
+		void filesBridge.current
+			.textFor(path)
+			.then((full) => stageBoardContext({ path, text: full }))
+			.then((staged) => {
+				setFiles((current) => replaceBoardContext(current, staged));
+			})
+			.catch(() => {
+				setFiles((current) =>
+					current.filter(
+						(item) =>
+							!(
+								item.source === "board" &&
+								item.path === path &&
+								typeof item.startLine === "number" &&
+								typeof item.endLine === "number"
+							),
+					),
+				);
+			});
 	}
 
 	async function pickMention(path: string) {
@@ -2065,6 +2115,11 @@ export default function Code() {
 									style={{ color: colors.text, fontSize: 12, flexShrink: 1 }}
 								>
 									{file.source === "board" ? file.path : file.name}
+									{file.source === "board" &&
+									typeof file.startLine === "number" &&
+									typeof file.endLine === "number"
+										? ` L${file.startLine}–${file.endLine}`
+										: ""}
 								</Text>
 								{file.source === "board" ? null : (
 									<Pressable
@@ -2368,6 +2423,7 @@ export default function Code() {
 							)
 						}
 						onAddContext={addBoardContext}
+						onEditorSelection={handleEditorSelection}
 						onContextRenamed={(from, to) =>
 							setFiles((current) => renameContextDrafts(current, from, to))
 						}

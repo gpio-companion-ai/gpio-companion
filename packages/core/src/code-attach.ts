@@ -4,9 +4,12 @@ import {
 	BOARD_UPLOAD_BINARY_MAX,
 	BOARD_UPLOAD_DIR,
 	boardFileKindFromName,
+	type CodeEditorSelection,
 	decodeBase64,
 	encodeBase64,
 } from "./board-files.ts";
+
+export type { CodeEditorSelection };
 
 export const CODE_UPLOAD_DIR = BOARD_UPLOAD_DIR;
 export const CODE_UPLOAD_BINARY_MAX = BOARD_UPLOAD_BINARY_MAX;
@@ -100,6 +103,8 @@ export type CodeAttachDraft = {
 	source?: CodeAttachSource;
 	text?: string;
 	base64?: string;
+	startLine?: number;
+	endLine?: number;
 };
 
 export type CodeMention = {
@@ -259,11 +264,22 @@ export function codeAttachPrompt(
 		) {
 			throw new Error("file is too large");
 		}
-		parts.push(
-			file.source === "board"
-				? `Project file ${file.path}:\n\`\`\`\n${file.text}\n\`\`\``
-				: `Context only, not saved on the board — ${file.name}:\n\`\`\`\n${file.text}\n\`\`\``,
-		);
+		if (file.source === "board") {
+			const ranged =
+				typeof file.startLine === "number" &&
+				typeof file.endLine === "number" &&
+				file.startLine >= 1 &&
+				file.endLine >= file.startLine;
+			parts.push(
+				ranged
+					? `Project file ${file.path}, lines ${file.startLine}–${file.endLine}:\n\`\`\`\n${file.text}\n\`\`\``
+					: `Project file ${file.path}:\n\`\`\`\n${file.text}\n\`\`\``,
+			);
+		} else {
+			parts.push(
+				`Context only, not saved on the board — ${file.name}:\n\`\`\`\n${file.text}\n\`\`\``,
+			);
+		}
 	}
 	return parts.join("\n\n");
 }
@@ -342,6 +358,8 @@ export function stageBoardContext(input: {
 	path: string;
 	text: string;
 	id?: string;
+	startLine?: number;
+	endLine?: number;
 }): CodeAttachDraft {
 	const path = input.path.trim().replace(/^\/+/, "");
 	const name = path.split("/").pop() ?? "";
@@ -360,6 +378,7 @@ export function stageBoardContext(input: {
 	if (new TextEncoder().encode(input.text).byteLength > CODE_CONTEXT_TEXT_MAX) {
 		throw new Error("file is too large");
 	}
+	const lines = selectionLines(input.startLine, input.endLine);
 	return {
 		id: input.id?.trim() || newId(),
 		name,
@@ -368,7 +387,52 @@ export function stageBoardContext(input: {
 		use: "context",
 		source: "board",
 		text: input.text,
+		...lines,
 	};
+}
+
+function selectionLines(
+	startLine: number | undefined,
+	endLine: number | undefined,
+): { startLine?: number; endLine?: number } {
+	if (
+		typeof startLine !== "number" ||
+		typeof endLine !== "number" ||
+		!Number.isInteger(startLine) ||
+		!Number.isInteger(endLine) ||
+		startLine < 1 ||
+		endLine < startLine
+	) {
+		return {};
+	}
+	return { startLine, endLine };
+}
+
+export function replaceBoardContext(
+	files: readonly CodeAttachDraft[],
+	staged: CodeAttachDraft,
+): CodeAttachDraft[] {
+	return files.some(
+		(file) => file.source === "board" && file.path === staged.path,
+	)
+		? files.map((file) =>
+				file.source === "board" && file.path === staged.path ? staged : file,
+			)
+		: [...files, staged];
+}
+
+export function hasBoardSelectionDraft(
+	files: readonly CodeAttachDraft[],
+	path: string,
+): boolean {
+	const target = path.trim().replace(/^\/+/, "");
+	return files.some(
+		(file) =>
+			file.source === "board" &&
+			file.path === target &&
+			typeof file.startLine === "number" &&
+			typeof file.endLine === "number",
+	);
 }
 
 export function renameContextDrafts(

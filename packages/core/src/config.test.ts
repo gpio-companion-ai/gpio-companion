@@ -4,6 +4,8 @@ import {
 	emptyDeviceConfig,
 	parseDeviceConfig,
 	parseTunnelConfig,
+	parseUserProfile,
+	profileFrom,
 	redactDeviceConfig,
 } from "./config.ts";
 
@@ -71,5 +73,48 @@ describe("device config", () => {
 				tunnel: { token: "", hostname: "" },
 			}),
 		).toThrow("hardware");
+	});
+
+	test("parses user profile", () => {
+		expect(parseUserProfile({ level: "beginner", context: "home" })).toEqual({
+			level: "beginner",
+			context: "home",
+		});
+		expect(profileFrom({ level: "expert", context: "lab" })).toEqual({
+			level: "expert",
+			context: "lab",
+		});
+	});
+
+	test("rejects invalid user profile values", () => {
+		expect(() => parseUserProfile({ level: "guru", context: "home" })).toThrow(
+			"profile.level",
+		);
+		expect(() =>
+			parseUserProfile({ level: "expert", context: "space" }),
+		).toThrow("profile.context");
+		expect(() => parseUserProfile("beginner")).toThrow("profile");
+		expect(profileFrom({ level: "nope" })).toBeNull();
+		expect(profileFrom(undefined)).toBeNull();
+	});
+
+	test("keeps profile through device config parsing", () => {
+		const config = parseDeviceConfig({
+			hardware: "raspberrypi",
+			tunnel: { token: "", hostname: "" },
+			profile: { level: "intermediate", context: "education" },
+		});
+		expect(config.profile).toEqual({
+			level: "intermediate",
+			context: "education",
+		});
+		expect(
+			parseDeviceConfig({
+				hardware: "raspberrypi",
+				tunnel: { token: "", hostname: "" },
+				profile: { level: "nope", context: "home" },
+			}).profile,
+		).toBeUndefined();
+		expect(redactDeviceConfig(config).profile).toEqual(config.profile);
 	});
 });

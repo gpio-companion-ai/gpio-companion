@@ -16,7 +16,9 @@ Open gpio-companion in the web, desktop, or mobile app and choose **Continue wit
 
 On the web, the **Project** page shows a short setup journey:
 
-**Sign in → Pair a board → Connect GitHub → Ready**
+**Sign in → Tell us about you → Pair a board → Connect GitHub → Ready**
+
+The second step opens **Profile → Experience**: pick your **skill level** (Beginner, Intermediate, Expert) and your **context** (home hobbyist, lab / daily PCB work, education). The on-device agent uses this to decide how much it explains, how small its steps are, and which safety notes it adds. It never changes the technical rules — the same correct hardware work happens either way. You can change it any time from **Profile → Experience**; the change syncs to your paired boards.
 
 Desktop may open **Devices** after sign-in, while mobile opens **Project**. The same tools are available on all three.
 

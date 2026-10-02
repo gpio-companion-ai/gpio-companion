@@ -645,6 +645,21 @@ export function saveVoiceSettings(provider: string, voice: string) {
 	);
 }
 
+export function getProfile() {
+	return apiRequest<{ level: string; context: string } | null>(
+		"GET",
+		"/api/mobile/profile",
+	);
+}
+
+export function saveProfile(profile: { level: string; context: string }) {
+	return apiRequest<{ level: string; context: string }>(
+		"PUT",
+		"/api/mobile/profile",
+		profile,
+	);
+}
+
 export function submitBugReport(body: {
 	text: string;
 	surface: "desktop";

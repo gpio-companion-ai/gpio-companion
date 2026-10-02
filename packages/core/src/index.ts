@@ -174,6 +174,7 @@ export {
 	boardFileRelative,
 	boardFileTree,
 	boardFileWatchPath,
+	type CodeEditorSelection,
 	clampSplitPercent,
 	countBoardFiles,
 	decodeBase64,
@@ -184,6 +185,7 @@ export {
 	EDITOR_EMBED_PENDING_KEY,
 	EDITOR_EMBED_READY_TYPE,
 	EDITOR_EMBED_SAVE_TYPE,
+	EDITOR_EMBED_SELECTION_TYPE,
 	type EditorEmbedPayload,
 	editorEmbedInjectSource,
 	editorEmbedUrl,
@@ -213,6 +215,7 @@ export {
 	parseBoardFileWritePut,
 	parseEditorEmbedChange,
 	parseEditorEmbedMessage,
+	parseEditorEmbedSelection,
 	splitPercentFromRatio,
 } from "./board-files.ts";
 export {
@@ -356,13 +359,16 @@ export {
 	type ExplorerPick,
 	explorerCreateDir,
 	filterCodeMentions,
+	hasBoardSelectionDraft,
 	removeContextDrafts,
 	renameContextDrafts,
+	replaceBoardContext,
 	stageBoardContext,
 	stageCodeAttach,
 	stageExplorerFile,
 } from "./code-attach.ts";
 export {
+	CONFIG_PROFILE_PATH,
 	type DeviceConfig,
 	deviceOpencodePermissionMode,
 	emptyDeviceConfig,
@@ -370,10 +376,17 @@ export {
 	HARDWARE_IDS,
 	type HardwareId,
 	isHardwareId,
+	PROFILE_CONTEXTS,
+	PROFILE_LEVELS,
+	type ProfileContext,
+	type ProfileLevel,
 	parseDeviceConfig,
 	parseTunnelConfig,
+	parseUserProfile,
+	profileFrom,
 	redactDeviceConfig,
 	type TunnelConfig,
+	type UserProfile,
 } from "./config.ts";
 export {
 	applyConsoleMessage,

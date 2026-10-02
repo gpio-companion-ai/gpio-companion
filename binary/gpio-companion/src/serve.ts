@@ -73,6 +73,7 @@ import {
 	parseProjectRemovePut,
 	parseProjectSyncPut,
 	parseTunnelConfig,
+	parseUserProfile,
 	parseWifiConfig,
 	pickProxyFlashPort,
 	publicDeviceUrl,
@@ -972,11 +973,21 @@ export async function handleDeviceRequest(
 		const body = asObject(parseJson(bodyText));
 		const current = await store.read();
 		const next: DeviceConfig = {
+			...current,
 			hardware: current.hardware,
 			tunnel:
 				body.tunnel !== undefined
 					? parseTunnelConfig(body.tunnel)
 					: current.tunnel,
+		};
+		return persist(store, applyTunnel, next);
+	}
+
+	if (method === "PUT" && path === "/v1/config/profile") {
+		const current = await store.read();
+		const next: DeviceConfig = {
+			...current,
+			profile: parseUserProfile(parseJson(bodyText)),
 		};
 		return persist(store, applyTunnel, next);
 	}

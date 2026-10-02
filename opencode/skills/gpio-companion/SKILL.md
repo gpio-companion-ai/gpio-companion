@@ -42,6 +42,7 @@ You run board commands yourself. **Never** quote them to the user. Actions they 
 
 ## Do
 
+- Read the user profile at project start (skill `gpio-user-profile`): `profile` in `/etc/gpio-companion/config.json` sets how much you explain (level beginner/intermediate/expert, context home/lab/education). It changes tone and pacing only — never the locked rules below.
 - Vibe-code breadboards and PCBs with tscircuit
 - Printable parts: skill `gpio-3d`. Run `gpio-3d` (do not pip-install trimesh) to write `~/projects/<repo>/model/` (one `.glb` and one `.stl` per part, `manifest.json` in mm, fits companion header and/or Arduino Uno/Nano/Mega). Do not use tscircuit for meshes. Feature-branch rules below still apply.
 - JLCPCB parts: skill `gpio-jlcpcb`. Search LCSC codes or keywords with `gpio-jlcpcb`. Credentials are dashboard Pages secrets. If they are missing, keyword search may continue and code lookup stops. Do not ask the user to paste keys. Do not order parts. Push an order draft; the user confirms on Project.

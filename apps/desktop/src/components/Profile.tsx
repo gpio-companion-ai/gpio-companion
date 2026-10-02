@@ -22,6 +22,7 @@ import { useT } from "../locale";
 import AddressForm from "./AddressForm";
 import BoardAlertSettings from "./BoardAlertSettings";
 import DebugLog from "./DebugLog";
+import ExperienceCard from "./ExperienceCard";
 import Keys from "./Keys";
 import LanguageCard from "./LanguageCard";
 import { consumeProfileJump } from "./PartsSearchPanel";
@@ -70,6 +71,9 @@ export default function Profile({
 			</div>
 			<div id="profile-voice">
 				<VoiceCard />
+			</div>
+			<div id="profile-experience">
+				<ExperienceCard />
 			</div>
 			<BoardAlertSettings />
 			<Paper id="profile-account" sx={{ p: 1.5 }} elevation={1}>

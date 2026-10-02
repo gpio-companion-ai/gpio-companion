@@ -1,5 +1,6 @@
 import { GET as getDevice } from "@api/device";
 import { GET as getPairing } from "@api/pair";
+import { GET as getProfile } from "@api/profile";
 import JlcpcbCard from "@components/JlcpcbCard";
 import ProjectBrowser from "@components/ProjectBrowser";
 import Alert from "@shpaw415/mui-lite/Alert";
@@ -39,6 +40,7 @@ export default function ProjectPage() {
 	} = useWorkbench();
 	const steps = [
 		t("project.stepSignIn"),
+		t("project.stepExperience"),
 		t("project.stepPair"),
 		t("project.stepGithub"),
 		t("project.stepReady"),
@@ -53,16 +55,21 @@ export default function ProjectPage() {
 			hint: t("project.hintSignIn"),
 		},
 		1: {
+			href: "/profile#experience",
+			label: t("project.stepExperience"),
+			hint: t("project.hintExperience"),
+		},
+		2: {
 			href: "/devices",
 			label: t("project.pairABoard"),
 			hint: t("project.hintPair"),
 		},
-		2: {
+		3: {
 			href: "/profile/github",
 			label: t("project.connectGithub"),
 			hint: t("project.hintGithub"),
 		},
-		3: undefined,
+		4: undefined,
 	};
 	const { uuid: selectedUuid, setUuid: selectBoard } = useBoardSelection();
 	const loggedIn = Boolean(session.data?.id || session.data?.email);
@@ -72,9 +79,23 @@ export default function ProjectPage() {
 		{},
 	);
 	const [githubReady, setGithubReady] = useState(false);
+	const [profileSet, setProfileSet] = useState(true);
 	const [pairingLoading, setPairingLoading] = useState(true);
 	const selectedUuidRef = useRef(selectedUuid);
 	selectedUuidRef.current = selectedUuid;
+
+	useEffect(() => {
+		const userId = session.data?.id;
+		if (!userId) {
+			setProfileSet(true);
+			return;
+		}
+		void run(getProfile())
+			.then((result) => {
+				setProfileSet(Boolean(result?.ok && result.data));
+			})
+			.catch(() => setProfileSet(true));
+	}, [session.data?.id, run]);
 
 	useEffect(() => {
 		const userId = session.data?.id;
@@ -116,7 +137,15 @@ export default function ProjectPage() {
 			});
 	}, [session.data?.id, run, selectBoard, refreshBoards]);
 
-	const step = !loggedIn ? 0 : !paired ? 1 : !githubReady ? 2 : 3;
+	const step = !loggedIn
+		? 0
+		: !profileSet
+			? 1
+			: !paired
+				? 2
+				: !githubReady
+					? 3
+					: 4;
 	const next = nextFor[step] ?? undefined;
 	const activeUuid = selectedUuid || devices[0]?.uuid || "";
 	const wifiHint = paired && needsWifi(statuses[activeUuid]);
@@ -135,7 +164,7 @@ export default function ProjectPage() {
 					</Button>
 				</Stack>
 			) : null}
-			{step < 3 || pairingLoading ? (
+			{step < 4 || pairingLoading ? (
 				<Paper className="workbench-control-rail p-3" elevation={0}>
 					<Stack spacing={1.5}>
 						{pairingLoading ? (

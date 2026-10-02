@@ -11,6 +11,7 @@ import { translateError } from "gpio-companion/i18n";
 import { useEffect, useState } from "react";
 import AddressForm from "../../components/AddressForm.tsx";
 import BoardAlertSettings from "../../components/BoardAlertSettings.tsx";
+import ExperienceCard from "../../components/ExperienceCard.tsx";
 import LanguageCard from "../../components/LanguageCard.tsx";
 import VoiceCard from "../../components/VoiceCard.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
@@ -47,7 +48,7 @@ export default function ProfilePage() {
 	useEffect(() => {
 		function scroll() {
 			const hash = window.location.hash;
-			if (!loggedIn || hash !== "#address") {
+			if (!loggedIn || (hash !== "#address" && hash !== "#experience")) {
 				return;
 			}
 			document
@@ -132,6 +133,7 @@ export default function ProfilePage() {
 							</Button>
 						</Stack>
 					</Paper>
+					<ExperienceCard />
 					<AddressForm />
 					<BugReportForm />
 				</>

@@ -17,6 +17,7 @@ config.resolver.extraNodeModules = {
 	"gpio-companion-files": path.join(coreSrc, "board-files.ts"),
 	"gpio-companion-sketches": path.join(coreSrc, "sketches.ts"),
 	"gpio-companion-attach": path.join(coreSrc, "code-attach.ts"),
+	"gpio-companion-config": path.join(coreSrc, "config.ts"),
 	"gpio-companion-jlcpcb": path.join(coreSrc, "jlcpcb-parts.ts"),
 };
 

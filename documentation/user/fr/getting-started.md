@@ -16,7 +16,9 @@ Ouvrez gpio-companion dans l’application web, de bureau ou mobile, puis choisi
 
 Sur le web, la page **Projet** présente un parcours court :
 
-**Connexion → Associer une carte → Connecter GitHub → Prêt**
+**Connexion → Parlez-nous de vous → Associer une carte → Connecter GitHub → Prêt**
+
+La deuxième étape ouvre **Profil → Expérience** : choisissez votre **niveau** (Débutant, Intermédiaire, Expert) et votre **contexte** (passionné à la maison, labo / PCB au quotidien, éducation). L’agent embarqué s’en sert pour décider du niveau de détail, de la taille des étapes et des rappels de sécurité. Cela ne change jamais les règles techniques — le travail matériel correct reste identique. Vous pouvez la modifier à tout moment depuis **Profil → Expérience** ; la modification se synchronise avec vos cartes appariées.
 
 L’application de bureau peut ouvrir **Appareils** après la connexion, tandis que l’application mobile ouvre **Projet**. Les mêmes outils sont disponibles sur les trois plateformes.
 

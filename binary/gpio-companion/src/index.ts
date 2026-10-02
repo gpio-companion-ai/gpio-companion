@@ -20,6 +20,7 @@ import { createLibgpiodGpio } from "./gpio.ts";
 import { startHubClient } from "./hub-client.ts";
 import { revokeOpencodeAccess } from "./opencode-proxy.ts";
 import { DEFAULT_PAIRING_PATH, filePairingStore } from "./pairing.ts";
+import { profileSyncMessage, syncProfile } from "./profile-sync.ts";
 import {
 	projectsRoot,
 	pushProject,
@@ -132,6 +133,8 @@ const githubCredentials = async () => {
 };
 const PROJECT_SYNC_MS = 15 * 60 * 1000;
 const projectSyncEnabled = process.env.GPIO_COMPANION_PROJECT_SYNC !== "0";
+const profileSyncEnabled = process.env.GPIO_COMPANION_PROFILE_SYNC !== "0";
+const configStore = fileConfigStore(configPath, hardware);
 const hubEnabled = process.env.GPIO_COMPANION_HUB !== "0";
 const timers: Array<
 	ReturnType<typeof setInterval> | ReturnType<typeof setTimeout>
@@ -153,9 +156,21 @@ async function syncGithubProjects(target: ProjectSyncPut = {}): Promise<void> {
 	}
 }
 
+async function syncDashboardProfile(): Promise<void> {
+	try {
+		await syncProfile({
+			store: configStore,
+			uuid: (await pairing.read()).uuid || pairingUuid,
+			key: (await pairing.read()).key || pairingKey,
+		});
+	} catch (caught) {
+		console.error(`gpio-companion profile sync: ${profileSyncMessage(caught)}`);
+	}
+}
+
 const server = startDeviceApi({
 	port,
-	store: fileConfigStore(configPath, hardware),
+	store: configStore,
 	secrets,
 	pairing,
 	applyTunnel: applyCloudflaredReplica(envPath),
@@ -210,6 +225,14 @@ if (projectSyncEnabled) {
 	timers.push(
 		setInterval(() => {
 			void syncGithubProjects();
+		}, PROJECT_SYNC_MS),
+	);
+}
+if (profileSyncEnabled) {
+	void syncDashboardProfile();
+	timers.push(
+		setInterval(() => {
+			void syncDashboardProfile();
 		}, PROJECT_SYNC_MS),
 	);
 }

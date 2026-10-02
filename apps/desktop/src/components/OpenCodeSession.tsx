@@ -3,6 +3,7 @@ import {
 	CODE_ATTACH_ACCEPT,
 	CODE_VOICE_MAX_MS,
 	type CodeAttachDraft,
+	type CodeEditorSelection,
 	type CodeSpeechPlayer,
 	CodeSpeechQueue,
 	type CodeSpeechStatus,
@@ -18,8 +19,10 @@ import {
 	codeVoiceUtterance,
 	encodeBase64,
 	filterCodeMentions,
+	hasBoardSelectionDraft,
 	removeContextDrafts,
 	renameContextDrafts,
+	replaceBoardContext,
 	stageBoardContext,
 	stageCodeAttach,
 } from "gpio-companion-attach";
@@ -1199,6 +1202,52 @@ export default function OpenCodeSession({
 		setError("");
 	}
 
+	function handleEditorSelection(
+		path: string,
+		selection: CodeEditorSelection | null,
+	) {
+		if (!path) {
+			return;
+		}
+		if (selection) {
+			try {
+				const staged = stageBoardContext({
+					path,
+					text: selection.text,
+					startLine: selection.startLine,
+					endLine: selection.endLine,
+				});
+				setFiles((current) => replaceBoardContext(current, staged));
+				setError("");
+			} catch {
+				// Selection too large for context; keep the previous draft.
+			}
+			return;
+		}
+		if (!hasBoardSelectionDraft(files, path)) {
+			return;
+		}
+		void filesBridge.current
+			.textFor(path)
+			.then((full) => stageBoardContext({ path, text: full }))
+			.then((staged) => {
+				setFiles((current) => replaceBoardContext(current, staged));
+			})
+			.catch(() => {
+				setFiles((current) =>
+					current.filter(
+						(item) =>
+							!(
+								item.source === "board" &&
+								item.path === path &&
+								typeof item.startLine === "number" &&
+								typeof item.endLine === "number"
+							),
+					),
+				);
+			});
+	}
+
 	async function pickMention(path: string) {
 		const node = field.current;
 		const value = node?.value ?? prompt;
@@ -2176,6 +2225,11 @@ export default function OpenCodeSession({
 							<span key={file.id} className="oc-file-chip">
 								<span title={file.path}>
 									{file.source === "board" ? file.path : file.name}
+									{file.source === "board" &&
+									typeof file.startLine === "number" &&
+									typeof file.endLine === "number"
+										? ` L${file.startLine}–${file.endLine}`
+										: ""}
 								</span>
 								{file.source === "board" ? null : (
 									<button
@@ -2574,6 +2628,7 @@ export default function OpenCodeSession({
 					bridge={filesBridge}
 					onEntries={rememberEntries}
 					onAddContext={addBoardContext}
+					onEditorSelection={handleEditorSelection}
 					onContextRenamed={(from, to) =>
 						setFiles((current) => renameContextDrafts(current, from, to))
 					}

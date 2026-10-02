@@ -1,11 +1,13 @@
 import Box from "@shpaw415/mui-lite/Box";
 import {
 	boardFileLanguage,
+	type CodeEditorSelection,
 	EDITOR_EMBED_BRIDGE_KEY,
 	EDITOR_EMBED_CHANGE_TYPE,
 	EDITOR_EMBED_PENDING_KEY,
 	EDITOR_EMBED_READY_TYPE,
 	EDITOR_EMBED_SAVE_TYPE,
+	EDITOR_EMBED_SELECTION_TYPE,
 	type EditorEmbedPayload,
 	parseEditorEmbedMessage,
 } from "gpio-companion";
@@ -96,6 +98,9 @@ export default function EditorEmbedPage() {
 					post({ type: EDITOR_EMBED_CHANGE_TYPE, text: next });
 				}}
 				onSave={() => post({ type: EDITOR_EMBED_SAVE_TYPE })}
+				onSelection={(selection) => {
+					post({ type: EDITOR_EMBED_SELECTION_TYPE, selection });
+				}}
 			/>
 		</Box>
 	);
@@ -107,16 +112,20 @@ function EmbedEditor({
 	theme,
 	onChange,
 	onSave,
+	onSelection,
 }: {
 	path: string;
 	value: string;
 	theme: "vs-dark" | "vs";
 	onChange: (value: string) => void;
 	onSave: () => void;
+	onSelection: (selection: CodeEditorSelection | null) => void;
 }) {
 	const [Editor, setEditor] = useState<
 		typeof import("@monaco-editor/react").default | null
 	>(null);
+	const onSelectionRef = useRef(onSelection);
+	onSelectionRef.current = onSelection;
 	useEffect(() => {
 		let closed = false;
 		void import("@monaco-editor/react").then((mod) => {
@@ -141,6 +150,19 @@ function EmbedEditor({
 			onChange={(next) => onChange(next ?? "")}
 			onMount={(editor, monaco) => {
 				editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, onSave);
+				editor.onDidChangeCursorSelection(() => {
+					const selection = editor.getSelection();
+					const model = editor.getModel();
+					if (!selection || selection.isEmpty() || !model) {
+						onSelectionRef.current(null);
+						return;
+					}
+					onSelectionRef.current({
+						startLine: selection.startLineNumber,
+						endLine: selection.endLineNumber,
+						text: model.getValueInRange(selection),
+					});
+				});
 			}}
 			options={{
 				fontSize: 13,

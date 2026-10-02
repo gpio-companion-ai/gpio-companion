@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { findNodeHandle, Linking, type ScrollView, View } from "react-native";
 import AddressForm from "../components/AddressForm.tsx";
 import BoardAlertSettings from "../components/BoardAlertSettings.tsx";
+import ExperienceCard from "../components/ExperienceCard.tsx";
 import LanguageCard from "../components/LanguageCard.tsx";
 import UsageChartsWebView from "../components/UsageChartsWebView.tsx";
 import {
@@ -98,6 +99,7 @@ export default function Profile() {
 				{translateError(t, error || creditsQuery.error || "")}
 			</ErrorText>
 			<LanguageCard />
+			{token ? <ExperienceCard token={token} /> : null}
 			{token ? <VoiceCard token={token} /> : null}
 			{token ? <BoardAlertSettings /> : null}
 			<View

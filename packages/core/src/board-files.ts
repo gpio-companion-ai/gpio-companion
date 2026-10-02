@@ -21,8 +21,15 @@ export const EDITOR_EMBED_MESSAGE_TYPE = "gpio-editor";
 export const EDITOR_EMBED_READY_TYPE = "gpio-editor-ready";
 export const EDITOR_EMBED_CHANGE_TYPE = "gpio-editor-change";
 export const EDITOR_EMBED_SAVE_TYPE = "gpio-editor-save";
+export const EDITOR_EMBED_SELECTION_TYPE = "gpio-editor-selection";
 export const EDITOR_EMBED_BRIDGE_KEY = "__gpioEditorEmbed";
 export const EDITOR_EMBED_PENDING_KEY = "__gpioEditorPending";
+
+export type CodeEditorSelection = {
+	startLine: number;
+	endLine: number;
+	text: string;
+};
 
 const TEXT_EXT = new Set([
 	"c",
@@ -621,6 +628,33 @@ export function parseEditorEmbedChange(data: unknown): string | null {
 		return null;
 	}
 	return typeof record.text === "string" ? record.text : null;
+}
+
+export function parseEditorEmbedSelection(
+	data: unknown,
+): CodeEditorSelection | null | undefined {
+	const record = asRecord(data);
+	if (!record || record.type !== EDITOR_EMBED_SELECTION_TYPE) {
+		return undefined;
+	}
+	const selection = record.selection;
+	if (selection === null) {
+		return null;
+	}
+	if (
+		selection &&
+		typeof selection === "object" &&
+		Number.isInteger((selection as CodeEditorSelection).startLine) &&
+		Number.isInteger((selection as CodeEditorSelection).endLine) &&
+		typeof (selection as CodeEditorSelection).text === "string"
+	) {
+		return {
+			startLine: (selection as CodeEditorSelection).startLine,
+			endLine: (selection as CodeEditorSelection).endLine,
+			text: (selection as CodeEditorSelection).text,
+		};
+	}
+	return undefined;
 }
 
 export function isEditorEmbedSave(data: unknown): boolean {
