@@ -458,6 +458,22 @@ export type BoardView = {
 
 export type Credits = { micros: number; usd: number };
 
+export type CreditsUsageKind = "chat" | "embedding" | "stt" | "tts";
+
+export type CreditsUsageSummary = {
+	days: number;
+	since: string;
+	calls: number;
+	micros: number;
+	byKind: {
+		kind: CreditsUsageKind;
+		calls: number;
+		micros: number;
+		promptTokens: number;
+		completionTokens: number;
+	}[];
+};
+
 export type GithubRepo = {
 	full_name: string;
 	name: string;
@@ -588,6 +604,13 @@ export function patchDeviceLabel(uuid: string, label: string) {
 
 export function getCredits() {
 	return apiRequest<Credits>("GET", "/api/mobile/credits");
+}
+
+export function getCreditsUsage() {
+	return apiRequest<CreditsUsageSummary>(
+		"GET",
+		"/api/mobile/credits/usage?days=30",
+	);
 }
 
 export function getVoiceSettings() {

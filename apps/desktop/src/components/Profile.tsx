@@ -9,8 +9,10 @@ import { useEffect, useState } from "react";
 import {
 	DASHBOARD_URL,
 	getCredits,
+	getCreditsUsage,
 	listDeviceStatus,
 	openExternal,
+	type CreditsUsageKind,
 	type Session,
 	submitBugReport,
 } from "../api";
@@ -34,6 +36,8 @@ export default function Profile({
 }) {
 	const creditsQuery = useCachedQuery(CACHE_KEYS.credits, getCredits);
 	const credits = creditsQuery.data ?? null;
+	const usageQuery = useCachedQuery(CACHE_KEYS.creditsUsage, getCreditsUsage);
+	const usage = usageQuery.data ?? null;
 	const t = useT();
 	const [error, setError] = useState("");
 	const loading = creditsQuery.loading;
@@ -87,7 +91,8 @@ export default function Profile({
 			<div id="profile-keys">
 				<Keys />
 			</div>
-			<Paper id="profile-credits" sx={{ p: 1.5 }} elevation={1}>
+		<Paper id="profile-credits" sx={{ p: 1.5 }} elevation={1}>
+			<Stack spacing={1}>
 				<Stack
 					direction="row"
 					spacing={1}
@@ -131,11 +136,77 @@ export default function Profile({
 						{t("credits.add")}
 					</Button>
 				</Stack>
-			</Paper>
+				<Stack
+					direction="row"
+					spacing={1}
+					sx={{
+						alignItems: "center",
+						justifyContent: "space-between",
+						flexWrap: "wrap",
+					}}
+				>
+					<Stack spacing={0.25}>
+						<Typography variant="subtitle1">
+							{t("credits.usageTitle")}
+						</Typography>
+						{usageQuery.loading ? (
+							<LinesSkeleton lines={1} />
+						) : (
+							<Typography color="secondary">
+								{usage && usage.calls > 0
+									? `${t("credits.usageSpent")}: $${(usage.micros / 1_000_000).toFixed(4)} · ${t("credits.usageCalls", { count: usage.calls })} · ${usage.byKind
+											.map(
+												(entry) =>
+													`${usageKindLabel(t, entry.kind)} $${(entry.micros / 1_000_000).toFixed(4)}`,
+											)
+											.join(" · ")}`
+									: t("credits.usageEmpty")}
+							</Typography>
+						)}
+					</Stack>
+					<Button
+						variant="text"
+						color="secondary"
+						size="small"
+						onClick={() => {
+							setError("");
+							void openExternal(
+								`${DASHBOARD_URL}/profile/credits#usage`,
+							).catch((caught) => {
+								setError(
+									caught instanceof Error
+										? caught.message
+										: t("errors.couldNotOpenCredits"),
+								);
+							});
+						}}
+					>
+						{t("credits.usageView")}
+					</Button>
+				</Stack>
+			</Stack>
+		</Paper>
 			<AddressForm />
 			<BugReportForm />
 		</Stack>
 	);
+}
+
+function usageKindLabel(
+	t: ReturnType<typeof useT>,
+	kind: CreditsUsageKind,
+): string {
+	switch (kind) {
+		case "embedding":
+			return t("credits.usageKindEmbedding");
+		case "stt":
+			return t("credits.usageKindStt");
+		case "tts":
+			return t("credits.usageKindTts");
+		case "chat":
+		default:
+			return t("credits.usageKindChat");
+	}
 }
 
 function BugReportForm() {

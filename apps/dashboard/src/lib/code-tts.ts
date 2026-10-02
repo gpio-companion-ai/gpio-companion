@@ -12,10 +12,12 @@ import {
 	parseMarkup,
 } from "gpio-companion";
 import { consumeMicrodollars, creditsBalance } from "./credits.ts";
+import { recordAiUsage } from "./ai-usage.ts";
 import { getVoiceSettings } from "./voice-settings.ts";
 
 type TtsEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
+	DASHBOARD_DB?: D1Database;
 	AI?: Ai;
 	GPIO_AI_MARKUP?: string;
 	XAI_API_KEY?: string;
@@ -56,6 +58,13 @@ export async function speakCodeText(
 		throw new Error("speech failed");
 	}
 	await consumeMicrodollars(env.DYNAMIC_PAGE_KV, userId, charge);
+	await recordAiUsage(env.DASHBOARD_DB, {
+		userId,
+		kind: "tts",
+		model: settings.provider === "xai" ? "xai-tts" : CODE_TTS_MODEL,
+		chars: text.length,
+		micros: charge,
+	});
 	return { audio };
 }
 

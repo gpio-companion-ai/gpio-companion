@@ -19,9 +19,11 @@ import {
 	consumeMicrodollars,
 	creditsBalance,
 } from "../../../../../lib/credits.ts";
+import { recordAiUsage } from "../../../../../lib/ai-usage.ts";
 
 type PagesEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
+	DASHBOARD_DB?: D1Database;
 	AI?: Ai;
 	GPIO_AI_MARKUP?: string;
 	GPIO_COMPANION_DEVICE_PRIVATE_KEY?: string;
@@ -64,7 +66,8 @@ export async function onRequestPost(ctx: { request: Request; env: PagesEnv }) {
 		return error(400, "invalid json");
 	}
 	const model = resolveModel(body);
-	const estimate = billedMicros(model, estimateUsage(body), markup);
+	const estimateTokens = estimateUsage(body);
+	const estimate = billedMicros(model, estimateTokens, markup);
 	if (estimate == null) {
 		return error(400, "model not priced");
 	}
@@ -81,6 +84,7 @@ export async function onRequestPost(ctx: { request: Request; env: PagesEnv }) {
 		if (stream && result instanceof ReadableStream) {
 			return sseResponse(
 				ctx.env.DYNAMIC_PAGE_KV,
+				ctx.env.DASHBOARD_DB,
 				userId,
 				model,
 				markup,
@@ -88,9 +92,18 @@ export async function onRequestPost(ctx: { request: Request; env: PagesEnv }) {
 				result,
 			);
 		}
-		const usage = extractUsage(result) ?? estimateUsage(body);
+		const usage = extractUsage(result) ?? estimateTokens;
 		const debit = billedMicros(model, usage, markup) ?? estimate;
 		await consumeMicrodollars(ctx.env.DYNAMIC_PAGE_KV, userId, debit);
+		await recordAiUsage(ctx.env.DASHBOARD_DB, {
+			userId,
+			kind: "chat",
+			model,
+			promptTokens: usage.prompt_tokens,
+			completionTokens: usage.completion_tokens,
+			cachedTokens: usage.cached_tokens,
+			micros: debit,
+		});
 		const completion = toChatCompletion(model, result);
 		if (!extractUsage(completion)) {
 			completion.usage = {
@@ -109,6 +122,7 @@ export async function onRequestPost(ctx: { request: Request; env: PagesEnv }) {
 
 function sseResponse(
 	kv: KVNamespace,
+	db: D1Database | undefined,
 	userId: string,
 	model: string,
 	markup: number,
@@ -138,6 +152,15 @@ function sseResponse(
 				const debit =
 					(usage ? billedMicros(model, usage, markup) : null) ?? fallback;
 				await consumeMicrodollars(kv, userId, debit);
+				await recordAiUsage(db, {
+					userId,
+					kind: "chat",
+					model,
+					promptTokens: usage?.prompt_tokens ?? 0,
+					completionTokens: usage?.completion_tokens ?? 0,
+					cachedTokens: usage?.cached_tokens,
+					micros: debit,
+				});
 			},
 		}),
 	);

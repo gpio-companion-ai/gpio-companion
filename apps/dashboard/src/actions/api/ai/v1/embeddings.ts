@@ -16,9 +16,11 @@ import {
 	consumeMicrodollars,
 	creditsBalance,
 } from "../../../../lib/credits.ts";
+import { recordAiUsage } from "../../../../lib/ai-usage.ts";
 
 type PagesEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
+	DASHBOARD_DB?: D1Database;
 	AI?: Ai;
 	GPIO_AI_MARKUP?: string;
 	GPIO_COMPANION_DEVICE_PRIVATE_KEY?: string;
@@ -97,6 +99,13 @@ export async function onRequestPost(ctx: { request: Request; env: PagesEnv }) {
 			return error(502, "workers ai returned no embeddings");
 		}
 		await consumeMicrodollars(ctx.env.DYNAMIC_PAGE_KV, userId, estimate);
+		await recordAiUsage(ctx.env.DASHBOARD_DB, {
+			userId,
+			kind: "embedding",
+			model,
+			promptTokens: tokens,
+			micros: estimate,
+		});
 		return Response.json(
 			{
 				object: "list",

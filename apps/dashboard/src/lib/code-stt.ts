@@ -8,9 +8,11 @@ import {
 	parseMarkup,
 } from "gpio-companion";
 import { consumeMicrodollars, creditsBalance } from "./credits.ts";
+import { recordAiUsage } from "./ai-usage.ts";
 
 type SttEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
+	DASHBOARD_DB?: D1Database;
 	AI?: Ai;
 	GPIO_AI_MARKUP?: string;
 };
@@ -55,10 +57,14 @@ export async function transcribeCodeAudio(
 		typeof result.transcription_info?.duration === "number"
 			? result.transcription_info.duration
 			: CODE_STT_MAX_MS / 1000;
-	await consumeMicrodollars(
-		env.DYNAMIC_PAGE_KV,
+	const debit = codeSttMicros(duration, markup);
+	await consumeMicrodollars(env.DYNAMIC_PAGE_KV, userId, debit);
+	await recordAiUsage(env.DASHBOARD_DB, {
 		userId,
-		codeSttMicros(duration, markup),
-	);
+		kind: "stt",
+		model: CODE_STT_MODEL,
+		audioSeconds: duration,
+		micros: debit,
+	});
 	return { text: typeof result.text === "string" ? result.text.trim() : "" };
 }

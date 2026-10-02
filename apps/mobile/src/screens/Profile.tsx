@@ -15,7 +15,7 @@ import {
 	TextButton,
 } from "../components/ui.tsx";
 import VoiceCard from "../components/VoiceCard.tsx";
-import { getCredits, listDeviceStatus, submitBugReport } from "../lib/api.ts";
+import { getCredits, getCreditsUsage, listDeviceStatus, submitBugReport, type CreditsUsageKind } from "../lib/api.ts";
 import { CACHE_KEYS, useCachedQuery } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
@@ -34,6 +34,13 @@ export default function Profile() {
 		return getCredits(token);
 	});
 	const credits = creditsQuery.data ?? null;
+	const usageQuery = useCachedQuery(CACHE_KEYS.creditsUsage, () => {
+		if (!token) {
+			return Promise.reject(new Error("sign in first"));
+		}
+		return getCreditsUsage(token);
+	});
+	const usage = usageQuery.data ?? null;
 	const t = useT();
 	const [error, setError] = useState("");
 	const { registerProfileJump, consumeProfileJump } = useDeckNav();
@@ -134,22 +141,52 @@ export default function Profile() {
 								: t("credits.noCredits")}
 						</Muted>
 					)}
-					<PrimaryButton
-						label={t("credits.add")}
-						onPress={() => {
-							setError("");
-							void Linking.openURL(`${dashboardUrl}/profile/credits`).catch(
-								(caught) => {
-									setError(
-										caught instanceof Error
-											? caught.message
-											: t("errors.couldNotOpenCredits"),
-									);
-								},
+				<PrimaryButton
+					label={t("credits.add")}
+					onPress={() => {
+						setError("");
+						void Linking.openURL(`${dashboardUrl}/profile/credits`).catch(
+							(caught) => {
+								setError(
+									caught instanceof Error
+										? caught.message
+										: t("errors.couldNotOpenCredits"),
+								);
+							},
+						);
+					}}
+				/>
+				<Body>{t("credits.usageTitle")}</Body>
+				{usageQuery.loading ? (
+					<Skeleton height={24} />
+				) : (
+					<Muted>
+						{usage && usage.calls > 0
+							? `${t("credits.usageSpent")}: $${(usage.micros / 1_000_000).toFixed(4)} · ${t("credits.usageCalls", { count: usage.calls })} · ${usage.byKind
+									.map(
+										(entry) =>
+											`${usageKindLabel(t, entry.kind)} $${(entry.micros / 1_000_000).toFixed(4)}`,
+									)
+									.join(" · ")}`
+							: t("credits.usageEmpty")}
+					</Muted>
+				)}
+				<TextButton
+					label={t("credits.usageView")}
+					onPress={() => {
+						setError("");
+						void Linking.openURL(
+							`${dashboardUrl}/profile/credits#usage`,
+						).catch((caught) => {
+							setError(
+								caught instanceof Error
+									? caught.message
+									: t("errors.couldNotOpenCredits"),
 							);
-						}}
-					/>
-				</Paper>
+						});
+					}}
+				/>
+			</Paper>
 			</View>
 			<View
 				collapsable={false}
@@ -162,6 +199,23 @@ export default function Profile() {
 			<BugReportForm token={token} />
 		</Screen>
 	);
+}
+
+function usageKindLabel(
+	t: ReturnType<typeof useT>,
+	kind: CreditsUsageKind,
+): string {
+	switch (kind) {
+		case "embedding":
+			return t("credits.usageKindEmbedding");
+		case "stt":
+			return t("credits.usageKindStt");
+		case "tts":
+			return t("credits.usageKindTts");
+		case "chat":
+		default:
+			return t("credits.usageKindChat");
+	}
 }
 
 function BugReportForm({ token }: { token: string | null }) {

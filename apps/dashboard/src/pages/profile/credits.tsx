@@ -1,4 +1,5 @@
 import { GET as getCredits, POST as grantCredits } from "@api/credits";
+import { GET as getUsage } from "@api/credits/usage";
 import {
 	PUT as capturePaypalOrder,
 	POST as createPaypalOrder,
@@ -6,9 +7,17 @@ import {
 } from "@api/credits/paypal";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
+import Chip from "@shpaw415/mui-lite/Chip";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Skeleton from "@shpaw415/mui-lite/Skeleton";
 import Stack from "@shpaw415/mui-lite/Stack";
+import Table, {
+	TableBody,
+	TableCell,
+	TableContainer,
+	TableHead,
+	TableRow,
+} from "@shpaw415/mui-lite/Table";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { translateError } from "gpio-companion/i18n";
 import { useEffect, useRef, useState } from "react";
@@ -22,6 +31,11 @@ import {
 	type CreditPackUsd,
 } from "../../lib/credit-packs.ts";
 import { formatUsd } from "../../lib/credits.ts";
+import {
+	USAGE_DAY_OPTIONS,
+	type AiUsageKind,
+	type AiUsageSummary,
+} from "../../lib/ai-usage.ts";
 import { loadPaypalSdk, paypalButtonsStyle } from "../../lib/paypal-sdk.ts";
 
 type PaypalConfig = {
@@ -197,13 +211,206 @@ export default function CreditsPage() {
 									});
 							}}
 						>
-							{t("credits.adminStub")}
-						</Button>
-					) : null}
-					{status ? <Alert severity="success">{status}</Alert> : null}
-					{error ? <Alert severity="error">{error}</Alert> : null}
-				</Stack>
-			</Paper>
+						{t("credits.adminStub")}
+					</Button>
+				) : null}
+				{status ? <Alert severity="success">{status}</Alert> : null}
+				{error ? <Alert severity="error">{error}</Alert> : null}
+			</Stack>
+		</Paper>
+		<UsageSection userId={session.data?.id} />
 		</Stack>
+	);
+}
+
+function kindLabel(t: ReturnType<typeof useT>, kind: AiUsageKind): string {
+	switch (kind) {
+		case "embedding":
+			return t("credits.usageKindEmbedding");
+		case "stt":
+			return t("credits.usageKindStt");
+		case "tts":
+			return t("credits.usageKindTts");
+		case "chat":
+		default:
+			return t("credits.usageKindChat");
+	}
+}
+
+function usageDetail(
+	kind: AiUsageKind,
+	row: {
+		promptTokens: number;
+		completionTokens: number;
+		audioSeconds: number | null;
+		chars: number | null;
+	},
+): string {
+	if (kind === "stt") {
+		const minutes =
+			row.audioSeconds == null ? 0 : row.audioSeconds / 60;
+		return `${minutes.toFixed(2)} min`;
+	}
+	if (kind === "tts") {
+		return `${(row.chars ?? 0).toLocaleString()} chars`;
+	}
+	if (kind === "embedding") {
+		return `${row.promptTokens.toLocaleString()} tokens`;
+	}
+	return `${row.promptTokens.toLocaleString()} in / ${row.completionTokens.toLocaleString()} out`;
+}
+
+function UsageSection({ userId }: { userId: string | undefined }) {
+	const t = useT();
+	const [days, setDays] = useState<number>(30);
+	const [usage, setUsage] = useState<AiUsageSummary | null>(null);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState("");
+
+	useEffect(() => {
+		if (!userId) {
+			setLoading(false);
+			return;
+		}
+		setLoading(true);
+		setError("");
+		void getUsage(days)
+			.then((result) => {
+				setUsage(unwrapAction(result));
+			})
+			.catch((caught: unknown) => {
+				const message =
+					caught instanceof Error ? caught.message : "load failed";
+				setError(
+					message === "usage history is not available"
+						? t("credits.usageUnavailable")
+						: translateError(t, message),
+				);
+			})
+			.finally(() => setLoading(false));
+	}, [userId, days, t]);
+
+	if (!userId) {
+		return null;
+	}
+
+	return (
+		<Paper id="usage" className="w-full p-3" elevation={1}>
+			<Stack spacing={2}>
+				<Typography variant="subtitle1">{t("credits.usageTitle")}</Typography>
+				<Typography color="secondary">{t("credits.usageHint")}</Typography>
+				<Stack direction="row" spacing={1} className="flex-wrap gap-2">
+					{USAGE_DAY_OPTIONS.map((option) => (
+						<Button
+							key={option}
+							variant={days === option ? "contained" : "outlined"}
+							size="small"
+							onClick={() => setDays(option)}
+						>
+							{option}d
+						</Button>
+					))}
+				</Stack>
+				{loading ? (
+					<Stack spacing={1}>
+						<Skeleton variant="rounded" height={24} width={180} />
+						<Skeleton variant="rounded" height={120} />
+					</Stack>
+				) : error ? (
+					<Alert severity="error">{error}</Alert>
+				) : !usage || usage.calls === 0 ? (
+					<Alert severity="info">{t("credits.usageEmpty")}</Alert>
+				) : (
+					<>
+						<Stack spacing={0.5}>
+							<Typography variant="h5">{formatUsd(usage.micros)}</Typography>
+							<Typography color="secondary">
+								{t("credits.usageSpent")} ·{" "}
+								{t("credits.usageCalls", { count: usage.calls })}
+							</Typography>
+						</Stack>
+						<Stack direction="row" spacing={1} className="flex-wrap gap-2">
+							{usage.byKind.map((entry) => (
+								<Chip
+									key={entry.kind}
+									label={`${kindLabel(t, entry.kind)} · ${formatUsd(entry.micros)}`}
+									variant="outlined"
+									size="small"
+								/>
+							))}
+						</Stack>
+						<Typography variant="subtitle1">
+							{t("credits.usageByModel")}
+						</Typography>
+						<TableContainer>
+							<Table size="small">
+								<TableHead>
+									<TableRow>
+										<TableCell>{t("credits.usageModel")}</TableCell>
+										<TableCell>{t("credits.usageInput")}</TableCell>
+										<TableCell>{t("credits.usageOutput")}</TableCell>
+										<TableCell>{t("credits.usageCost")}</TableCell>
+									</TableRow>
+								</TableHead>
+								<TableBody>
+									{usage.byModel.map((entry) => (
+										<TableRow key={`${entry.kind}:${entry.model}`}>
+											<TableCell>
+												<span className="break-all">{entry.model}</span>{" "}
+												<span className="opacity-70">
+													({kindLabel(t, entry.kind)} · {entry.calls})
+												</span>
+											</TableCell>
+											<TableCell>
+												{entry.kind === "tts"
+													? "—"
+													: entry.promptTokens.toLocaleString()}
+											</TableCell>
+											<TableCell>
+												{entry.kind === "chat"
+													? entry.completionTokens.toLocaleString()
+													: "—"}
+											</TableCell>
+											<TableCell>{formatUsd(entry.micros)}</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</TableContainer>
+						<Typography variant="subtitle1">
+							{t("credits.usageRecent")}
+						</Typography>
+						<TableContainer>
+							<Table size="small">
+								<TableHead>
+									<TableRow>
+										<TableCell>{t("credits.usageWhen")}</TableCell>
+										<TableCell>{t("credits.usageDetail")}</TableCell>
+										<TableCell>{t("credits.usageCost")}</TableCell>
+									</TableRow>
+								</TableHead>
+								<TableBody>
+									{usage.recent.map((entry, index) => (
+										<TableRow key={`${entry.createdAt}:${index}`}>
+											<TableCell>
+												{new Date(entry.createdAt).toLocaleString()}
+											</TableCell>
+											<TableCell>
+												<span className="break-all">{entry.model}</span>{" "}
+												<span className="opacity-70">
+													({kindLabel(t, entry.kind)} ·{" "}
+													{usageDetail(entry.kind, entry)})
+												</span>
+											</TableCell>
+											<TableCell>{formatUsd(entry.micros)}</TableCell>
+										</TableRow>
+									))}
+								</TableBody>
+							</Table>
+						</TableContainer>
+					</>
+				)}
+			</Stack>
+		</Paper>
 	);
 }

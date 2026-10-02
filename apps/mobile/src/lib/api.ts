@@ -188,6 +188,22 @@ export type BoardView = {
 
 export type Credits = { micros: number; usd: number };
 
+export type CreditsUsageKind = "chat" | "embedding" | "stt" | "tts";
+
+export type CreditsUsageSummary = {
+	days: number;
+	since: string;
+	calls: number;
+	micros: number;
+	byKind: {
+		kind: CreditsUsageKind;
+		calls: number;
+		micros: number;
+		promptTokens: number;
+		completionTokens: number;
+	}[];
+};
+
 export type GithubRepo = {
 	full_name: string;
 	name: string;
@@ -453,6 +469,13 @@ export function signOpencodeLive(token: string, uuid: string, repo: string) {
 
 export function getCredits(token: string) {
 	return request<Credits>(token, "/api/mobile/credits");
+}
+
+export function getCreditsUsage(token: string) {
+	return request<CreditsUsageSummary>(
+		token,
+		"/api/mobile/credits/usage?days=30",
+	);
 }
 
 export function getVoiceSettings(token: string) {

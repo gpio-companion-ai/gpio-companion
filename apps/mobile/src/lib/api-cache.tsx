@@ -17,6 +17,7 @@ export const CACHE_KEYS = {
 	githubApp: "github-app",
 	projects: "projects-gpio",
 	credits: "credits",
+	creditsUsage: "credits-usage",
 	notifications: "notifications",
 	debugBoards: "debug-boards",
 	adminDevices: "admin-devices",

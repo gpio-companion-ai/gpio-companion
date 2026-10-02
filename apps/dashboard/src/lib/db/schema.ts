@@ -3,6 +3,7 @@ import {
 	check,
 	index,
 	integer,
+	real,
 	sqliteTable,
 	text,
 } from "drizzle-orm/sqlite-core";
@@ -64,6 +65,34 @@ export const jlcpcbDraftPrints = sqliteTable(
 		index("jlcpcb_draft_prints_user_idx").on(table.userId, table.sort),
 	],
 );
+
+export const aiUsage = sqliteTable(
+	"ai_usage",
+	{
+		id: integer("id").primaryKey({ autoIncrement: true }),
+		userId: text("user_id").notNull(),
+		createdAt: text("created_at").notNull(),
+		kind: text("kind").notNull(),
+		model: text("model").notNull(),
+		promptTokens: integer("prompt_tokens").notNull().default(0),
+		completionTokens: integer("completion_tokens").notNull().default(0),
+		cachedTokens: integer("cached_tokens").notNull().default(0),
+		audioSeconds: real("audio_seconds"),
+		chars: integer("chars"),
+		micros: integer("micros").notNull(),
+	},
+	(table) => [
+		index("ai_usage_user_created_idx").on(table.userId, table.createdAt),
+		index("ai_usage_user_model_idx").on(table.userId, table.model),
+		check("ai_usage_micros_check", sql`${table.micros} >= 0`),
+		check(
+			"ai_usage_kind_check",
+			sql`${table.kind} in ('chat', 'embedding', 'stt', 'tts')`,
+		),
+	],
+);
+
+export type AiUsageKind = "chat" | "embedding" | "stt" | "tts";
 
 export const jlcpcbDraftAssemblyLines = sqliteTable(
 	"jlcpcb_draft_assembly_lines",
