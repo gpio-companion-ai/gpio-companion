@@ -2820,6 +2820,16 @@ button.oc-chip,
 		display: none;
 	}
 
+	.oc-code-tabs.is-m-chat .oc-stage,
+	.oc-code-tabs.is-m-chat .oc-stage.is-split {
+		display: flex;
+		flex-direction: column;
+	}
+
+	.oc-pane-tabs button:disabled {
+		opacity: 0.4;
+	}
+
 	.oc-code-tabs.is-m-files .oc-tree {
 		width: auto;
 		max-height: none;

@@ -145,11 +145,13 @@ export default function ProjectFiles({
 	const echo = useRef("");
 	const fileRef = useRef(file);
 	const draftRef = useRef(draft);
+	const mobileRef = useRef(mobile);
 	const stageRef = useRef<HTMLDivElement>(null);
 	const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
 	const openedPath = useRef("");
 	fileRef.current = file;
 	draftRef.current = draft;
+	mobileRef.current = mobile;
 	const dirty = boardFileDirty(file?.kind ?? "", draft, file?.text ?? "");
 	const showBoard =
 		file?.path === BREADBOARD_DIAGRAM_JSON && diagramView === "board";
@@ -172,6 +174,7 @@ export default function ProjectFiles({
 		setStale(false);
 		setNote("");
 		setSaved("");
+		setMobilePane("chat");
 		setEntries([]);
 		setBranch("");
 		setOpenDirs(new Set());
@@ -311,6 +314,9 @@ export default function ProjectFiles({
 						setFile(null);
 						setDraft("");
 						setNote(t("code.fileMissing"));
+						if (mobileRef.current) {
+							setMobilePane("chat");
+						}
 						return;
 					}
 					if (applied.action === "reload" && current) {
@@ -588,6 +594,9 @@ export default function ProjectFiles({
 				setFile(null);
 				setDraft("");
 				openedPath.current = "";
+				if (mobile) {
+					setMobilePane("chat");
+				}
 			}
 			onContextRemoved?.(path);
 			await reloadFiles();
@@ -791,6 +800,7 @@ export default function ProjectFiles({
 							role="tab"
 							aria-selected={mobilePane === tab.id}
 							className={mobilePane === tab.id ? "is-on" : undefined}
+							disabled={tab.id === "preview" && !file}
 							onClick={() => setMobilePane(tab.id)}
 						>
 							{tab.label}
