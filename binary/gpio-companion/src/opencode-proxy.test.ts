@@ -336,9 +336,7 @@ describe("signed opencode proxy", () => {
 			await readFile(join(dir, "opencode.json"), "utf8"),
 		);
 		expect(written.permission).toBe("allow");
-		expect(written.permissions).toEqual([
-			{ action: "*", resource: "*", effect: "allow" },
-		]);
+		expect(written.permissions).toBeUndefined();
 		expect(seen).toHaveLength(0);
 	});
 });

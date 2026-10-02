@@ -5,7 +5,9 @@ import { join } from "node:path";
 import { emptyDeviceConfig } from "gpio-companion";
 import {
 	defaultOpencodePermissionConfigPath,
+	detectOpencodePermissionSchema,
 	handleOpencodePermissionMode,
+	opencodePermissionSchemaForVersion,
 	parseOpencodePermissionModeBody,
 	writeOpencodePermissionConfig,
 } from "./opencode-permission-mode.ts";
@@ -21,8 +23,34 @@ function memoryStore(config = emptyDeviceConfig("raspberrypi")) {
 	};
 }
 
+describe("opencode permission schema version", () => {
+	test("maps versions to schemas", () => {
+		expect(opencodePermissionSchemaForVersion("1.18.34")).toBe("v1");
+		expect(opencodePermissionSchemaForVersion("1.0.0")).toBe("v1");
+		expect(opencodePermissionSchemaForVersion("2.0.1")).toBe("v2");
+		expect(opencodePermissionSchemaForVersion("10.0.0")).toBe("v2");
+		expect(opencodePermissionSchemaForVersion("")).toBe("v1");
+		expect(opencodePermissionSchemaForVersion("garbage")).toBe("v1");
+	});
+
+	test("detects schema from the version file", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "gpio-perm-"));
+		await writeFile(join(dir, "marker"), "");
+		await mkdir(join(dir, ".opencode"));
+		await writeFile(join(dir, ".opencode", "version"), "1.18.34\n");
+		expect(await detectOpencodePermissionSchema(dir)).toBe("v1");
+		await writeFile(join(dir, ".opencode", "version"), "2.0.0\n");
+		expect(await detectOpencodePermissionSchema(dir)).toBe("v2");
+	});
+});
+
+async function mkdir(path: string): Promise<void> {
+	const { mkdir } = await import("node:fs/promises");
+	await mkdir(path, { recursive: true });
+}
+
 describe("opencode permission mode", () => {
-	test("writes allow permissions for full control", async () => {
+	test("v1 schema writes permission and drops permissions", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "gpio-perm-"));
 		const path = join(dir, "opencode.json");
 		await writeFile(
@@ -31,32 +59,77 @@ describe("opencode permission mode", () => {
 				{
 					model: "gpio-companion/@cf/zai-org/glm-5.3",
 					provider: { "gpio-companion": { npm: "@ai-sdk/openai-compatible" } },
+					permissions: [{ action: "*", resource: "*", effect: "ask" }],
 				},
 				null,
 				"\t",
 			),
 		);
-		expect(await writeOpencodePermissionConfig(path, "full")).toBe("changed");
+		expect(
+			await writeOpencodePermissionConfig(path, "full", { schema: "v1" }),
+		).toBe("changed");
 		const written = JSON.parse(await readFile(path, "utf8"));
 		expect(written.permission).toBe("allow");
-		expect(written.permissions).toEqual([
-			{ action: "*", resource: "*", effect: "allow" },
-		]);
+		expect(written.permissions).toBeUndefined();
 		expect(written.model).toBe("gpio-companion/@cf/zai-org/glm-5.3");
 		expect(written.provider["gpio-companion"].npm).toBe(
 			"@ai-sdk/openai-compatible",
 		);
-		expect(await writeOpencodePermissionConfig(path, "full")).toBe("unchanged");
+		expect(
+			await writeOpencodePermissionConfig(path, "full", { schema: "v1" }),
+		).toBe("unchanged");
+	});
+
+	test("v2 schema writes permissions and drops permission", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "gpio-perm-"));
+		const path = join(dir, "opencode.json");
+		await writeFile(
+			path,
+			JSON.stringify({
+				model: "m",
+				permission: "ask",
+			}),
+		);
+		expect(
+			await writeOpencodePermissionConfig(path, "full", { schema: "v2" }),
+		).toBe("changed");
+		const written = JSON.parse(await readFile(path, "utf8"));
+		expect(written.permissions).toEqual([
+			{ action: "*", resource: "*", effect: "allow" },
+		]);
+		expect(written.permission).toBeUndefined();
+		expect(written.model).toBe("m");
+		expect(
+			await writeOpencodePermissionConfig(path, "full", { schema: "v2" }),
+		).toBe("unchanged");
+	});
+
+	test("defaults to the v1 schema", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "gpio-perm-"));
+		const path = join(dir, "opencode.json");
+		await writeFile(path, JSON.stringify({ model: "m" }));
+		expect(await writeOpencodePermissionConfig(path, "ask")).toBe("changed");
+		const written = JSON.parse(await readFile(path, "utf8"));
+		expect(written.permission).toBe("ask");
+		expect(written.permissions).toBeUndefined();
 	});
 
 	test("restores ask and keeps other keys", async () => {
 		const dir = await mkdtemp(join(tmpdir(), "gpio-perm-"));
 		const path = join(dir, "opencode.json");
-		await writeFile(path, JSON.stringify({ model: "m", permission: "ask" }));
-		expect(await writeOpencodePermissionConfig(path, "ask")).toBe("changed");
-		expect(await writeOpencodePermissionConfig(path, "ask")).toBe("unchanged");
-		expect(await writeOpencodePermissionConfig(path, "full")).toBe("changed");
-		expect(await writeOpencodePermissionConfig(path, "ask")).toBe("changed");
+		await writeFile(
+			path,
+			`${JSON.stringify({ model: "m", permission: "ask" }, null, "\t")}\n`,
+		);
+		expect(
+			await writeOpencodePermissionConfig(path, "ask", { schema: "v1" }),
+		).toBe("unchanged");
+		expect(
+			await writeOpencodePermissionConfig(path, "full", { schema: "v1" }),
+		).toBe("changed");
+		expect(
+			await writeOpencodePermissionConfig(path, "ask", { schema: "v1" }),
+		).toBe("changed");
 		const written = JSON.parse(await readFile(path, "utf8"));
 		expect(written.permission).toBe("ask");
 		expect(written.model).toBe("m");
@@ -91,6 +164,7 @@ describe("opencode permission mode", () => {
 			bodyText: `{"mode":"full"}`,
 			store,
 			opencodeJsonPath: path,
+			schema: "v1",
 			restart: async () => {
 				restarts += 1;
 			},
@@ -99,15 +173,16 @@ describe("opencode permission mode", () => {
 		expect(await response.json()).toEqual({ mode: "full", restarted: true });
 		expect(store.value().opencodePermission).toBe("full");
 		expect(JSON.parse(await readFile(path, "utf8")).permission).toBe("allow");
-		expect(JSON.parse(await readFile(path, "utf8")).permissions).toEqual([
-			{ action: "*", resource: "*", effect: "allow" },
-		]);
+		expect(
+			JSON.parse(await readFile(path, "utf8")).permissions,
+		).toBeUndefined();
 		expect(restarts).toBe(1);
 		const again = await handleOpencodePermissionMode({
 			method: "POST",
 			bodyText: `{"mode":"full"}`,
 			store,
 			opencodeJsonPath: path,
+			schema: "v1",
 			restart: async () => {
 				restarts += 1;
 			},
@@ -129,14 +204,16 @@ describe("opencode permission mode", () => {
 			bodyText: `{"mode":"ask"}`,
 			store,
 			opencodeJsonPath: path,
+			schema: "v2",
 			restart: async () => {
 				restarts += 1;
 			},
 		});
 		expect(await response.json()).toEqual({ mode: "ask", restarted: true });
 		expect(store.value().opencodePermission).toBe("ask");
-		expect(JSON.parse(await readFile(path, "utf8")).permission).toBe("ask");
-		expect(JSON.parse(await readFile(path, "utf8")).permissions).toEqual([
+		const written = JSON.parse(await readFile(path, "utf8"));
+		expect(written.permission).toBeUndefined();
+		expect(written.permissions).toEqual([
 			{ action: "*", resource: "*", effect: "ask" },
 		]);
 		expect(restarts).toBe(1);
