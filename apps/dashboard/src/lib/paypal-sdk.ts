@@ -21,10 +21,10 @@ type PaypalNamespace = {
 
 const SDK_ID = "paypal-sdk";
 
-export function paypalButtonsStyle(isDark: boolean) {
+export function paypalButtonsStyle() {
 	return {
-		layout: "vertical" as const,
-		color: isDark ? ("white" as const) : ("gold" as const),
+		layout: "horizontal" as const,
+		color: "gold" as const,
 		shape: "rect" as const,
 		label: "pay" as const,
 		height: 45,
@@ -53,6 +53,7 @@ export async function loadPaypalSdk(options: {
 		intent: "capture",
 		locale: "en_US",
 		components: "buttons",
+		"disable-funding": "paylater,card",
 	});
 
 	await new Promise<void>((resolve, reject) => {

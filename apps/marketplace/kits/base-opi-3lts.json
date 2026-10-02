@@ -1,0 +1,9 @@
+{
+	"slug": "base-opi-3lts",
+	"sku": "001",
+	"nameEn": "gpio-companion base kit - Orange Pi 3 LTS",
+	"nameFr": "Kit de base gpio-companion - Orange Pi 3 LTS",
+	"descriptionEn": "Base kit: an Orange Pi 3 LTS board and a Samsung Evo Plus MB-MC1T0S microSD card. This is the board gpio-companion boots on.",
+	"descriptionFr": "Kit de base : une carte Orange Pi 3 LTS et une carte microSD Samsung Evo Plus MB-MC1T0S. C'est la carte sur laquelle gpio-companion démarre.",
+	"priceCents": null
+}

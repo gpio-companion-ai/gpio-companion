@@ -8,6 +8,7 @@ import { GET as getUsage } from "@api/credits/usage";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
+import { TablePagination } from "@shpaw415/mui-lite/Pagination";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Skeleton from "@shpaw415/mui-lite/Skeleton";
 import Stack from "@shpaw415/mui-lite/Stack";
@@ -50,7 +51,6 @@ type PaypalConfig = {
 export default function CreditsPage() {
 	const session = useAuthSession();
 	const t = useT();
-	const { isDark } = useColorMode();
 	const admin = isAdmin(session.data?.role);
 	const [micros, setMicros] = useState<number | null>(null);
 	const [creditsLoading, setCreditsLoading] = useState(true);
@@ -99,8 +99,8 @@ export default function CreditsPage() {
 			if (cancelled || !paypalMountRef.current) {
 				return;
 			}
-			buttons = sdk.Buttons({
-				style: paypalButtonsStyle(isDark),
+		buttons = sdk.Buttons({
+			style: paypalButtonsStyle(),
 				createOrder: async () => {
 					const created = unwrapAction(await createPaypalOrder(pack));
 					return created.orderId;
@@ -147,7 +147,7 @@ export default function CreditsPage() {
 				paypalMountRef.current.innerHTML = "";
 			}
 		};
-	}, [paypal?.configured, paypal?.clientId, paypal?.liveMode, pack, isDark, t]);
+	}, [paypal?.configured, paypal?.clientId, paypal?.liveMode, pack, t]);
 
 	if (!session.data?.id && !session.data?.email) {
 		return (
@@ -186,7 +186,7 @@ export default function CreditsPage() {
 					{creditsLoading ? (
 						<Skeleton variant="rounded" height={45} />
 					) : paypal?.configured && paypal.clientId ? (
-						<div ref={paypalMountRef} className="min-h-[45px]" />
+						<div ref={paypalMountRef} className="min-h-[45px] max-w-[280px]" />
 					) : (
 						<Alert severity="info">{t("credits.paypalMissing")}</Alert>
 					)}
@@ -267,6 +267,8 @@ function UsageSection({ userId }: { userId: string | undefined }) {
 	const [usage, setUsage] = useState<AiUsageSummary | null>(null);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
+	const [page, setPage] = useState(0);
+	const [rowsPerPage, setRowsPerPage] = useState<10 | 25 | 50 | 100>(10);
 
 	useEffect(() => {
 		if (!userId) {
@@ -275,6 +277,7 @@ function UsageSection({ userId }: { userId: string | undefined }) {
 		}
 		setLoading(true);
 		setError("");
+		setPage(0);
 		void getUsage(days)
 			.then((result) => {
 				setUsage(unwrapAction(result));
@@ -347,36 +350,57 @@ function UsageSection({ userId }: { userId: string | undefined }) {
 						<Typography variant="subtitle1">
 							{t("credits.usageRecent")}
 						</Typography>
-						<TableContainer>
-							<Table size="small">
-								<TableHead>
-									<TableRow>
-										<TableCell>{t("credits.usageWhen")}</TableCell>
-										<TableCell>{t("credits.usageDetail")}</TableCell>
-										<TableCell>{t("credits.usageCost")}</TableCell>
-									</TableRow>
-								</TableHead>
-								<TableBody>
-									{usage.recent.map((entry) => (
-										<TableRow
-											key={`${entry.createdAt}:${entry.kind}:${entry.model}:${entry.micros}`}
-										>
-											<TableCell>
-												{new Date(entry.createdAt).toLocaleString()}
-											</TableCell>
-											<TableCell>
-												<span className="break-all">{entry.model}</span>{" "}
-												<span className="opacity-70">
-													({kindLabel(t, entry.kind)} ·{" "}
-													{usageDetail(entry.kind, entry)})
-												</span>
-											</TableCell>
-											<TableCell>{formatUsd(entry.micros)}</TableCell>
-										</TableRow>
-									))}
-								</TableBody>
-							</Table>
-						</TableContainer>
+						<Paper className="w-full p-3" elevation={0} variant="outlined">
+							<Stack spacing={1.5}>
+								<TableContainer>
+									<Table size="small">
+										<TableHead>
+											<TableRow>
+												<TableCell>{t("credits.usageWhen")}</TableCell>
+												<TableCell>{t("credits.usageDetail")}</TableCell>
+												<TableCell>{t("credits.usageCost")}</TableCell>
+											</TableRow>
+										</TableHead>
+										<TableBody>
+											{usage.recent
+												.slice(
+													page * rowsPerPage,
+													page * rowsPerPage + rowsPerPage,
+												)
+												.map((entry) => (
+													<TableRow
+														key={`${entry.createdAt}:${entry.kind}:${entry.model}:${entry.micros}`}
+													>
+														<TableCell>
+															{new Date(entry.createdAt).toLocaleString()}
+														</TableCell>
+														<TableCell>
+															<span className="break-all">{entry.model}</span>{" "}
+															<span className="opacity-70">
+																({kindLabel(t, entry.kind)} ·{" "}
+																{usageDetail(entry.kind, entry)})
+															</span>
+														</TableCell>
+														<TableCell>{formatUsd(entry.micros)}</TableCell>
+													</TableRow>
+												))}
+										</TableBody>
+									</Table>
+								</TableContainer>
+								{usage.recent.length === 0 ? null : (
+									<TablePagination
+										count={usage.recent.length}
+										page={page}
+										rowsPerPage={rowsPerPage}
+										onPageChange={(_event, nextPage) => setPage(nextPage)}
+										onRowsPerPageChange={(next) => {
+											setRowsPerPage(next);
+											setPage(0);
+										}}
+									/>
+								)}
+							</Stack>
+						</Paper>
 					</>
 				)}
 			</Stack>

@@ -43,6 +43,7 @@
 		"build:dev": "NODE_ENV=development bun frame-master build",
 		"db:generate": "drizzle-kit generate",
 		"db:apply:local": "wrangler d1 migrations apply MARKETPLACE_DB --local",
-		"db:apply:remote": "wrangler d1 migrations apply MARKETPLACE_DB --remote"
+		"db:apply:remote": "wrangler d1 migrations apply MARKETPLACE_DB --remote",
+		"kit:add": "bun scripts/kit-add.ts"
 	}
 }
