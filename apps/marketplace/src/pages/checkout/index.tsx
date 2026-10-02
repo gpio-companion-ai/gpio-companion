@@ -1,6 +1,7 @@
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Paper from "@shpaw415/mui-lite/Paper";
+import Radio from "@shpaw415/mui-lite/Radio";
 import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { useEffect, useState } from "react";
@@ -19,6 +20,15 @@ type PayPalButtons = {
 		createOrder: () => Promise<string>;
 		onApprove: () => Promise<void>;
 	}) => { render: (selector: string) => Promise<void> };
+};
+
+type ShippingOption = {
+	id: string;
+	courierName: string;
+	totalCents: number;
+	minDays: number | null;
+	maxDays: number | null;
+	description: string | null;
 };
 
 function checkoutKey(): string {
@@ -56,10 +66,13 @@ export default function CheckoutPage() {
 	const [city, setCity] = useState("");
 	const [postal, setPostal] = useState("");
 	const [error, setError] = useState<string | null>(null);
-	const [quoteState, setQuoteState] = useState<{
+	const [subtotalCents, setSubtotalCents] = useState<number | null>(null);
+	const [shippingOptions, setShippingOptions] = useState<ShippingOption[]>([]);
+	const [selectedOptionId, setSelectedOptionId] = useState<string | null>(null);
+	const [quoting, setQuoting] = useState(false);
+	const [selectedShipping, setSelectedShipping] = useState<{
 		shippingCents: number;
-		totalCents: number;
-		subtotalCents: number;
+		courierName: string | null;
 	} | null>(null);
 	const [paypalOrderId, setPaypalOrderId] = useState<string | null>(null);
 	const [orderId, setOrderId] = useState<string | null>(null);
@@ -109,21 +122,65 @@ export default function CheckoutPage() {
 		};
 	}, [paypalOrderId, clientId, consent, orderId, cart]);
 
+	const selectedOption = shippingOptions.find(
+		(option) => option.id === selectedOptionId,
+	) ?? null;
+	const shippingCents = selectedShipping?.shippingCents ?? selectedOption?.totalCents ?? null;
+	const totalCents =
+		subtotalCents !== null && shippingCents !== null
+			? subtotalCents + shippingCents
+			: null;
+
+	function destinationFilled(): boolean {
+		return Boolean(line1.trim() && city.trim() && postal.trim() && country.trim());
+	}
+
+	function destination() {
+		return {
+			line1,
+			line2: line2 || null,
+			city,
+			region: region || null,
+			postalCode: postal,
+			country,
+		};
+	}
+
 	async function calculate() {
 		setError(null);
+		if (!destinationFilled()) {
+			setShippingOptions([]);
+			setSelectedOptionId(null);
+			setError(t("checkout.addressRequired"));
+			return;
+		}
+		setQuoting(true);
 		try {
 			const priced = await quote(
 				cart.items.map((item) => ({ productId: item.id, quantity: item.quantity })),
-				{ country, region: region || null },
+				destination(),
 			);
-			setQuoteState(priced);
+			setSubtotalCents(priced.subtotalCents);
+			setShippingOptions(priced.shippingOptions);
+			setSelectedOptionId(priced.shippingOptions[0]?.id ?? null);
+			setSelectedShipping(null);
+			if (priced.shippingOptions.length === 0) {
+				setError(t("checkout.noShippingOptions"));
+			}
 		} catch (err) {
-			setQuoteState(null);
+			setShippingOptions([]);
+			setSelectedOptionId(null);
 			setError(err instanceof Error ? err.message : t("cart.stockChanged"));
+		} finally {
+			setQuoting(false);
 		}
 	}
 
 	async function prepare() {
+		if (!selectedOptionId) {
+			setError(t("checkout.selectShippingFirst"));
+			return;
+		}
 		setError(null);
 		try {
 			const started = await startCheckout({
@@ -141,16 +198,17 @@ export default function CheckoutPage() {
 					postalCode: postal,
 					country,
 				},
+				shippingOptionId: selectedOptionId,
 				idempotencyKey: checkoutKey(),
 			});
 			setOrderId(started.orderId);
 			setPaypalOrderId(started.paypalOrderId);
-			setQuoteState((current) => ({
-				shippingCents: current?.shippingCents ?? 0,
-				subtotalCents: current?.subtotalCents ?? 0,
-				totalCents: started.totalCents,
-			}));
+			setSelectedShipping({
+				shippingCents: started.shippingCents,
+				courierName: started.shippingCourierName,
+			});
 		} catch (err) {
+			setSelectedShipping(null);
 			setError(err instanceof Error ? err.message : t("cart.stockChanged"));
 		}
 	}
@@ -196,13 +254,57 @@ export default function CheckoutPage() {
 					<TextField label={t("checkout.postal")} value={postal} onChange={(event) => setPostal(event.target.value)} />
 				</div>
 				<div className="bar">
-					<Button variant="outlined" onClick={() => void calculate()} disabled={cart.items.length === 0}>
-						{t("checkout.quote")}
+					<Button
+						variant="outlined"
+						onClick={() => void calculate()}
+						disabled={cart.items.length === 0 || quoting}
+					>
+						{quoting ? t("checkout.quoting") : t("checkout.quote")}
 					</Button>
-					<Button variant="contained" onClick={() => void prepare()} disabled={!paypalEnabled || cart.items.length === 0}>
+					<Button
+						variant="contained"
+						onClick={() => void prepare()}
+						disabled={!paypalEnabled || cart.items.length === 0 || !selectedOptionId}
+					>
 						{t("checkout.pay")}
 					</Button>
 				</div>
+				{shippingOptions.length > 0 ? (
+					<fieldset className="market-shipping-options">
+						<legend>
+							<Typography variant="subtitle1">{t("checkout.shippingOptions")}</Typography>
+						</legend>
+						{shippingOptions.map((option) => (
+							<label key={option.id} className="market-shipping-option">
+								<Radio
+									name="shipping-option"
+									checked={selectedOptionId === option.id}
+									onChange={() => {
+										setSelectedOptionId(option.id);
+										setSelectedShipping(null);
+									}}
+								/>
+								<span className="market-shipping-option-body">
+									<span className="market-shipping-option-name">{option.courierName}</span>
+									{option.minDays !== null || option.maxDays !== null ? (
+										<span className="market-shipping-option-days">
+											{t("checkout.shippingDays", {
+												min: option.minDays ?? "—",
+												max: option.maxDays ?? "—",
+											})}
+										</span>
+									) : null}
+									{option.description ? (
+										<span className="market-shipping-option-description">{option.description}</span>
+									) : null}
+								</span>
+								<span className="market-shipping-option-price">
+									{formatCents(option.totalCents, "USD", locale)}
+								</span>
+							</label>
+						))}
+					</fieldset>
+				) : null}
 				{!paypalEnabled ? <Alert severity="warning">{t("checkout.paypalMissing")}</Alert> : null}
 				{!consent ? (
 					<Alert severity="info" title={t("cookies.title")}>
@@ -225,21 +327,26 @@ export default function CheckoutPage() {
 				<div className="row">
 					<span>{t("cart.subtotal")}</span>
 					<span>
-						{quoteState ? formatCents(quoteState.subtotalCents, "USD", locale) : t("catalog.tbd")}
+						{subtotalCents !== null ? formatCents(subtotalCents, "USD", locale) : t("catalog.tbd")}
 					</span>
 				</div>
 				<div className="row">
 					<span>{t("cart.shipping")}</span>
 					<span>
-						{quoteState ? formatCents(quoteState.shippingCents, "USD", locale) : t("catalog.tbd")}
+						{shippingCents !== null ? formatCents(shippingCents, "USD", locale) : t("catalog.tbd")}
 					</span>
 				</div>
 				<div className="row grand">
 					<span>{t("cart.total")}</span>
 					<span>
-						{quoteState ? formatCents(quoteState.totalCents, "USD", locale) : t("catalog.tbd")}
+						{totalCents !== null ? formatCents(totalCents, "USD", locale) : t("catalog.tbd")}
 					</span>
 				</div>
+				{selectedShipping?.courierName ? (
+					<Typography variant="body2" color="textSecondary">
+						{selectedShipping.courierName}
+					</Typography>
+				) : null}
 				<Typography variant="body2" color="textSecondary">
 					{t("checkout.reservation")}
 				</Typography>

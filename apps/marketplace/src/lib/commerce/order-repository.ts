@@ -32,6 +32,12 @@ export interface CreateOrderInput {
 		postalCode: string;
 		country: string;
 	};
+	shipping?: {
+		courierId: string;
+		courierName: string;
+		minDays: number | null;
+		maxDays: number | null;
+	} | null;
 	idempotencyKey?: string | null;
 }
 
@@ -85,6 +91,10 @@ export async function createOrder(
 		shippingRegion: input.shippingAddress.region?.trim() || null,
 		shippingPostalCode: input.shippingAddress.postalCode.trim(),
 		shippingCountry: input.shippingAddress.country.trim().toUpperCase(),
+		shippingCourierId: input.shipping?.courierId ?? null,
+		shippingCourierName: input.shipping?.courierName ?? null,
+		shippingMinDays: input.shipping?.minDays ?? null,
+		shippingMaxDays: input.shipping?.maxDays ?? null,
 		idempotencyKey,
 		createdAt: now,
 		updatedAt: now,

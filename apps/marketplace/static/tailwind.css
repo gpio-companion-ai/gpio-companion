@@ -443,6 +443,56 @@ textarea:focus {
 	padding-top: 0.7rem;
 }
 
+.market-shipping-options {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+	border: 1px solid var(--market-line);
+	border-radius: 10px;
+	padding: 0.8rem 1rem;
+	margin: 0.4rem 0 0;
+}
+
+.market-shipping-options legend {
+	padding: 0 0.4rem;
+}
+
+.market-shipping-option {
+	display: grid;
+	grid-template-columns: auto 1fr auto;
+	align-items: center;
+	gap: 0.6rem;
+	padding: 0.5rem 0.6rem;
+	border: 1px solid var(--market-line);
+	border-radius: 8px;
+	cursor: pointer;
+}
+
+.market-shipping-option:hover {
+	border-color: var(--market-teal);
+}
+
+.market-shipping-option-body {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+}
+
+.market-shipping-option-name {
+	font-weight: 600;
+}
+
+.market-shipping-option-days,
+.market-shipping-option-description {
+	font-size: 0.8rem;
+	color: var(--market-muted);
+}
+
+.market-shipping-option-price {
+	font-weight: 700;
+	white-space: nowrap;
+}
+
 @media (max-width: 1000px) {
 	.market-checkout-grid {
 		grid-template-columns: 1fr;

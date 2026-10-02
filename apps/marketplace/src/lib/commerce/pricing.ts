@@ -1,20 +1,19 @@
-import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { CommerceDatabase } from "../db/client";
 import {
 	inventory,
 	inventoryReservations,
 	products,
-	shippingRates,
 } from "../db/schema";
 import {
-	availableInventory,
-	calculateCartTotals,
-	selectShippingRate,
-} from "./totals";
+	buildEasyShipItems,
+	requestEasyShipRates,
+	type EasyShipDestination,
+	type EasyShipRateOption,
+} from "../easyship";
+import { availableInventory } from "./totals";
 import {
-	assertCountryCode,
 	type CartInputItem,
-	normalizeRegion,
 	validateCartInput,
 } from "./validation";
 
@@ -28,11 +27,21 @@ export interface PricedCartLine {
 	lineTotalCents: number;
 }
 
-export async function priceCart(
+export interface PricedCart {
+	currency: "USD";
+	lines: PricedCartLine[];
+	subtotalCents: number;
+	taxCents: number;
+}
+
+export interface PricedCartWithShipping extends PricedCart {
+	shippingOptions: EasyShipRateOption[];
+}
+
+async function loadPricedLines(
 	db: CommerceDatabase,
 	items: readonly CartInputItem[],
-	destination: { country: string; region?: string | null },
-) {
+): Promise<PricedCartLine[]> {
 	const validatedItems = validateCartInput(items);
 	const ids = validatedItems.map((item) => item.productId);
 	const now = Math.floor(Date.now() / 1000);
@@ -51,7 +60,7 @@ export async function priceCart(
 		.where(and(eq(products.status, "published"), inArray(products.id, ids)));
 
 	const byId = new Map(productRows.map((row) => [row.id, row]));
-	const lines: PricedCartLine[] = validatedItems.map((item) => {
+	return validatedItems.map((item) => {
 		const product = byId.get(item.productId);
 		if (!product || product.priceCents === null) {
 			throw new Error(`Product is not available: ${item.productId}`);
@@ -69,33 +78,67 @@ export async function priceCart(
 			lineTotalCents: product.priceCents * item.quantity,
 		};
 	});
+}
 
-	const country = assertCountryCode(destination.country);
-	const region = normalizeRegion(destination.region);
-	const rates = await db
+async function loadProductShippingData(
+	db: CommerceDatabase,
+	lineProductIds: readonly string[],
+) {
+	if (lineProductIds.length === 0) return [];
+	return db
 		.select({
-			id: shippingRates.id,
-			country: shippingRates.country,
-			region: shippingRates.region,
-			flatCents: shippingRates.flatCents,
+			id: products.id,
+			weightGrams: products.weightGrams,
+			lengthCm: products.lengthCm,
+			widthCm: products.widthCm,
+			heightCm: products.heightCm,
 		})
-		.from(shippingRates)
-		.where(
-			and(
-				eq(shippingRates.active, true),
-				eq(shippingRates.country, country),
-				region === null
-					? isNull(shippingRates.region)
-					: or(eq(shippingRates.region, region), isNull(shippingRates.region)),
-			),
-		);
-	const shippingRate = selectShippingRate(rates, country, region);
-	if (!shippingRate) throw new Error(`Shipping is unavailable for ${country}`);
+		.from(products)
+		.where(inArray(products.id, [...lineProductIds]));
+}
 
+export async function priceCart(
+	db: CommerceDatabase,
+	items: readonly CartInputItem[],
+): Promise<PricedCart> {
+	const lines = await loadPricedLines(db, items);
+	const subtotalCents = lines.reduce(
+		(total, line) => total + line.lineTotalCents,
+		0,
+	);
 	return {
 		currency: "USD" as const,
 		lines,
-		shippingRateId: shippingRate.id,
-		...calculateCartTotals(lines, shippingRate.flatCents),
+		subtotalCents,
+		taxCents: 0,
+	};
+}
+
+export async function priceCartWithShippingOptions(
+	db: CommerceDatabase,
+	env: object,
+	items: readonly CartInputItem[],
+	destination: EasyShipDestination,
+): Promise<PricedCartWithShipping> {
+	const lines = await loadPricedLines(db, items);
+	const shippingData = await loadProductShippingData(
+		db,
+		lines.map((line) => line.productId),
+	);
+	const easyShipItems = buildEasyShipItems(lines, shippingData);
+	const shippingOptions = await requestEasyShipRates(env, {
+		destination,
+		items: easyShipItems,
+	});
+	const subtotalCents = lines.reduce(
+		(total, line) => total + line.lineTotalCents,
+		0,
+	);
+	return {
+		currency: "USD" as const,
+		lines,
+		subtotalCents,
+		taxCents: 0,
+		shippingOptions,
 	};
 }

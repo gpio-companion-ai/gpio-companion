@@ -58,6 +58,10 @@ export const products = sqliteTable(
 		descriptionEn: text("description_en").notNull(),
 		descriptionFr: text("description_fr").notNull(),
 		priceCents: integer("price_cents"),
+		weightGrams: integer("weight_grams"),
+		lengthCm: integer("length_cm"),
+		widthCm: integer("width_cm"),
+		heightCm: integer("height_cm"),
 		status: text("status", { enum: productStatuses })
 			.notNull()
 			.default("draft"),
@@ -76,6 +80,22 @@ export const products = sqliteTable(
 		check(
 			"products_price_cents_check",
 			sql`${table.priceCents} is null or ${table.priceCents} >= 0`,
+		),
+		check(
+			"products_weight_grams_check",
+			sql`${table.weightGrams} is null or ${table.weightGrams} > 0`,
+		),
+		check(
+			"products_length_cm_check",
+			sql`${table.lengthCm} is null or ${table.lengthCm} > 0`,
+		),
+		check(
+			"products_width_cm_check",
+			sql`${table.widthCm} is null or ${table.widthCm} > 0`,
+		),
+		check(
+			"products_height_cm_check",
+			sql`${table.heightCm} is null or ${table.heightCm} > 0`,
 		),
 	],
 );
@@ -185,6 +205,10 @@ export const orders = sqliteTable(
 		shippingRegion: text("shipping_region"),
 		shippingPostalCode: text("shipping_postal_code").notNull(),
 		shippingCountry: text("shipping_country").notNull(),
+		shippingCourierId: text("shipping_courier_id"),
+		shippingCourierName: text("shipping_courier_name"),
+		shippingMinDays: integer("shipping_min_days"),
+		shippingMaxDays: integer("shipping_max_days"),
 		createdAt: integer("created_at").notNull().default(unixSeconds),
 		updatedAt: integer("updated_at").notNull().default(unixSeconds),
 		paidAt: integer("paid_at"),

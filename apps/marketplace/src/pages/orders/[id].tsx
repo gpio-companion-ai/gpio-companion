@@ -51,7 +51,16 @@ export default function OrderDetailPage() {
 				</div>
 				<div className="row">
 					<span>{t("orders.carrier")}</span>
-					<span>{order.carrier ?? t("catalog.tbd")}</span>
+					<span>
+						{order.carrier ??
+							(order.shippingCourierName
+								? `${order.shippingCourierName}${
+										order.shippingMinDays !== null || order.shippingMaxDays !== null
+											? ` (${order.shippingMinDays ?? "—"}–${order.shippingMaxDays ?? "—"} ${locale === "fr" ? "jours ouvrables" : "working days"})`
+											: ""
+									}`
+								: t("catalog.tbd"))}
+					</span>
 				</div>
 				<div className="row">
 					<span>{t("orders.tracking")}</span>

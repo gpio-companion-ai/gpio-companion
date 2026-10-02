@@ -1,7 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { CommerceDatabase } from "../db/client";
 import { inventoryReservations } from "../db/schema";
-import { priceCart } from "./pricing";
+import {
+	priceCartWithShippingOptions,
+} from "./pricing";
 import {
 	createInventoryReservation,
 	releaseInventoryReservation,
@@ -20,6 +22,15 @@ const RESERVATION_SECONDS = 30 * 60;
 export type CheckoutAddress = {
 	name: string;
 	email: string;
+	line1: string;
+	line2?: string | null;
+	city: string;
+	region?: string | null;
+	postalCode: string;
+	country: string;
+};
+
+export type ShippingDestination = {
 	line1: string;
 	line2?: string | null;
 	city: string;
@@ -47,10 +58,11 @@ export function validateCheckoutAddress(input: CheckoutAddress): CheckoutAddress
 
 export async function quoteCart(
 	db: CommerceDatabase,
+	env: object,
 	items: readonly { productId: string; quantity: number }[],
-	destination: { country: string; region?: string | null },
+	destination: ShippingDestination,
 ) {
-	return priceCart(db, items, destination);
+	return priceCartWithShippingOptions(db, env, items, destination);
 }
 
 export async function beginCheckout(
@@ -60,24 +72,59 @@ export async function beginCheckout(
 		userId: string;
 		items: readonly { productId: string; quantity: number }[];
 		address: CheckoutAddress;
+		shippingOptionId: string;
 		idempotencyKey: string;
 	},
 ) {
 	if (!paypalConfigured(env)) throw new Error("PayPal is not configured");
+	if (!input.shippingOptionId?.trim()) {
+		throw new Error("A shipping option must be selected");
+	}
 	const address = validateCheckoutAddress(input.address);
-	const priced = await priceCart(db, input.items, {
-		country: address.country,
+	const destination = {
+		line1: address.line1,
+		line2: address.line2,
+		city: address.city,
 		region: address.region,
-	});
+		postalCode: address.postalCode,
+		country: address.country,
+	};
+	const priced = await priceCartWithShippingOptions(
+		db,
+		env,
+		input.items,
+		destination,
+	);
+	const shippingOption = priced.shippingOptions.find(
+		(option) => option.id === input.shippingOptionId.trim(),
+	);
+	if (!shippingOption) {
+		throw new Error(
+			"The selected shipping option is no longer available. Please calculate shipping again and choose another option.",
+		);
+	}
+	const totals = {
+		subtotalCents: priced.subtotalCents,
+		shippingCents: shippingOption.totalCents,
+		taxCents: priced.taxCents,
+		totalCents:
+			priced.subtotalCents + shippingOption.totalCents + priced.taxCents,
+	};
 	const created = await createOrder(db, {
 		userId: input.userId,
 		email: address.email,
 		lines: priced.lines,
-		subtotalCents: priced.subtotalCents,
-		shippingCents: priced.shippingCents,
-		taxCents: priced.taxCents,
-		totalCents: priced.totalCents,
+		subtotalCents: totals.subtotalCents,
+		shippingCents: totals.shippingCents,
+		taxCents: totals.taxCents,
+		totalCents: totals.totalCents,
 		shippingAddress: address,
+		shipping: {
+			courierId: shippingOption.id,
+			courierName: shippingOption.courierName,
+			minDays: shippingOption.minDays,
+			maxDays: shippingOption.maxDays,
+		},
 		idempotencyKey: input.idempotencyKey,
 	});
 	if (created.replayed) {
@@ -89,6 +136,8 @@ export async function beginCheckout(
 				orderId: created.order.id,
 				orderNumber: created.order.orderNumber,
 				paypalOrderId: created.order.paypalOrderId,
+				shippingCents: created.order.shippingCents,
+				shippingCourierName: created.order.shippingCourierName,
 				totalCents: created.order.totalCents,
 				currency: "USD" as const,
 			};
@@ -110,7 +159,7 @@ export async function beginCheckout(
 		const paypal = await createPayPalOrder(env, {
 			orderId: created.order.id,
 			orderNumber: created.order.orderNumber,
-			totalCents: priced.totalCents,
+			totalCents: totals.totalCents,
 			requestId: input.idempotencyKey,
 			shipping: address,
 		});
@@ -119,7 +168,9 @@ export async function beginCheckout(
 			orderId: created.order.id,
 			orderNumber: created.order.orderNumber,
 			paypalOrderId: paypal.id,
-			totalCents: priced.totalCents,
+			shippingCents: totals.shippingCents,
+			shippingCourierName: shippingOption.courierName,
+			totalCents: totals.totalCents,
 			currency: "USD" as const,
 		};
 	} catch (error) {

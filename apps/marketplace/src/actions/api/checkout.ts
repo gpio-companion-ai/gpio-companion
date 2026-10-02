@@ -13,10 +13,17 @@ export async function GET() {
 
 export async function POST(
 	items: { productId: string; quantity: number }[],
-	destination: { country: string; region?: string | null },
+	destination: {
+		line1: string;
+		line2?: string | null;
+		city: string;
+		region?: string | null;
+		postalCode: string;
+		country: string;
+	},
 ) {
 	const ctx = getContext<Env, never, never>(arguments);
-	return quoteCart(commerceDb(ctx), items, destination);
+	return quoteCart(commerceDb(ctx), ctx.env, items, destination);
 }
 
 export async function PUT(input: {
@@ -31,6 +38,7 @@ export async function PUT(input: {
 		postalCode: string;
 		country: string;
 	};
+	shippingOptionId: string;
 	idempotencyKey: string;
 }) {
 	const ctx = getContext<Env, never, never>(arguments);
@@ -40,6 +48,7 @@ export async function PUT(input: {
 		userId: session.id ?? "",
 		items: input.items,
 		address: { ...input.address, email: session.email ?? input.address.email },
+		shippingOptionId: input.shippingOptionId,
 		idempotencyKey: input.idempotencyKey.trim(),
 	});
 }
