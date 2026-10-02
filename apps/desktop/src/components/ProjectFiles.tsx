@@ -1397,6 +1397,7 @@ function TreeRows({
 	const hold = useRef(0);
 	const holdAt = useRef({ x: 0, y: 0 });
 	const held = useRef(false);
+	const suppressMenu = useRef(false);
 	const open = node.type === "dir" && openDirs.has(node.path);
 	const target = node.type === "dir" ? node.path : parentDir(node.path);
 	return (
@@ -1418,7 +1419,12 @@ function TreeRows({
 					aria-current={node.path === active ? "true" : undefined}
 					title={node.type === "dir" ? target : node.path}
 					className={`oc-tree-row${node.path === active ? " is-active" : ""}${dropDir === target && node.type === "dir" ? " is-drop" : ""}`}
-					style={{ paddingLeft: 8 + depth * 12 }}
+					style={{
+						paddingLeft: 8 + depth * 12,
+						touchAction: "manipulation",
+						WebkitTouchCallout: "none",
+						userSelect: "none",
+					}}
 					onClick={() => {
 						if (held.current) {
 							held.current = false;
@@ -1432,10 +1438,16 @@ function TreeRows({
 						onOpen(node.path);
 					}}
 					onContextMenu={(event) => {
+						event.preventDefault();
+						event.stopPropagation();
+						if (suppressMenu.current) {
+							suppressMenu.current = false;
+							return;
+						}
+						window.clearTimeout(hold.current);
 						if (node.type === "dir") {
 							return;
 						}
-						event.preventDefault();
 						onFileMenu(node.path, event.clientX, event.clientY);
 					}}
 					onPointerDown={(event) => {
@@ -1443,10 +1455,12 @@ function TreeRows({
 							return;
 						}
 						held.current = false;
+						suppressMenu.current = false;
 						holdAt.current = { x: event.clientX, y: event.clientY };
 						window.clearTimeout(hold.current);
 						hold.current = window.setTimeout(() => {
 							held.current = true;
+							suppressMenu.current = true;
 							onFileMenu(node.path, holdAt.current.x, holdAt.current.y);
 						}, 500);
 					}}
@@ -1462,6 +1476,7 @@ function TreeRows({
 					}}
 					onPointerUp={() => window.clearTimeout(hold.current)}
 					onPointerCancel={() => window.clearTimeout(hold.current)}
+					onLostPointerCapture={() => window.clearTimeout(hold.current)}
 					onDragOver={(event) => {
 						if (!event.dataTransfer.types.includes("Files")) {
 							return;

@@ -6,7 +6,9 @@ description: >-
   gpio-arduino-proxy); else gpio-host POST /v1/run. Direct PUT /v1/gpio is
   one-shot testing only. USB Arduino flash is gpio-arduino. tscircuit
   breadboard/PCB, visual sheets, printable parts (skill gpio-3d), JLCPCB
-  parts lookup (skill gpio-jlcpcb), GitHub, Bun.
+  parts lookup (skill gpio-jlcpcb), dashboard UI actions (skill gpio-ui:
+  GET /v1/ui first, then navigate/dock/toast/modal when a dashboard app
+  is open), GitHub, Bun.
   Use on Orange Pi / Raspberry Pi Armbian with OpenCode, and in this monorepo.
 ---
 
@@ -27,12 +29,12 @@ Drive pins with Arduino-style C. Direct GPIO PUT is not the default. **Always** 
 
 | Job | Do this |
 | --- | --- |
-| Blink, PWM, tone, loops, lasting pin control | `GET /v1/arduino-proxy` first; do not write a sketch until it returns. If `connected`: skill `gpio-arduino-proxy` — use `board` (Mega A0 is 54, not 14), `host/arduino-proxy-<name>/`, `gpio-arduino-proxy` in `breadboard/diagram.json`, `POST /v1/run`. If not connected, do not invent a proxy sketch. Else skill `gpio-host` — `host/<name>/`, physical pins, `POST /v1/run` |
+| Blink, PWM, tone, loops, lasting pin control | `GET /v1/arduino-proxy` first; do not write a sketch until it returns. If `connected`: skill `gpio-arduino-proxy` — use `board` (Mega A0 is 54, not 14), `host/arduino-proxy-<name>/`, `gpio-arduino-proxy` in `breadboard/diagram.json`, `POST /v1/run`, then skill `gpio-ui` `dock` `console` so the user can watch Serial. If not connected, do not invent a proxy sketch. Else skill `gpio-host` — `host/<name>/`, physical pins, `POST /v1/run`, then skill `gpio-ui` `dock` `console` |
 | Snapshot pins | `GET http://127.0.0.1:4150/v1/gpio` |
-| User asked to probe a pin or verify Live GPIO | One-shot `PUT /v1/gpio` (digital) or skill `gpio-pwm` (analogWrite/tone), then stop |
-| USB Arduino flash | Skill `gpio-arduino`, `POST /v1/flash` — never this header; replaces a live proxy |
+| User asked to probe a pin or verify Live GPIO | One-shot `PUT /v1/gpio` (digital) or skill `gpio-pwm` (analogWrite/tone), then stop; skill `gpio-ui` `dock` `gpio` when a dashboard app is open |
+| USB Arduino flash | Skill `gpio-arduino`, `POST /v1/flash` — never this header; replaces a live proxy; skill `gpio-ui` `dock` `flash` when a dashboard app is open |
 | USB Arduino as proxy (not yet connected) | `POST /v1/flash/proxy` or Devices → Flash Arduino as proxy, then the blink row |
-| Circuit verify | `POST http://127.0.0.1:4150/v1/verify` `{ repo }`. Users tap Project → Verify circuit. Do not `PUT /v1/gpio` for this |
+| Circuit verify | `POST http://127.0.0.1:4150/v1/verify` `{ repo }`. Users tap Project → Verify circuit. Do not `PUT /v1/gpio` for this. Skill `gpio-ui` `dock` `problems` when a dashboard app is open |
 
 Do **not** `PUT /v1/gpio` for blinks, PWM, tone, loops, or any lasting drive. Do not shell `gcc`, `gpioset`, or `gpio-pwm`.
 
@@ -44,6 +46,7 @@ You run loopback `http://127.0.0.1:4150` yourself. **Never** quote those curls t
 - Printable parts: skill `gpio-3d`. Run `gpio-3d` (do not pip-install trimesh) to write `~/projects/<repo>/model/` (one `.glb` and one `.stl` per part, `manifest.json` in mm, fits companion header and/or Arduino Uno/Nano/Mega). Do not use tscircuit for meshes. Feature-branch rules below still apply.
 - JLCPCB parts: skill `gpio-jlcpcb`. Search LCSC codes or keywords with `gpio-jlcpcb`. Credentials are dashboard Pages secrets. If they are missing, keyword search may continue and code lookup stops. Do not ask the user to paste keys. Do not order parts. Push an order draft; the user confirms on Project.
 - Show the user visual technical sheets and helpers
+- Act on the open dashboard when advantageous (skill `gpio-ui`): `GET http://127.0.0.1:4150/v1/ui` first on user-visible tasks; when sockets are non-empty, push `navigate`/`dock`/`palette`/`toast`/`modal` (unsigned loopback). Open the matching dock after hardware you started (`/v1/run` → `console`, `/v1/flash` → `flash`, `/v1/verify` → `problems`, Live GPIO → `gpio`); ask permission with `modal`, confirm small completions with `toast`. `delivered: 0` means no app is open — say so once in chat and continue; never start/flash/delete/order/WiFi through this channel.
 - Keep each electronics project on GitHub. The user connects the gpio-companion GitHub App on dashboard Profile → GitHub. `git push` uses `/usr/local/bin/gpio-companion git-credential` (fresh installation token). For API calls run `gpio-companion github-token`. `GITHUB_USERNAME` in `/etc/gpio-companion/secrets.env` is the account login.
 - Every project repo MUST have a `.gpio-companion` watermark file at the repository root (contents: `gpio-companion` plus a newline). The dashboard only lists repos with that file. When you create a new project: create the GitHub repo, write `.gpio-companion` at root, commit, and `git push` **to `main`** (bootstrap only). If an existing electronics repo is missing it, add the file on a feature branch (or `main` if that is the only change), then follow **Project git**.
 - Feature work (PCB, breadboard, sheets, C sketches) uses **Project git**: branch, push the branch, ask to save, merge `main` only when the user says yes. Do not push feature commits to `main`.
@@ -76,7 +79,7 @@ Dashboard **Save to GitHub** commits and pushes the current checkout. It is **no
 
 ## Do not
 
-- Invent locked product/dashboard/billing behavior (vision is still raw)
+- Invent locked product/dashboard/billing behavior (vision is still raw) — the documented skill `gpio-ui` channel is the exception, not invention
 - Use a non-Bun runtime for web or scripts
 - Generate Arduino firmware in anything but C
 - Drive header GPIO with `PUT /v1/gpio` when a C sketch (`gpio-host`) would do — that PUT path is testing-only

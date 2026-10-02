@@ -14,12 +14,7 @@ import {
 	applyCodeMention,
 	CODE_STT_MAX_MS,
 	CODE_VOICE_ARM_MS,
-	CODE_VOICE_BARGE_DB,
-	CODE_VOICE_BARGE_FLOOR_DB,
-	CODE_VOICE_FLOOR_MS,
 	CODE_VOICE_METER_DB,
-	CODE_VOICE_MIN_MS,
-	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
 	type CodeVoiceProvider,
 	codeAppendSpeechDirective,
@@ -177,7 +172,6 @@ export default function Code() {
 		isMeteringEnabled: true,
 	});
 	const recState = useAudioRecorderState(recorder, 200);
-	const heardUri = useRef("");
 	const voiceSpeaking = useRef<AudioPlayer | null>(null);
 	const voiceSpeechResolve = useRef<(() => void) | null>(null);
 	const speechSpoken = useRef(new Map<string, number>());
@@ -188,11 +182,7 @@ export default function Code() {
 	const speechGen = useRef(0);
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
-	const voiceBarge = useRef(0);
 	const voiceArmAt = useRef(0);
-	const voiceFloor = useRef(-160);
-	const voiceFloorAt = useRef(0);
-	const voiceSource = useRef<"auto" | "ptt">("auto");
 	const pttRef = useRef(false);
 	const pttParts = useRef(new Map<number, string>());
 	const pttSeq = useRef(0);
@@ -204,7 +194,6 @@ export default function Code() {
 	const voiceHandling = useRef(false);
 	const voicePreparing = useRef(false);
 	const voiceUri = useRef("");
-	const voiceModeRef = useRef(false);
 	const voiceReplyRef = useRef(false);
 	const speechDirectiveSentRef = useRef<string | null>(null);
 	const finishVoiceRef = useRef<(uri: string) => void>(() => {});
@@ -242,9 +231,7 @@ export default function Code() {
 	const [boardPaths, setBoardPaths] = useState<string[]>([]);
 	const [caret, setCaret] = useState(0);
 	const [mentionOff, setMentionOff] = useState("");
-	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
-	const [voiceMode, setVoiceMode] = useState(false);
 	const [voiceProvider, setVoiceProvider] =
 		useState<CodeVoiceProvider>("workers-ai");
 	const [pttHeld, setPttHeld] = useState(false);
@@ -866,76 +853,8 @@ export default function Code() {
 		setFiles(next);
 	}
 
-	async function finishDictation(uri: string) {
-		try {
-			const heard = (
-				await transcribeCode(
-					token,
-					encodeBase64(new Uint8Array(await new File(uri).arrayBuffer())),
-					locale,
-				)
-			).text.trim();
-			if (!heard) {
-				return;
-			}
-			setPrompt((current) =>
-				current.trim() ? `${current.trim()} ${heard}` : heard,
-			);
-		} catch (caught) {
-			setError(shownError(caught instanceof Error ? caught.message : ""));
-		}
-	}
-
-	async function dictate() {
-		if (recording) {
-			setRecording(false);
-			await recorder.stop();
-			const uri = recorder.uri;
-			if (uri && heardUri.current !== uri) {
-				heardUri.current = uri;
-				await finishDictation(uri);
-			}
-			return;
-		}
-		const perm = await requestRecordingPermissionsAsync();
-		if (!perm.granted) {
-			setError(t("code.micDenied"));
-			return;
-		}
-		await setAudioModeAsync({
-			allowsRecording: true,
-			playsInSilentMode: true,
-		});
-		await recorder.prepareToRecordAsync();
-		recorder.record({ forDuration: CODE_STT_MAX_MS / 1000 });
-		setRecording(true);
-	}
-
-	useEffect(() => {
-		if (!recording) {
-			return;
-		}
-		const timer = setInterval(() => {
-			if (recorder.isRecording) {
-				return;
-			}
-			const uri = recorder.uri;
-			if (!uri || heardUri.current === uri) {
-				return;
-			}
-			heardUri.current = uri;
-			setRecording(false);
-			void finishDictation(uri);
-		}, 400);
-		return () => clearInterval(timer);
-	}, [recording, recorder]);
-
 	function startVoiceCapture() {
-		if (
-			(!voiceModeRef.current && !pttRef.current) ||
-			voiceHandling.current ||
-			voicePreparing.current
-		) {
+		if (!pttRef.current || voiceHandling.current || voicePreparing.current) {
 			return;
 		}
 		try {
@@ -943,12 +862,11 @@ export default function Code() {
 				return;
 			}
 			voicePreparing.current = true;
-			voiceSource.current = pttRef.current ? "ptt" : "auto";
 			void recorder
 				.prepareToRecordAsync()
 				.then(() => {
 					if (
-						(!voiceModeRef.current && !pttRef.current) ||
+						!pttRef.current ||
 						voiceHandling.current ||
 						!recStateRef.current.canRecord
 					) {
@@ -1042,11 +960,8 @@ export default function Code() {
 	async function finishVoice(uri: string) {
 		clearSpeechQueue();
 		setVoiceTranscribing(true);
-		const source = voiceSource.current === "ptt" ? "ptt" : "auto";
-		const seq = source === "ptt" ? pttSeq.current++ : 0;
-		if (source === "ptt") {
-			pttPending.current += 1;
-		}
+		const seq = pttSeq.current++;
+		pttPending.current += 1;
 		try {
 			const heard = codeVoiceUtterance(
 				(
@@ -1057,29 +972,17 @@ export default function Code() {
 					)
 				).text,
 			);
-			if (source === "ptt") {
-				await settlePtt(heard, seq);
-				return;
-			}
-			if (heard) {
-				if (view.busy || uploading) {
-					voiceQueue.current.push(heard);
-					setVoiceQueued(voiceQueue.current.length);
-				} else {
-					await send(heard);
-				}
-			}
+			await settlePtt(heard, seq);
+			return;
 		} catch (caught) {
 			setError(shownError(caught instanceof Error ? caught.message : ""));
-			if (source === "ptt") {
-				await settlePtt("", seq);
-			}
+			await settlePtt("", seq);
 		} finally {
 			setVoiceTranscribing(false);
 			voiceHandling.current = false;
-			if (voiceModeRef.current || pttRef.current) {
+			if (pttRef.current) {
 				startVoiceCapture();
-			} else if (!voiceModeRef.current) {
+			} else {
 				stopVoiceEngineRef.current();
 			}
 		}
@@ -1135,12 +1038,7 @@ export default function Code() {
 				// ignore
 			}
 			const uri = recorder.uri;
-			if (
-				voiceSource.current === "ptt" &&
-				voiceSpeech.current &&
-				uri &&
-				voiceUri.current !== uri
-			) {
+			if (voiceSpeech.current && uri && voiceUri.current !== uri) {
 				voiceUri.current = uri;
 				voiceHandling.current = true;
 				voiceSpeech.current = false;
@@ -1154,9 +1052,7 @@ export default function Code() {
 				await flushPttParts();
 				return;
 			}
-			if (!voiceModeRef.current) {
-				stopVoiceEngineRef.current();
-			}
+			stopVoiceEngineRef.current();
 		})();
 	}
 
@@ -1275,9 +1171,6 @@ export default function Code() {
 				voiceSpeaking.current = player;
 				voiceSpeechResolve.current = done;
 				setVoiceSpeakingNow(true);
-				voiceFloor.current = -160;
-				voiceFloorAt.current = Date.now();
-				voiceBarge.current = 0;
 				const sub = player.addListener("playbackStatusUpdate", (status) => {
 					if (!status.didJustFinish) {
 						return;
@@ -1319,7 +1212,7 @@ export default function Code() {
 					if (
 						item.gen !== speechGen.current ||
 						item.state === "failed" ||
-						(!voiceModeRef.current && !voiceReplyRef.current)
+						!voiceReplyRef.current
 					) {
 						dropSpeechItem(item);
 						continue;
@@ -1332,7 +1225,7 @@ export default function Code() {
 					if (
 						item.gen !== speechGen.current ||
 						item.state !== "ready" ||
-						(!voiceModeRef.current && !voiceReplyRef.current)
+						!voiceReplyRef.current
 					) {
 						dropSpeechItem(item);
 						continue;
@@ -1357,7 +1250,7 @@ export default function Code() {
 	}
 
 	function voiceTick() {
-		if (!voiceModeRef.current && !pttRef.current) {
+		if (!pttRef.current) {
 			return;
 		}
 		if (voiceHandling.current) {
@@ -1367,30 +1260,6 @@ export default function Code() {
 		const metering = state.metering ?? -160;
 		const loud = metering >= CODE_VOICE_METER_DB;
 		setVoiceLevel(loud ? Math.max(0, Math.min(1, (metering + 60) / 45)) : 0.04);
-		if (voiceSpeaking.current) {
-			const now = Date.now();
-			if (now - voiceFloorAt.current < CODE_VOICE_FLOOR_MS) {
-				if (metering > voiceFloor.current) {
-					voiceFloor.current = metering;
-				}
-				voiceBarge.current = 0;
-			} else {
-				const gate = Math.max(
-					CODE_VOICE_BARGE_DB,
-					voiceFloor.current + CODE_VOICE_BARGE_FLOOR_DB,
-				);
-				if (metering >= gate) {
-					voiceBarge.current += 1;
-					if (voiceBarge.current >= 2) {
-						voiceBarge.current = 0;
-						clearSpeechQueue();
-					}
-				} else {
-					voiceBarge.current = 0;
-				}
-			}
-			return;
-		}
 		const now = Date.now();
 		if (loud) {
 			if (!voiceArmAt.current) {
@@ -1413,73 +1282,31 @@ export default function Code() {
 					void finishVoiceRef.current(uri);
 					return;
 				}
-			} else if (voiceModeRef.current || pttRef.current) {
+			} else if (pttRef.current) {
 				startVoiceCaptureRef.current();
 			}
 			return;
 		}
-		if (
-			voiceSpeech.current &&
-			state.durationMillis > CODE_VOICE_MIN_MS &&
-			voiceSource.current !== "ptt" &&
-			now - voiceLastVoice.current > CODE_VOICE_SILENCE_MS
-		) {
-			void recorder.stop().catch(() => {});
-		}
+		// PTT records until release (or the recorder 60s cap); silence never
+		// cuts a hold short.
 	}
 
 	voiceTickRef.current = voiceTick;
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: voice engine is ref-driven and reads the latest render through refs
+	// Tear the recorder down when leaving the chat.
 	useEffect(() => {
-		voiceModeRef.current = voiceMode;
-		if (!voiceMode || mode === "home") {
-			if (!pttRef.current) {
-				stopVoiceEngineRef.current();
-			}
-			return;
+		if (mode === "home") {
+			stopVoiceEngineRef.current();
 		}
-		for (const turn of view.turns) {
-			if (turn.role === "assistant") {
-				voiceSpoken.current.add(turn.id);
-				speechSpoken.current.set(turn.id, codeSpeechBlocks(turn.text).length);
-			}
-		}
-		let cancelled = false;
-		void (async () => {
-			const perm = await requestRecordingPermissionsAsync();
-			if (cancelled) {
-				return;
-			}
-			if (!perm.granted) {
-				setError(t("code.micDenied"));
-				setVoiceMode(false);
-				return;
-			}
-			await setAudioModeAsync({
-				allowsRecording: true,
-				playsInSilentMode: true,
-			}).catch(() => {});
-			if (cancelled) {
-				return;
-			}
-			startVoiceCaptureRef.current();
-		})();
-		return () => {
-			cancelled = true;
-			if (!pttRef.current) {
-				stopVoiceEngineRef.current();
-			}
-		};
-	}, [voiceMode, mode]);
+	}, [mode]);
 
 	useEffect(() => {
-		if ((!voiceMode && !pttHeld) || mode === "home") {
+		if (!pttHeld || mode === "home") {
 			return;
 		}
 		const timer = setInterval(() => voiceTickRef.current(), 200);
 		return () => clearInterval(timer);
-	}, [voiceMode, pttHeld, mode]);
+	}, [pttHeld, mode]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: drains the voice queue through refs and send()
 	useEffect(() => {
@@ -1502,7 +1329,7 @@ export default function Code() {
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: streams <speech> blocks through refs and enqueueSpeech()
 	useEffect(() => {
-		if (!voiceMode && !voiceReply) {
+		if (!voiceReply) {
 			return;
 		}
 		if (voiceHandling.current) {
@@ -1522,11 +1349,11 @@ export default function Code() {
 				enqueueSpeech(blocks[index] ?? "");
 			}
 		}
-	}, [voiceMode, view.turns]);
+	}, [voiceReply, view.turns]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and enqueueSpeech()
 	useEffect(() => {
-		if (!voiceMode && !voiceReply) {
+		if (!voiceReply) {
 			clearSpeechQueue();
 			return;
 		}
@@ -1565,7 +1392,7 @@ export default function Code() {
 		}
 		enqueueSpeech(turn.text);
 	}, [
-		voiceMode,
+		voiceReply,
 		view.busy,
 		uploading,
 		view.turns,
@@ -1587,7 +1414,7 @@ export default function Code() {
 
 	useEffect(() => {
 		const waiting =
-			(voiceMode || voiceTranscribing) &&
+			voiceTranscribing &&
 			!voiceListening &&
 			!voiceSpeakingNow &&
 			!pttHeld &&
@@ -1598,7 +1425,6 @@ export default function Code() {
 		const timer = setInterval(() => setVoicePulse((n) => n + 1), 150);
 		return () => clearInterval(timer);
 	}, [
-		voiceMode,
 		pttHeld,
 		voiceListening,
 		voiceSpeakingNow,
@@ -1631,7 +1457,8 @@ export default function Code() {
 		let text = "";
 		// Speech directive is injected once per session: the first voice-directed
 		// message carries it, later turns keep it from the transcript.
-		const wantsSpeech = Boolean(override) || voiceModeRef.current;
+		// Only PTT (hold mic) sends voice-directed messages now.
+		const wantsSpeech = Boolean(override);
 		const existingSessionID = mode === "session" ? view.sessionID : "";
 		const injectSpeechDirective =
 			wantsSpeech &&
@@ -1644,7 +1471,7 @@ export default function Code() {
 				injectSpeechDirective,
 				voiceProvider,
 			);
-			if (override && !voiceModeRef.current) {
+			if (override) {
 				voiceReplyRef.current = true;
 				setVoiceReply(true);
 				for (const turn of view.turns) {
@@ -1656,7 +1483,7 @@ export default function Code() {
 						);
 					}
 				}
-			} else if (!override && !voiceModeRef.current) {
+			} else if (!override) {
 				voiceReplyRef.current = false;
 				setVoiceReply(false);
 			}
@@ -1945,6 +1772,11 @@ export default function Code() {
 			mentionLive && mention
 				? filterCodeMentions(boardPaths, mention.query)
 				: [];
+		// PTT-only voice: the mic lives in the send button when the input is
+		// empty. Hold it and release to auto-send; the reply is spoken back.
+		// No continuous voice mode, no dictate-insert.
+		const micEmpty =
+			!view.busy && !prompt.trim() && files.length === 0 && !composerBlocked;
 		const voicePhase =
 			pttHeld || voiceListening
 				? "listening"
@@ -1959,13 +1791,13 @@ export default function Code() {
 			? t("code.voiceTranscribing")
 			: voiceSpeakingNow
 				? t("code.voiceSpeaking")
-				: voiceListening || voicePhase === "idle"
+				: voiceListening
 					? t("code.voiceListening")
 					: t("code.voiceThinking");
 		const bars = [0, 1, 2, 3, 4, 5, 6];
 		return (
 			<View style={{ margin: 12, gap: 8 }}>
-				{voiceMode || voiceTranscribing || pttHeld ? (
+				{voiceTranscribing || pttHeld || voiceSpeakingNow ? (
 					<View
 						accessibilityLiveRegion="polite"
 						style={{
@@ -2028,7 +1860,7 @@ export default function Code() {
 						<Pressable
 							accessibilityRole="button"
 							accessibilityLabel={t("code.voiceStop")}
-							onPress={() => setVoiceMode(false)}
+							onPress={() => clearSpeechQueue()}
 							hitSlop={8}
 							style={{ padding: 4 }}
 						>
@@ -2178,85 +2010,11 @@ export default function Code() {
 						>
 							<Text style={{ color: colors.text, fontSize: 20 }}>+</Text>
 						</Pressable>
-						<Pressable
-							accessibilityRole="button"
-							accessibilityLabel={
-								recording ? t("code.dictating") : t("code.dictate")
-							}
-							disabled={toolsDisabled}
-							onPress={() => void dictate()}
-							style={{
-								width: 40,
-								height: 40,
-								alignItems: "center",
-								justifyContent: "center",
-								borderRadius: 8,
-								backgroundColor: recording ? colors.text : "transparent",
-								opacity: toolsDisabled ? 0.35 : 1,
-							}}
-						>
-							<Text
-								style={{
-									color: recording ? colors.surface : colors.text,
-									fontSize: 13,
-								}}
-							>
-								{recording ? "●" : "M"}
+						{pttHeld ? (
+							<Text style={{ color: colors.primary, fontSize: 12 }}>
+								{t("code.voiceListening")}
 							</Text>
-						</Pressable>
-						<Pressable
-							accessibilityRole="button"
-							accessibilityLabel={
-								voiceMode ? t("code.voiceStop") : t("code.voiceMode")
-							}
-							accessibilityState={{ selected: voiceMode }}
-							disabled={toolsDisabled}
-							onPress={() => setVoiceMode((current) => !current)}
-							style={{
-								width: 40,
-								height: 40,
-								alignItems: "center",
-								justifyContent: "center",
-								borderRadius: 8,
-								backgroundColor: voiceMode ? colors.text : "transparent",
-								opacity: toolsDisabled ? 0.35 : 1,
-							}}
-						>
-							<Text
-								style={{
-									color: voiceMode ? colors.surface : colors.text,
-									fontSize: 13,
-								}}
-							>
-								∿
-							</Text>
-						</Pressable>
-						<Pressable
-							accessibilityRole="button"
-							accessibilityLabel={t("code.ptt")}
-							accessibilityState={{ selected: pttHeld }}
-							disabled={toolsDisabled}
-							onPressIn={() => beginPttRef.current()}
-							onPressOut={() => endPttRef.current()}
-							style={{
-								width: 40,
-								height: 40,
-								alignItems: "center",
-								justifyContent: "center",
-								borderRadius: 8,
-								backgroundColor: pttHeld ? colors.text : "transparent",
-								opacity: toolsDisabled ? 0.35 : 1,
-							}}
-						>
-							<Text
-								style={{
-									color: pttHeld ? colors.surface : colors.text,
-									fontSize: 15,
-								}}
-							>
-								●
-							</Text>
-						</Pressable>
+						) : null}
 					</View>
 					<View
 						style={{
@@ -2291,32 +2049,53 @@ export default function Code() {
 						/>
 						<Pressable
 							accessibilityRole="button"
-							accessibilityLabel={view.busy ? t("code.stop") : t("code.send")}
-							disabled={sendDisabled}
-							onPress={() => void (view.busy ? abort() : send())}
+							accessibilityLabel={
+								view.busy
+									? t("code.stop")
+									: micEmpty
+										? t("code.ptt")
+										: t("code.send")
+							}
+							accessibilityHint={micEmpty ? t("code.pttHint") : undefined}
+							disabled={
+								view.busy ? false : micEmpty ? toolsDisabled : sendDisabled
+							}
+							onPress={
+								micEmpty ? undefined : () => void (view.busy ? abort() : send())
+							}
+							onPressIn={micEmpty ? () => beginPttRef.current() : undefined}
+							onPressOut={micEmpty ? () => endPttRef.current() : undefined}
 							style={{
 								width: 44,
 								height: 44,
 								borderRadius: 10,
 								alignItems: "center",
 								justifyContent: "center",
-								backgroundColor: view.busy ? "transparent" : colors.text,
-								borderWidth: view.busy ? 1.5 : 0,
+								backgroundColor:
+									view.busy || micEmpty ? "transparent" : colors.text,
+								borderWidth: view.busy || micEmpty ? 1.5 : 0,
 								borderColor: colors.text,
-								opacity: sendDisabled ? 0.35 : 1,
+								opacity: (micEmpty ? toolsDisabled : sendDisabled) ? 0.35 : 1,
 							}}
 						>
 							<Text
 								style={{
-									color: view.busy ? colors.text : colors.surface,
+									color: view.busy || micEmpty ? colors.text : colors.surface,
 									fontSize: 16,
 								}}
 							>
-								{view.busy ? "■" : "↑"}
+								{view.busy ? "■" : micEmpty ? "M" : "↑"}
 							</Text>
 						</Pressable>
 					</View>
 				</View>
+				{micEmpty ? (
+					<Text
+						style={{ color: colors.muted, fontSize: 12, textAlign: "center" }}
+					>
+						{t("code.pttHint")}
+					</Text>
+				) : null}
 			</View>
 		);
 	}

@@ -1,12 +1,13 @@
 ---
 name: gpio-ui
 description: >-
-  Show things to the user on the open gpio-companion dashboard app (web,
-  desktop, or mobile): navigate, open a dock panel, open/close the command
-  palette, toast, and ask a modal question. Signed /v1/ui WebSocket channel;
-  the agent posts unsigned to loopback only. Use after starting or flashing so
-  the user can watch. Not DeviceHub. Never start sketches, flash, unpair,
-  delete, order, or change WiFi through this channel.
+  Act on the open gpio-companion dashboard app (web, desktop, or mobile):
+  always GET /v1/ui first on user-visible tasks; when sockets are non-empty,
+  navigate, open a dock panel, open/close the command palette, toast, and ask
+  a modal question when advantageous. Signed /v1/ui WebSocket channel; the
+  agent posts unsigned to loopback only. Use after starting, flashing, or
+  verifying so the user can watch. Not DeviceHub. Never start sketches, flash,
+  unpair, delete, order, or change WiFi through this channel.
 ---
 
 # gpio-ui
@@ -23,7 +24,10 @@ curl -s http://127.0.0.1:4150/v1/ui
 ```
 
 `{ sockets: [{ id, surface: "web"|"desktop"|"mobile", focused }] }` — an empty
-list means no dashboard app is open. Only deliver UI when this is non-empty.
+list means no dashboard app is open (signed out, no board selected, app
+closed, or companion predates `/v1/ui` — the board must Update companion).
+Always check first on user-visible tasks; only deliver UI when this is
+non-empty.
 
 ## Send commands
 
@@ -35,17 +39,18 @@ curl -s -X POST http://127.0.0.1:4150/v1/ui \
 
 Response: `{ "delivered": 1, "fallback": false }`.
 
-- `delivered: 0` → the dashboard is not open. Say so in chat and move on; do
-  not retry-spam.
+- `delivered: 0` → the dashboard is not open. Say so once in chat and move on;
+  do not retry-spam and do not wait on a modal reply nobody saw.
 - `fallback: true` → an app is open but not in the foreground (background
-  phone, unfocused window). The command still arrived there.
+  phone, unfocused window). The command still arrived there — this is still
+  delivered, not a failure.
 
 ## Commands
 
 | Type | Body | Effect |
 | --- | --- | --- |
 | `navigate` | `{"type":"navigate","target":"project"}` | Jump to a known place |
-| `dock` | `{"type":"dock","tab":"console"}` | Open the bottom dock on console, gpio, flash, or problems |
+| `dock` | `{"type":"dock","tab":"console"}` | Open the bottom dock on console, gpio, flash, actions, or problems |
 | `palette` | `{"type":"palette","open":true}` | Open or close the command palette |
 | `toast` | `{"type":"toast","text":"..."}` | Short text (max 160 chars) |
 | `modal` | see below | Title + body + up to 3 buttons, waits for a click |
@@ -72,7 +77,8 @@ curl -s http://127.0.0.1:4150/v1/ui/reply/ask-blink-7
 - Poll `GET /v1/ui/reply/<id>` until it returns `{"action":"<label>"}` (one of
   your button labels, or `"dismiss"` if the user closed it). Each call waits
   up to ~25 s; poll again if you got `404 {"error":"no reply"}` and the user
-  may still answer. Replies are kept for 2 minutes.
+  may still answer. Replies are kept for 2 minutes — a slow user needs a
+  re-poll, not a new modal.
 - When `delivered` was 0, do not wait on a reply — nobody saw the modal.
 
 ## What this channel is for

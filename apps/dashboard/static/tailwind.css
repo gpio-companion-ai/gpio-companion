@@ -2772,6 +2772,20 @@ button.oc-chip,
 	box-shadow: inset 0 0 0 1.5px currentColor;
 }
 
+.oc-send.is-mic {
+	background: transparent;
+	color: rgb(var(--text-main));
+	box-shadow: inset 0 0 0 1.5px currentColor;
+}
+
+.oc-ptt-hint {
+	width: calc(100% - 32px);
+	max-width: 780px;
+	margin: -8px auto 16px;
+	font-size: 12px;
+	opacity: 0.55;
+}
+
 .oc-skel {
 	height: 40px;
 	margin: 0 8px 4px;
@@ -2930,6 +2944,10 @@ button.oc-chip,
 	gap: 4px;
 	padding-right: 8px;
 	text-align: left;
+	touch-action: manipulation;
+	user-select: none;
+	-webkit-user-select: none;
+	-webkit-touch-callout: none;
 }
 
 .oc-tree-row:hover {

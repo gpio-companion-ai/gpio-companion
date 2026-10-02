@@ -12,16 +12,7 @@ import {
 	type BoardFileEntry,
 	CODE_ATTACH_ACCEPT,
 	CODE_DEFAULT_MODEL,
-	CODE_STT_MAX_MS,
-	CODE_VOICE_ARM_MS,
-	CODE_VOICE_BARGE_FLOOR,
-	CODE_VOICE_BARGE_HITS,
-	CODE_VOICE_BARGE_RMS,
-	CODE_VOICE_FLOOR_MS,
 	CODE_VOICE_MAX_MS,
-	CODE_VOICE_MIN_MS,
-	CODE_VOICE_RMS,
-	CODE_VOICE_SILENCE_MS,
 	type CodeAttachDraft,
 	type CodeVoiceProvider,
 	codeAppendSpeechDirective,
@@ -206,22 +197,6 @@ function MicIcon() {
 		<svg viewBox="0 0 24 24" aria-hidden="true">
 			<rect x="9" y="3" width="6" height="11" rx="3" />
 			<path d="M6 11a6 6 0 0012 0M12 17v4" />
-		</svg>
-	);
-}
-
-function WaveIcon() {
-	return (
-		<svg viewBox="0 0 24 24" aria-hidden="true">
-			<path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4" />
-		</svg>
-	);
-}
-
-function PttIcon() {
-	return (
-		<svg viewBox="0 0 24 24" aria-hidden="true">
-			<circle cx="12" cy="12" r="5" fill="currentColor" stroke="none" />
 		</svg>
 	);
 }
@@ -420,9 +395,7 @@ export default function OpenCodeSession({
 			entries.filter((item) => item.type === "file").map((item) => item.path),
 		);
 	}, []);
-	const [recording, setRecording] = useState(false);
 	const [uploading, setUploading] = useState(false);
-	const [voiceMode, setVoiceMode] = useState(false);
 	const [pttHeld, setPttHeld] = useState(false);
 	const [voiceLevel, setVoiceLevel] = useState(0);
 	const [voiceListening, setVoiceListening] = useState(false);
@@ -451,8 +424,6 @@ export default function OpenCodeSession({
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
-	const recorder = useRef<MediaRecorder | null>(null);
-	const recordTimer = useRef(0);
 	const voiceEngine = useRef<{
 		stream: MediaStream;
 		context: AudioContext;
@@ -476,12 +447,7 @@ export default function OpenCodeSession({
 	const speechGen = useRef(0);
 	const voiceSpoken = useRef(new Set<string>());
 	const voiceQueue = useRef<string[]>([]);
-	const voiceBarge = useRef(0);
-	const voiceArm = useRef(0);
 	const voiceShown = useRef(-1);
-	const voiceFloor = useRef(0);
-	const voiceFloorAt = useRef(0);
-	const voiceModeRef = useRef(false);
 	const voiceReplyRef = useRef(false);
 	const speechDirectiveSentRef = useRef<string | null>(null);
 	const pttRef = useRef(false);
@@ -492,9 +458,7 @@ export default function OpenCodeSession({
 	const beginPttRef = useRef<() => void>(() => {});
 	const endPttRef = useRef<() => void>(() => {});
 	const stopVoiceEngineRef = useRef<() => void>(() => {});
-	const finishVoiceRef = useRef<(blob: Blob, source?: "auto" | "ptt") => void>(
-		() => {},
-	);
+	const finishVoiceRef = useRef<(blob: Blob) => void>(() => {});
 	const menuRef = useRef<HTMLDivElement>(null);
 	const prompts = useRef<OpencodePromptEpoch>({
 		epoch: 0,
@@ -1125,70 +1089,7 @@ export default function OpenCodeSession({
 		setFiles(next);
 	}
 
-	async function finishDictation(blob: Blob) {
-		try {
-			const result = await transcribe({
-				audio: encodeBase64(new Uint8Array(await blob.arrayBuffer())),
-				locale,
-			});
-			if (!result.ok) {
-				setError(shownError(result.error));
-				return;
-			}
-			const heard = result.data.text.trim();
-			if (!heard) {
-				return;
-			}
-			setPrompt((current) =>
-				current.trim() ? `${current.trim()} ${heard}` : heard,
-			);
-		} catch (caught) {
-			setError(shownError(caught instanceof Error ? caught.message : ""));
-		}
-	}
-
-	async function dictate() {
-		if (recorder.current && recorder.current.state === "recording") {
-			recorder.current.stop();
-			return;
-		}
-		try {
-			const stream = await navigator.mediaDevices.getUserMedia({
-				audio: {
-					echoCancellation: true,
-					noiseSuppression: true,
-					autoGainControl: true,
-				},
-			});
-			const rec = new MediaRecorder(stream);
-			const chunks: Blob[] = [];
-			rec.ondataavailable = (event) => {
-				if (event.data.size > 0) {
-					chunks.push(event.data);
-				}
-			};
-			rec.onstop = () => {
-				window.clearTimeout(recordTimer.current);
-				for (const track of stream.getTracks()) {
-					track.stop();
-				}
-				recorder.current = null;
-				setRecording(false);
-				void finishDictation(new Blob(chunks, { type: rec.mimeType }));
-			};
-			recorder.current = rec;
-			rec.start();
-			setRecording(true);
-			recordTimer.current = window.setTimeout(
-				() => rec.stop(),
-				CODE_STT_MAX_MS,
-			);
-		} catch {
-			setError(t("code.micDenied"));
-		}
-	}
-
-	function startVoiceUtterance(source: "auto" | "ptt") {
+	function startVoiceUtterance() {
 		const engine = voiceEngine.current;
 		if (!engine || voiceUtter.current) {
 			return;
@@ -1205,21 +1106,17 @@ export default function OpenCodeSession({
 			rec.onstop = () => {
 				voiceUtter.current = null;
 				setVoiceListening(false);
-				voiceArm.current = 0;
 				if (cancelled) {
 					return;
 				}
-				if (source === "auto" && !voiceModeRef.current) {
-					return;
-				}
 				const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
-				void finishVoiceRef.current(blob, source);
+				void finishVoiceRef.current(blob);
 			};
 			voiceUtter.current = {
 				recorder: rec,
 				started: Date.now(),
 				voiceAt: Date.now(),
-				source,
+				source: "ptt",
 				cancel() {
 					cancelled = true;
 					try {
@@ -1284,7 +1181,6 @@ export default function OpenCodeSession({
 		}
 		voiceUtter.current?.cancel();
 		voiceUtter.current = null;
-		voiceArm.current = 0;
 		stopVoiceSpeech();
 		setVoiceListening(false);
 		setVoiceLevel(0);
@@ -1297,9 +1193,8 @@ export default function OpenCodeSession({
 		pttRef.current = true;
 		pttParts.current.clear();
 		setPttHeld(true);
-		voiceArm.current = 0;
 		if (voiceEngine.current) {
-			startVoiceUtterance("ptt");
+			startVoiceUtterance();
 			return;
 		}
 		void (async () => {
@@ -1320,7 +1215,7 @@ export default function OpenCodeSession({
 				const engine = { stream, context, analyser, data, raf: 0 };
 				voiceEngine.current = engine;
 				if (pttRef.current) {
-					startVoiceUtterance("ptt");
+					startVoiceUtterance();
 				}
 				const tick = () => {
 					if (voiceEngine.current !== engine) {
@@ -1341,7 +1236,6 @@ export default function OpenCodeSession({
 	function endPtt() {
 		pttRef.current = false;
 		setPttHeld(false);
-		voiceArm.current = 0;
 		const utter = voiceUtter.current;
 		if (utter?.source === "ptt") {
 			stopVoiceUtterance();
@@ -1387,13 +1281,11 @@ export default function OpenCodeSession({
 		await flushPttParts();
 	}
 
-	async function finishVoice(blob: Blob, source: "auto" | "ptt" = "auto") {
+	async function finishVoice(blob: Blob) {
 		clearSpeechQueue();
 		setVoiceTranscribing(true);
-		const seq = source === "ptt" ? pttSeq.current++ : 0;
-		if (source === "ptt") {
-			pttPending.current += 1;
-		}
+		const seq = pttSeq.current++;
+		pttPending.current += 1;
 		try {
 			const result = await transcribe({
 				audio: encodeBase64(new Uint8Array(await blob.arrayBuffer())),
@@ -1401,30 +1293,15 @@ export default function OpenCodeSession({
 			});
 			if (!result.ok) {
 				setError(shownError(result.error));
-				if (source === "ptt") {
-					await settlePtt("", seq);
-				}
+				await settlePtt("", seq);
 				return;
 			}
 			const heard = codeVoiceUtterance(result.data.text);
-			if (source === "ptt") {
-				await settlePtt(heard, seq);
-				return;
-			}
-			if (!heard) {
-				return;
-			}
-			if (view.busy || uploading) {
-				voiceQueue.current.push(heard);
-				setVoiceQueued(voiceQueue.current.length);
-				return;
-			}
-			await send(heard);
+			await settlePtt(heard, seq);
+			return;
 		} catch (caught) {
 			setError(shownError(caught instanceof Error ? caught.message : ""));
-			if (source === "ptt") {
-				await settlePtt("", seq);
-			}
+			await settlePtt("", seq);
 		} finally {
 			setVoiceTranscribing(false);
 		}
@@ -1519,9 +1396,6 @@ export default function OpenCodeSession({
 				voiceSpeaking.current = player;
 				voiceSpeechResolve.current = done;
 				setVoiceSpeakingNow(true);
-				voiceFloor.current = 0;
-				voiceFloorAt.current = Date.now();
-				voiceBarge.current = 0;
 				player.play().catch(() => {
 					done();
 				});
@@ -1558,7 +1432,7 @@ export default function OpenCodeSession({
 					if (
 						item.gen !== speechGen.current ||
 						item.state === "failed" ||
-						(!voiceModeRef.current && !voiceReplyRef.current)
+						!voiceReplyRef.current
 					) {
 						dropSpeechItem(item);
 						continue;
@@ -1571,7 +1445,7 @@ export default function OpenCodeSession({
 					if (
 						item.gen !== speechGen.current ||
 						item.state !== "ready" ||
-						(!voiceModeRef.current && !voiceReplyRef.current)
+						!voiceReplyRef.current
 					) {
 						dropSpeechItem(item);
 						continue;
@@ -1613,117 +1487,21 @@ export default function OpenCodeSession({
 			voiceShown.current = bucket;
 			setVoiceLevel(level);
 		}
-		const now = Date.now();
+		// PTT records until release (or the 60s cap); only the cap can end it.
 		const utter = voiceUtter.current;
-		if (utter) {
-			if (rms >= CODE_VOICE_RMS) {
-				utter.voiceAt = now;
-				voiceArm.current = 0;
-			}
-			const elapsed = now - utter.started;
-			const quiet = now - utter.voiceAt;
-			if (
-				elapsed > CODE_VOICE_MAX_MS ||
-				(utter.source !== "ptt" &&
-					elapsed > CODE_VOICE_MIN_MS &&
-					quiet > CODE_VOICE_SILENCE_MS)
-			) {
-				stopVoiceUtterance();
-			}
-		} else if (voiceSpeaking.current && voiceModeRef.current) {
-			if (now - voiceFloorAt.current < CODE_VOICE_FLOOR_MS) {
-				if (rms > voiceFloor.current) {
-					voiceFloor.current = rms;
-				}
-				voiceBarge.current = 0;
-			} else {
-				const gate = Math.max(
-					CODE_VOICE_BARGE_RMS,
-					voiceFloor.current * CODE_VOICE_BARGE_FLOOR,
-				);
-				if (rms >= gate) {
-					voiceBarge.current += 1;
-					if (voiceBarge.current >= CODE_VOICE_BARGE_HITS) {
-						voiceBarge.current = 0;
-						clearSpeechQueue();
-					}
-				} else {
-					voiceBarge.current = 0;
-				}
-			}
-		} else if (pttRef.current || voiceModeRef.current) {
-			if (rms >= CODE_VOICE_RMS) {
-				if (!voiceArm.current) {
-					voiceArm.current = now;
-				} else if (now - voiceArm.current >= CODE_VOICE_ARM_MS) {
-					startVoiceUtterance(pttRef.current ? "ptt" : "auto");
-				}
-			} else {
-				voiceArm.current = 0;
-			}
+		if (utter && Date.now() - utter.started > CODE_VOICE_MAX_MS) {
+			stopVoiceUtterance();
 		}
 	}
 
 	voiceTickRef.current = voiceTick;
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: voice engine is ref-driven and reads the latest render through refs
+	// Tear the mic engine down when leaving the chat so the mic light never sticks.
 	useEffect(() => {
-		voiceModeRef.current = voiceMode;
-		if (!voiceMode || mode === "home") {
-			if (!pttRef.current) {
-				stopVoiceEngine();
-			}
-			return;
+		if (mode === "home") {
+			stopVoiceEngineRef.current();
 		}
-		for (const turn of view.turns) {
-			if (turn.role === "assistant") {
-				voiceSpoken.current.add(turn.id);
-				speechSpoken.current.set(turn.id, codeSpeechBlocks(turn.text).length);
-			}
-		}
-		let cancelled = false;
-		void (async () => {
-			try {
-				const stream = await navigator.mediaDevices.getUserMedia({
-					audio: {
-						echoCancellation: true,
-						noiseSuppression: true,
-						autoGainControl: true,
-					},
-				});
-				if (cancelled) {
-					for (const track of stream.getTracks()) {
-						track.stop();
-					}
-					return;
-				}
-				const context = new AudioContext();
-				await context.resume().catch(() => {});
-				const analyser = context.createAnalyser();
-				analyser.fftSize = 512;
-				context.createMediaStreamSource(stream).connect(analyser);
-				const data = new Float32Array(analyser.fftSize);
-				const engine = { stream, context, analyser, data, raf: 0 };
-				voiceEngine.current = engine;
-				const tick = () => {
-					if (voiceEngine.current !== engine || cancelled) {
-						return;
-					}
-					voiceTickRef.current();
-					engine.raf = requestAnimationFrame(tick);
-				};
-				engine.raf = requestAnimationFrame(tick);
-			} catch {
-				if (!cancelled) {
-					setError(t("code.micDenied"));
-					setVoiceMode(false);
-				}
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [voiceMode, mode]);
+	}, [mode]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: drains the voice queue through refs and send()
 	useEffect(() => {
@@ -1748,7 +1526,7 @@ export default function OpenCodeSession({
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: streams <speech> blocks through refs and enqueueSpeech()
 	useEffect(() => {
-		if (!voiceMode && !voiceReply) {
+		if (!voiceReply) {
 			return;
 		}
 		if (voiceUtter.current) {
@@ -1768,11 +1546,11 @@ export default function OpenCodeSession({
 				enqueueSpeech(blocks[index] ?? "");
 			}
 		}
-	}, [voiceMode, view.turns]);
+	}, [voiceReply, view.turns]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: speaks settled turns through refs and enqueueSpeech()
 	useEffect(() => {
-		if (!voiceMode && !voiceReply) {
+		if (!voiceReply) {
 			clearSpeechQueue();
 			return;
 		}
@@ -1811,7 +1589,7 @@ export default function OpenCodeSession({
 		}
 		enqueueSpeech(turn.text);
 	}, [
-		voiceMode,
+		voiceReply,
 		view.busy,
 		uploading,
 		view.turns,
@@ -1894,7 +1672,8 @@ export default function OpenCodeSession({
 		let text = "";
 		// Speech directive is injected once per session: the first voice-directed
 		// message carries it, later turns keep it from the transcript.
-		const wantsSpeech = Boolean(override) || voiceModeRef.current;
+		// Only PTT (hold mic) sends voice-directed messages now.
+		const wantsSpeech = Boolean(override);
 		const existingSessionID = mode === "session" ? view.sessionID : "";
 		const injectSpeechDirective =
 			wantsSpeech &&
@@ -1907,7 +1686,7 @@ export default function OpenCodeSession({
 				injectSpeechDirective,
 				voiceProvider,
 			);
-			if (override && !voiceModeRef.current) {
+			if (override) {
 				voiceReplyRef.current = true;
 				setVoiceReply(true);
 				for (const turn of view.turns) {
@@ -1919,7 +1698,7 @@ export default function OpenCodeSession({
 						);
 					}
 				}
-			} else if (!override && !voiceModeRef.current) {
+			} else if (!override) {
 				voiceReplyRef.current = false;
 				setVoiceReply(false);
 			}
@@ -2240,6 +2019,11 @@ export default function OpenCodeSession({
 				? filterCodeMentions(boardPaths, mention.query)
 				: [];
 		const active = matches.length === 0 ? 0 : mentionIndex % matches.length;
+		// PTT-only voice: the mic lives in the send button when the input is
+		// empty. Hold it (or Space) and release to auto-send; the reply is
+		// spoken back. No continuous voice mode, no dictate-insert.
+		const micEmpty =
+			!view.busy && !prompt.trim() && files.length === 0 && !blocked;
 		const voicePhase =
 			pttHeld || voiceListening
 				? "listening"
@@ -2254,7 +2038,7 @@ export default function OpenCodeSession({
 			? t("code.voiceTranscribing")
 			: voiceSpeakingNow
 				? t("code.voiceSpeaking")
-				: voiceListening || voicePhase === "idle"
+				: voiceListening
 					? t("code.voiceListening")
 					: t("code.voiceThinking");
 		return (
@@ -2353,7 +2137,7 @@ export default function OpenCodeSession({
 						))}
 					</div>
 				) : null}
-				{voiceMode || voiceTranscribing || pttHeld ? (
+				{voiceTranscribing || pttHeld || voiceSpeakingNow ? (
 					<div className={`oc-voice is-${voicePhase}`} aria-live="polite">
 						<span className="oc-voice-bars" aria-hidden="true">
 							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
@@ -2381,7 +2165,7 @@ export default function OpenCodeSession({
 							type="button"
 							className="oc-voice-stop"
 							aria-label={t("code.voiceStop")}
-							onClick={() => setVoiceMode(false)}
+							onClick={() => clearSpeechQueue()}
 						>
 							×
 						</button>
@@ -2408,38 +2192,6 @@ export default function OpenCodeSession({
 						onClick={() => picker.current?.click()}
 					>
 						<AttachIcon />
-					</button>
-					<button
-						type="button"
-						className={`oc-tool${recording ? " is-on" : ""}`}
-						aria-label={recording ? t("code.dictating") : t("code.dictate")}
-						disabled={toolsDisabled}
-						onClick={() => void dictate()}
-					>
-						<MicIcon />
-					</button>
-					<button
-						type="button"
-						className={`oc-tool${voiceMode ? " is-on" : ""}`}
-						aria-label={voiceMode ? t("code.voiceStop") : t("code.voiceMode")}
-						aria-pressed={voiceMode}
-						disabled={toolsDisabled}
-						onClick={() => setVoiceMode((current) => !current)}
-					>
-						<WaveIcon />
-					</button>
-					<button
-						type="button"
-						className={`oc-tool${pttHeld ? " is-on" : ""}`}
-						aria-label={t("code.ptt")}
-						title={t("code.pttHint")}
-						disabled={toolsDisabled}
-						onPointerDown={(event) => {
-							event.preventDefault();
-							beginPttRef.current();
-						}}
-					>
-						<PttIcon />
 					</button>
 					<textarea
 						ref={field}
@@ -2509,15 +2261,48 @@ export default function OpenCodeSession({
 					/>
 					<button
 						type="button"
-						className={`oc-send${view.busy ? " is-stop" : ""}`}
-						aria-label={view.busy ? t("code.stop") : t("code.send")}
-						disabled={sendDisabled}
-						title={blocked ? t("code.blockedComposer") : undefined}
-						onClick={() => void (view.busy ? abort() : send())}
+						className={`oc-send${view.busy ? " is-stop" : ""}${micEmpty ? " is-mic" : ""}`}
+						aria-label={
+							view.busy
+								? t("code.stop")
+								: micEmpty
+									? t("code.ptt")
+									: t("code.send")
+						}
+						disabled={
+							view.busy ? false : micEmpty ? toolsDisabled : sendDisabled
+						}
+						title={
+							micEmpty
+								? t("code.pttHint")
+								: blocked
+									? t("code.blockedComposer")
+									: undefined
+						}
+						onPointerDown={
+							micEmpty
+								? (event) => {
+										event.preventDefault();
+										beginPttRef.current();
+									}
+								: undefined
+						}
+						onClick={() => {
+							if (view.busy) {
+								void abort();
+								return;
+							}
+							// Mic release is handled by the global pointerup listener
+							// (endPtt auto-sends); a plain click does nothing.
+							if (!micEmpty) {
+								void send();
+							}
+						}}
 					>
-						{view.busy ? <StopIcon /> : <SendIcon />}
+						{view.busy ? <StopIcon /> : micEmpty ? <MicIcon /> : <SendIcon />}
 					</button>
 				</div>
+				{micEmpty ? <p className="oc-ptt-hint">{t("code.pttHint")}</p> : null}
 			</div>
 		);
 	}
