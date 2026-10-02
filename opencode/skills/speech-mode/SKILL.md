@@ -54,7 +54,7 @@ as you produce it. **If it is not in a tag, the user does not hear it.**
 ```
 <speech>Here is what I am going to do: first I check whether an Arduino board is plugged in, because that decides whether I drive the pins through USB or the header. Then I write the fade sketch and run it.</speech>
 <speech>An Arduino Uno is connected, so I will use it as a five volt proxy and leave the header pins alone. I am now writing the fade sketch under the project folder.</speech>
-... write host/arduino-proxy-fade/main.c, POST /v1/run ...
+... write host/arduino-proxy-fade/main.c, run gpio-companion sketch run ...
 <speech>The sketch compiles and is running. The fade goes from zero to full brightness in about two seconds per cycle, four milliseconds per step.</speech>
 <speech>Summary: the fade works through the proxy, the branch is clean, and next I can wire the real relay module if you want.</speech>
 ```

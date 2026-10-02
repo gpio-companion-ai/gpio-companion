@@ -2,10 +2,10 @@
 name: gpio-pinout-orangepi
 description: >-
   Orange Pi GPIO header mapping for gpio-companion. Use when hardware is
-  orangepi, wiring a breadboard/PCB, or driving GPIO. Drive with C (GET
-  /v1/arduino-proxy first; if connected gpio-arduino-proxy, else gpio-host);
-  PUT /v1/gpio is one-shot testing only. Orange Pi 3 LTS is a 26-pin header
-  (not 40). SoC lines are NOT BCM. Talk physical pin numbers. 3.3V logic.
+  orangepi, wiring a breadboard/PCB, or driving GPIO. Drive with C
+  (`gpio-companion proxy status` first; if connected gpio-arduino-proxy, else
+  gpio-host); `gpio set` is one-shot testing only. Orange Pi 3 LTS is a 26-pin
+  header (not 40). SoC lines are NOT BCM. Talk physical pin numbers. 3.3V logic.
 ---
 
 # Orange Pi GPIO pinout
@@ -110,8 +110,8 @@ The remainder is for the on-device agent. Bench users can stop here.
 
 Load when `/etc/gpio-companion/config.json` has `"hardware": "orangepi"`, or `/proc/device-tree/model` contains Orange Pi.
 
-1. `GET http://127.0.0.1:4150/v1/gpio` first — that snapshot is the live map (physical, name, dir, value, PWM). Do not rediscover with WiringOP or `gpioset`.
-2. **C-first:** `GET /v1/arduino-proxy` first. If connected, skill `gpio-arduino-proxy` (Arduino pins, `host/arduino-proxy-<name>/`) — not this header. Else drive header GPIO with a C sketch (skill `gpio-host`, **physical** pins). Never BCM. Blink/PWM/tone/loops go to `POST /v1/run`. `PUT /v1/gpio` only for a one-shot test the user asked for: `{ "physical": 7, "dir": "out", "value": 1 }`. analogWrite/tone in C, or skill `gpio-pwm` for a test. Breadboard: `gpio-breadboard`.
+1. `gpio-companion gpio get` first — that snapshot is the live map (physical, name, dir, value, PWM). Do not rediscover with WiringOP or `gpioset`.
+2. **C-first:** `gpio-companion proxy status` first. If connected, skill `gpio-arduino-proxy` (Arduino pins, `host/arduino-proxy-<name>/`) — not this header. Else drive header GPIO with a C sketch (skill `gpio-host`, **physical** pins). Never BCM. Blink/PWM/tone/loops go to `gpio-companion sketch run --path <dir>`. `gpio set` only for a one-shot test the user asked for: `gpio-companion gpio set --physical 7 --dir out --value 1`. analogWrite/tone in C, or skill `gpio-pwm` for a test. Breadboard: `gpio-breadboard`.
 3. Technical sheets: **physical pin + name** (pin 7 / PD22), never a Pi BCM number. Push `technical/` and `breadboard/diagram.json`.
 4. Refuse power, GND, and `unresolved` pins. On 3 LTS ignore 27–40. analogRead only if the snapshot has `adc` (3 LTS header has none).
 5. Family boards without a SKU map: only drive pins the snapshot does not mark unresolved.

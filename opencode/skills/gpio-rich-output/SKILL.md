@@ -58,7 +58,7 @@ and re-parses the inside as markdown:
 
 <step-guide title="Blink in 3 steps">
 1. Write `host/blink/main.c`
-2. `POST /v1/run`
+2. `gpio-companion sketch run --path host/blink`
 3. Watch Serial in the console dock
 </step-guide>
 ```

@@ -132,11 +132,13 @@ export default function GpioPanel({
 	connected,
 	poll = false,
 	onLivePins,
+	onRetry,
 }: {
 	uuid: string;
 	connected?: boolean;
 	poll?: boolean;
 	onLivePins?: (pins: Record<number, 0 | 1>, target?: GpioTarget) => void;
+	onRetry?: () => void;
 }) {
 	const auth = useAuth();
 	const t = useT();
@@ -224,6 +226,9 @@ export default function GpioPanel({
 			<View style={{ gap: 8, marginTop: 8 }}>
 				<Body>{t("gpio.title")}</Body>
 				<Muted>{t("gpio.notConnected")}</Muted>
+				{poll && uuid && onRetry ? (
+					<TextButton label={t("gpio.refresh")} onPress={onRetry} />
+				) : null}
 			</View>
 		);
 	}

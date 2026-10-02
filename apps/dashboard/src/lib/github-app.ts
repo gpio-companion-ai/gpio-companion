@@ -395,7 +395,7 @@ async function userJson<T>(token: string, path: string): Promise<T> {
 	return (await response.json()) as T;
 }
 
-async function installationIdFromUserToken(
+export async function installationIdFromUserToken(
 	env: GithubAppEnv,
 	userToken: string,
 ): Promise<number> {
@@ -430,7 +430,7 @@ export async function githubAppStatusForUser(
 	}
 	const state = crypto.randomUUID();
 	await env.DYNAMIC_PAGE_KV.put(githubAppStateKey(state), userId, {
-		expirationTtl: 900,
+		expirationTtl: 3600,
 	});
 	return {
 		connected: Boolean(install),

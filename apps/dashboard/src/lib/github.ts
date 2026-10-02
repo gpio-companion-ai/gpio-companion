@@ -19,9 +19,12 @@ import {
 } from "gpio-companion";
 import {
 	type GithubAppEnv,
+	installationIdFromUserToken,
 	loadFreshUserToken,
 	loadGithubAppInstall,
 	mintInstallationToken,
+	readGithubInstallation,
+	saveGithubAppInstall,
 } from "./github-app.ts";
 
 export const GITHUB_API = "https://api.github.com";
@@ -136,18 +139,57 @@ export async function githubAccountForUser(
 ): Promise<GithubAccount | null> {
 	const install = await loadGithubAppInstall(env.DYNAMIC_PAGE_KV, userId);
 	if (install && env.GITHUB_APP_ID && env.GITHUB_APP_PRIVATE_KEY) {
-		const minted = await mintInstallationToken(
-			env,
-			install.installationId,
-			install.login,
-		);
-		const createToken = await loadFreshUserToken(env, userId, install);
-		return {
-			username: install.login,
-			token: minted.token,
-			installationId: install.installationId,
-			...(createToken ? { createToken } : {}),
-		};
+		try {
+			const minted = await mintInstallationToken(
+				env,
+				install.installationId,
+				install.login,
+			);
+			const createToken = await loadFreshUserToken(env, userId, install);
+			return {
+				username: install.login,
+				token: minted.token,
+				installationId: install.installationId,
+				...(createToken ? { createToken } : {}),
+			};
+		} catch {
+			// Installation token mint can fail transiently (suspended install,
+			// GitHub 5xx/rate-limit) or because the stored installation id is
+			// stale (user reinstalled the App, getting a new installation id).
+			// If we have a user token, try to re-resolve the current
+			// installation before falling back: this heals the reinstall case
+			// without the user doing anything.
+			try {
+				const userToken = await loadFreshUserToken(env, userId, install);
+				if (userToken) {
+					const resolved = await installationIdFromUserToken(env, userToken);
+					if (resolved > 0 && resolved !== install.installationId) {
+						const info = await readGithubInstallation(env, resolved);
+						const healed = {
+							...install,
+							installationId: info.id,
+							login: info.login,
+						};
+						await saveGithubAppInstall(env.DYNAMIC_PAGE_KV, userId, healed);
+						const minted = await mintInstallationToken(
+							env,
+							healed.installationId,
+							healed.login,
+						);
+						const createToken = await loadFreshUserToken(env, userId, healed);
+						return {
+							username: healed.login,
+							token: minted.token,
+							installationId: healed.installationId,
+							...(createToken ? { createToken } : {}),
+						};
+					}
+				}
+			} catch {
+				// Fall through to the stored PAT below; without it the caller
+				// sees configured:false and the dashboard poller retries.
+			}
+		}
 	}
 	return loadGithubAccount(env.DYNAMIC_PAGE_KV, userId);
 }

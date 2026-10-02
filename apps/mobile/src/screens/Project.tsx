@@ -283,7 +283,7 @@ export default function Project() {
 		}
 		return listProjects(token);
 	});
-	const { boards, paired } = useUserBoards();
+	const { boards, paired, refetch } = useUserBoards();
 	const { uuid: selectedUuid, setUuid: selectBoard } = useBoardSelection();
 	const { flashSketch } = useBoardSelection();
 	const { setTab } = useDeviceHub();
@@ -1277,6 +1277,7 @@ export default function Project() {
 									uuid={activeUuid}
 									connected={Boolean(activeBoard?.status)}
 									poll={openTool === "gpio"}
+									onRetry={() => void refetch()}
 									onLivePins={(
 										pins: Record<number, 0 | 1>,
 										target?: GpioTarget,

@@ -40,12 +40,14 @@ export default function GpioPanel({
 	connected,
 	onSnapshot,
 	onLivePins,
+	onRetry,
 }: {
 	uuid: string;
 	poll?: boolean;
 	connected?: boolean;
 	onSnapshot?: (snapshot: GpioSnapshot | null) => void;
 	onLivePins?: (pins: Record<number, 0 | 1>, target?: GpioTarget) => void;
+	onRetry?: () => void;
 }) {
 	const t = useT();
 	const [busy, setBusy] = useState(false);
@@ -132,6 +134,18 @@ export default function GpioPanel({
 			<Stack spacing={1}>
 				<Typography variant="subtitle1">{t("gpio.title")}</Typography>
 				<Alert severity="info">{t("gpio.notConnected")}</Alert>
+				{poll && uuid && onRetry ? (
+					<Stack direction="row" spacing={1} className="flex-wrap">
+						<Button
+							type="button"
+							variant="outlined"
+							size="small"
+							onClick={onRetry}
+						>
+							{t("gpio.refresh")}
+						</Button>
+					</Stack>
+				) : null}
 			</Stack>
 		);
 	}

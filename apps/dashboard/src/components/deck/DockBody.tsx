@@ -26,6 +26,7 @@ export default function DockBody() {
 	const { uuid } = useBoardSelection();
 	const {
 		boards,
+		refreshBoards,
 		project,
 		flashSketch,
 		dockTab,
@@ -34,7 +35,20 @@ export default function DockBody() {
 		setConsoleStatus,
 	} = useWorkbench();
 	const board = boards.find((item) => item.uuid === uuid);
+	// Fleet status is a one-shot GET /v1/status probe loaded once per session.
+	// A missing entry means "unknown" (still loading or stale), not offline:
+	// pass undefined so GpioPanel attempts the live tunnel instead of showing
+	// "Board not connected" while the Devices page already sees it online.
 	const online = Boolean(board?.online);
+	const gpioConnected = board ? board.online : undefined;
+
+	// Refresh fleet status when the Live GPIO dock opens or the board changes,
+	// so a board that came online after the initial probe is not stuck offline.
+	useEffect(() => {
+		if (dockTab === "gpio" && uuid) {
+			refreshBoards();
+		}
+	}, [dockTab, uuid, refreshBoards]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset live state when the selected board changes
 	useEffect(() => {
@@ -56,8 +70,9 @@ export default function DockBody() {
 				key={uuid}
 				uuid={uuid}
 				poll
-				connected={online}
+				connected={gpioConnected}
 				onLivePins={setLivePins}
+				onRetry={refreshBoards}
 			/>
 		);
 	}

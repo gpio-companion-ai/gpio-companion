@@ -152,7 +152,12 @@ export default function DeckShell({
 						target === "credits" ||
 						target === "github"
 					) {
-						onNavigate("profile");
+						if (section !== "profile") {
+							onNavigate("profile");
+						}
+						return;
+					}
+					if (section === "devices" && deviceTab === target) {
 						return;
 					}
 					onNavigate("devices");
@@ -178,8 +183,12 @@ export default function DeckShell({
 					setUiModal(command);
 					return;
 				case "preview": {
-					onNavigate("devices");
-					onDeviceTab("code");
+					// Already on Code: only dispatch the preview event so the
+					// active chat session stays mounted.
+					if (!(section === "devices" && deviceTab === "code")) {
+						onNavigate("devices");
+						onDeviceTab("code");
+					}
 					const detail = { repo: command.repo, path: command.path };
 					try {
 						(

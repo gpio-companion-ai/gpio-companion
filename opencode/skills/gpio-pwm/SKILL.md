@@ -1,23 +1,24 @@
 ---
 name: gpio-pwm
 description: >-
-  Testing-only analogWrite, tone, and analogRead via PUT /v1/gpio. Do not use
-  for lasting PWM/tone — write C (GET /v1/arduino-proxy first; if connected
-  gpio-arduino-proxy, else gpio-host POST /v1/run) instead. One-shot pin
-  test only when the user asked to probe a pin or verify Live GPIO.
+  Testing-only analogWrite, tone, and analogRead with the gpio-companion board
+  CLI. Do not use for lasting PWM/tone — write C (`gpio-companion proxy
+  status` first; if connected gpio-arduino-proxy, else gpio-host `sketch run`)
+  instead. One-shot pin test only when the user asked to probe a pin or verify
+  Live GPIO.
 ---
 
 # gpio-pwm
 
-**Testing only.** Prefer `analogWrite` / `tone` in a C sketch (`GET
-/v1/arduino-proxy` first; if connected skill `gpio-arduino-proxy`, else skill
-`gpio-host`, `POST /v1/run`). Use this PUT API only when the user asked to probe a pin or
-verify Live GPIO — one-shot, then stop. Not for blinks, fades that should keep
-running, or tone sequences.
+**Testing only.** Prefer `analogWrite` / `tone` in a C sketch
+(`gpio-companion proxy status` first; if connected skill `gpio-arduino-proxy`,
+else skill `gpio-host`, `sketch run`). Use these board commands only when the
+user asked to probe a pin or verify Live GPIO — one-shot, then stop. Not for
+blinks, fades that should keep running, or tone sequences.
 
-When testing, you drive PWM and tone through `http://127.0.0.1:4150/v1/gpio`.
+When testing, you drive PWM and tone with the board CLI.
 Do **not** shell `gpio-pwm`, pyA20, orangepwm.py, or `gpioset` for analogWrite.
-**Never** tell the user to curl that URL — if they should probe a pin, send them
+**Never** tell the user board commands — if they should probe a pin, send them
 to dashboard **Project → Live GPIO**.
 
 Load the pinout skill first (`gpio-pinout-orangepi` or `gpio-pinout-raspberrypi`).
@@ -29,36 +30,34 @@ Orange Pi lines.
 Any driveable GPIO. Duty is Arduino 0–255 at ~490 Hz.
 
 ```sh
-curl -s -X PUT http://127.0.0.1:4150/v1/gpio \
-  -H 'content-type: application/json' \
-  -d '{"physical":7,"dir":"pwm","analog":128}'
+gpio-companion gpio set --physical 7 --dir pwm --analog 128
 ```
 
-0 = solid low, 255 = solid high. Live GPIO websocket accepts the same JSON.
+0 = solid low, 255 = solid high. Live GPIO websocket accepts the same shape.
 
 ## tone / noTone
 
 ```sh
-curl -s -X PUT http://127.0.0.1:4150/v1/gpio \
-  -H 'content-type: application/json' \
-  -d '{"physical":7,"op":"tone","hz":440}'
-curl -s -X PUT http://127.0.0.1:4150/v1/gpio \
-  -H 'content-type: application/json' \
-  -d '{"physical":7,"op":"notone"}'
+gpio-companion gpio tone --physical 7 --hz 440
+gpio-companion gpio notone --physical 7
 ```
 
 `hz` must be 31–65535.
 
 ## digital
 
-Unchanged: `{ "physical": 11, "dir": "out", "value": 1 }` or `{ "dir": "in" }`.
+```sh
+gpio-companion gpio set --physical 11 --dir out --value 1
+gpio-companion gpio set --physical 11 --dir in
+```
+
 Digital in/out stops PWM/tone on that pin.
 
 ## analogRead
 
-`GET /v1/gpio` snapshot. A pin only has `adc` if the kernel exposes IIO GPADC.
-Orange Pi 3 LTS 26-pin header has **no ADC** — do not invent a number. Tell the
-user analogRead is unavailable on that header.
+`gpio-companion gpio get` snapshot. A pin only has `adc` if the kernel exposes
+IIO GPADC. Orange Pi 3 LTS 26-pin header has **no ADC** — do not invent a
+number. Tell the user analogRead is unavailable on that header.
 
 ## Orange Pi 3 LTS
 
@@ -68,7 +67,7 @@ SoC lines (PD22, …). Do not assume Raspberry Pi BCM or sysfs PWM0/PWM1 seats.
 
 ## Do not
 
-- Use this PUT path for lasting PWM/tone — write C and `POST /v1/run` instead
+- Use gpio set for lasting PWM/tone — write C and `sketch run` instead
 - Spawn `/usr/local/lib/gpio-companion/gpio-pwm` yourself
 - Use Python orangepwm / pyA20
 - Treat header pin 7 as hardware PWM unless the snapshot shows `analog` or `pwm`

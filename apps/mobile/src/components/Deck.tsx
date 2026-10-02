@@ -226,8 +226,11 @@ function DeckFrame({ children }: { children: ReactNode }) {
 						target === "wifi" ||
 						target === "requests"
 					) {
-						setTab(target);
-						navigate("/");
+						// Already there: skip re-navigation so Code chat state stays mounted.
+						if (tab !== target || pathname !== "/") {
+							setTab(target);
+							navigate("/");
+						}
 					}
 					return;
 				}
@@ -255,8 +258,12 @@ function DeckFrame({ children }: { children: ReactNode }) {
 					setUiModal(command);
 					return;
 				case "preview": {
-					setTab("code");
-					navigate("/");
+					// Already on Code: only emit the preview event so the
+					// active chat session stays mounted.
+					if (tab !== "code" || pathname !== "/") {
+						setTab("code");
+						navigate("/");
+					}
 					const detail = { repo: command.repo, path: command.path };
 					setPendingUiPreview(detail);
 					DeviceEventEmitter.emit("gpio-ui-preview", detail);

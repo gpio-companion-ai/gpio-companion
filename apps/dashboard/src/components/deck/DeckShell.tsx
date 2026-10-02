@@ -99,6 +99,22 @@ function sectionFor(pathname: string): "/project" | "/devices" | "/profile" {
 	return "/project";
 }
 
+function isCodePath(pathname: string): boolean {
+	return pathname === "/devices/code" || pathname.startsWith("/devices/code/");
+}
+
+function codeHrefPreservingSession(): string {
+	try {
+		const session = new URLSearchParams(window.location.search).get("session");
+		if (session) {
+			return `/devices/code?session=${encodeURIComponent(session)}`;
+		}
+	} catch {
+		undefined;
+	}
+	return "/devices/code";
+}
+
 function selectedHref(pathname: string, links: ContextLink[]): string {
 	return (
 		[...links]
@@ -221,6 +237,18 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 					) {
 						return;
 					}
+					if (command.target === "code") {
+						// Staying on Code must not remount OpenCodeSession and drop
+						// the active ?session= chat. Skip redundant nav entirely.
+						if (isCodePath(pathname)) {
+							return;
+						}
+						navigate(codeHrefPreservingSession());
+						return;
+					}
+					if (href === pathname) {
+						return;
+					}
 					navigate(href);
 					return;
 				}
@@ -243,7 +271,12 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 					setUiModal(command);
 					return;
 				case "preview": {
-					navigate(UI_NAVIGATE_HREF.code);
+					// Opening a file must not remount the Code page: when we are
+					// already on Code, only dispatch the preview event so the
+					// active chat session stays mounted.
+					if (!isCodePath(pathname)) {
+						navigate(codeHrefPreservingSession());
+					}
 					const detail = { repo: command.repo, path: command.path };
 					try {
 						(

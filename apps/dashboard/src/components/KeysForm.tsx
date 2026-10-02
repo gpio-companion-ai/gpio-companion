@@ -29,6 +29,7 @@ export default function KeysForm() {
 	const [devices, setDevices] = useState<StoredPairing[]>([]);
 	const [devicesLoading, setDevicesLoading] = useState(true);
 	const [error, setError] = useState("");
+	const [checkNonce, setCheckNonce] = useState(0);
 
 	useEffect(() => {
 		if (!session.data?.id) {
@@ -46,13 +47,14 @@ export default function KeysForm() {
 			});
 	}, [session.data?.id, run]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: checkNonce retriggers a manual re-check
 	useEffect(() => {
 		stashGithubAppCallbackFromLocation();
 		const pending = peekGithubAppCallback();
 		if (!session.data?.id) {
-			if (!pending) {
-				setChecking(false);
-			}
+			// Keep a pending GitHub callback in sessionStorage so it can be
+			// completed after sign-in instead of stalling on a spinner.
+			setChecking(false);
 			return;
 		}
 		setChecking(true);
@@ -70,24 +72,43 @@ export default function KeysForm() {
 					takeGithubAppCallback();
 					setLogin(saved.login);
 					setInstallUrl("");
+					setError("");
 					window.history.replaceState({}, "", "/profile/github");
 					return;
 				}
 				const current = unwrapAction(await getGithubApp());
 				setLogin(current.login);
 				setInstallUrl(current.installUrl);
+				setError("");
 			} catch (caught) {
-				setError(
-					translateError(
-						t,
-						caught instanceof Error ? caught.message : "github app failed",
-					),
-				);
+				const message =
+					caught instanceof Error ? caught.message : "github app failed";
+				// A stale callback (expired state, install completed in another
+				// tab, reinstall) would otherwise retry forever: drop it and
+				// fetch a fresh status with a fresh install URL instead of
+				// sticking on the same dead error.
+				if (
+					message === "github app state is invalid" ||
+					message === "installation id is required"
+				) {
+					takeGithubAppCallback();
+					try {
+						const current = unwrapAction(await getGithubApp());
+						setLogin(current.login);
+						setInstallUrl(current.installUrl);
+						setError("");
+						window.history.replaceState({}, "", "/profile/github");
+						return;
+					} catch {
+						// Fall through to showing the original error.
+					}
+				}
+				setError(translateError(t, message));
 			} finally {
 				setChecking(false);
 			}
 		})();
-	}, [session.data?.id, t]);
+	}, [session.data?.id, t, checkNonce]);
 
 	if (!session.data?.id && !session.data?.email) {
 		return (
@@ -137,7 +158,21 @@ export default function KeysForm() {
 						{t("github.nBoardsPush", { n: devices.length })}
 					</Typography>
 				)}
-				{error ? <Alert severity="error">{error}</Alert> : null}
+				{error ? (
+					<Alert severity="error">
+						<Stack spacing={1}>
+							<Typography>{error}</Typography>
+							<Button
+								variant="outlined"
+								size="small"
+								disabled={checking}
+								onClick={() => setCheckNonce((n) => n + 1)}
+							>
+								{t("project.reload")}
+							</Button>
+						</Stack>
+					</Alert>
+				) : null}
 			</Stack>
 		</Paper>
 	);

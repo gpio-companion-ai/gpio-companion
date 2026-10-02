@@ -72,9 +72,35 @@ if (command === "git-credential" || command === "github-token") {
 	}
 }
 
+const LOCAL_COMMANDS = new Set([
+	"sketch",
+	"run",
+	"flash",
+	"gpio",
+	"proxy",
+	"verify",
+	"console",
+	"ui",
+	"status",
+	"health",
+	"help",
+	"--help",
+	"-h",
+]);
+
+if (LOCAL_COMMANDS.has(command)) {
+	const { run } = await import("./cli.ts");
+	const code = await run(process.argv.slice(2), {
+		cwd: process.cwd(),
+		stdout: (line) => console.log(line),
+		stderr: (line) => console.error(line),
+	});
+	process.exit(code);
+}
+
 if (command !== "serve") {
 	console.error(
-		"usage: gpio-companion serve | version | git-credential | github-token",
+		"usage: gpio-companion serve | version | git-credential | github-token | sketch | flash | gpio | proxy | verify | console | ui | status | health",
 	);
 	process.exit(1);
 }

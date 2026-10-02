@@ -444,6 +444,7 @@ export default function OpenCodeSession({
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [sessionsLoading, setSessionsLoading] = useState(false);
+	const [sessionsSeq, setSessionsSeq] = useState(0);
 	const [slide, setSlide] = useState(0);
 	const [picks, setPicks] = useState<Record<string, string>>({});
 	const [custom, setCustom] = useState<Record<string, string>>({});
@@ -948,6 +949,9 @@ export default function OpenCodeSession({
 			setMode("session");
 		}
 		setView((current) => seedOpencodePrompts(current, sessionID));
+		// Wipe any stale list so recovery never shows pre-outage sessions.
+		setView((current) => ({ ...current, sessions: [] }));
+		setError("");
 		setSessionsLoading(true);
 		void opencodeCall({ uuid: selected, repo, op: "sessions" })
 			.then((data) => {
@@ -967,7 +971,7 @@ export default function OpenCodeSession({
 		return () => {
 			cancelled = true;
 		};
-	}, [selected, repo]);
+	}, [selected, repo, sessionsSeq]);
 
 	useEffect(() => {
 		if (!selected || !repo || mode !== "session" || !view.sessionID) {
@@ -1033,6 +1037,7 @@ export default function OpenCodeSession({
 		let socket: WebSocket | null = null;
 		let lastEventId = "";
 		let stopped = false;
+		let wasReconnecting = false;
 		async function loop() {
 			while (!stopped) {
 				let opened = false;
@@ -1049,6 +1054,12 @@ export default function OpenCodeSession({
 							opened = true;
 							if (!stopped) {
 								setReconnecting(false);
+								if (wasReconnecting) {
+									wasReconnecting = false;
+									// Connection recovered: fetch all sessions and
+									// wipe/replace the current list.
+									setSessionsSeq((seq) => seq + 1);
+								}
 							}
 						});
 						next.addEventListener("message", (event) => {
@@ -1085,6 +1096,7 @@ export default function OpenCodeSession({
 					if (stopped) {
 						return;
 					}
+					wasReconnecting = true;
 					setReconnecting(true);
 					if (caught instanceof Error) {
 						setError(caught.message);
@@ -1093,6 +1105,7 @@ export default function OpenCodeSession({
 				if (stopped) {
 					return;
 				}
+				wasReconnecting = true;
 				setReconnecting(true);
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 			}
@@ -2694,6 +2707,7 @@ export default function OpenCodeSession({
 											onClick={() => {
 												setError("");
 												setReconnecting(false);
+												setSessionsSeq((seq) => seq + 1);
 											}}
 										>
 											{t("code.retry")}

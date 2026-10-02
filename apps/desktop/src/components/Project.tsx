@@ -295,7 +295,7 @@ export default function Project({
 	const { cache } = useApiCache();
 	const githubQuery = useCachedQuery(CACHE_KEYS.githubApp, getGithubApp);
 	const projectsQuery = useCachedQuery(CACHE_KEYS.projects, listProjects);
-	const { boards, paired } = useUserBoards();
+	const { boards, paired, refetch } = useUserBoards();
 	const {
 		uuid: selectedUuid,
 		setUuid: selectBoard,
@@ -1334,6 +1334,7 @@ export default function Project({
 									uuid={activeUuid}
 									connected={Boolean(activeBoard?.status)}
 									poll={openTool === "gpio"}
+									onRetry={() => void refetch()}
 									onLivePins={(
 										pins: Record<number, 0 | 1>,
 										target?: GpioTarget,

@@ -100,10 +100,10 @@ EOF
 Before choosing `fits`, see whether a USB Arduino is the live board:
 
 ```sh
-curl -s http://127.0.0.1:4150/v1/arduino-proxy
+gpio-companion proxy status
 ```
 
-You call loopback yourself. **Never** tell the user to curl it.
+You run that board command yourself. **Never** tell the user board commands.
 
 If `connected` is true and the user did not ask for the companion header, fit the USB board from `fqbn`: `arduino-uno`, `arduino-nano`, or `arduino-mega`. Otherwise fit `companion-header`. Load `gpio-pinout-raspberrypi` or `gpio-pinout-orangepi` and size to that header (40-pin Raspberry Pi layout, or the shorter Orange Pi header). A part may list more than one board when the same 2.54 mm geometry fits each of them. Do not invent other board ids.
 

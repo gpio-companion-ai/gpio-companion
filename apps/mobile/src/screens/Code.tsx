@@ -250,6 +250,7 @@ export default function Code() {
 	const [error, setError] = useState("");
 	const [reconnecting, setReconnecting] = useState(false);
 	const [sessionsLoading, setSessionsLoading] = useState(false);
+	const [sessionsSeq, setSessionsSeq] = useState(0);
 	const [slide, setSlide] = useState(0);
 	const [picks, setPicks] = useState<Record<string, string>>({});
 	const [custom, setCustom] = useState<Record<string, string>>({});
@@ -614,6 +615,9 @@ export default function Code() {
 			setMode("session");
 		}
 		setView((current) => seedOpencodePrompts(current, sessionID));
+		// Wipe any stale list so recovery never shows pre-outage sessions.
+		setView((current) => ({ ...current, sessions: [] }));
+		setError("");
 		setSessionsLoading(true);
 		void opencodeCall(token, { uuid: selected, repo, op: "sessions" })
 			.then((data) => {
@@ -633,7 +637,7 @@ export default function Code() {
 		return () => {
 			cancelled = true;
 		};
-	}, [token, selected, repo]);
+	}, [token, selected, repo, sessionsSeq]);
 
 	useEffect(() => {
 		if (!token || !selected || !repo) {
@@ -731,6 +735,7 @@ export default function Code() {
 		let socket: WebSocket | null = null;
 		let lastEventId = "";
 		let stopped = false;
+		let wasReconnecting = false;
 		async function loop() {
 			while (!stopped) {
 				let opened = false;
@@ -747,6 +752,12 @@ export default function Code() {
 							opened = true;
 							if (!stopped) {
 								setReconnecting(false);
+								if (wasReconnecting) {
+									wasReconnecting = false;
+									// Connection recovered: fetch all sessions and
+									// wipe/replace the current list.
+									setSessionsSeq((seq) => seq + 1);
+								}
 							}
 						});
 						next.addEventListener("message", (event) => {
@@ -783,6 +794,7 @@ export default function Code() {
 					if (stopped) {
 						return;
 					}
+					wasReconnecting = true;
 					setReconnecting(true);
 					if (caught instanceof Error) {
 						setError(caught.message);
@@ -791,6 +803,7 @@ export default function Code() {
 				if (stopped) {
 					return;
 				}
+				wasReconnecting = true;
 				setReconnecting(true);
 				await new Promise((resolve) => setTimeout(resolve, 1500));
 			}
@@ -2399,12 +2412,36 @@ export default function Code() {
 								</Text>
 							</Pressable>
 						</View>
-						<Text style={[muted, { paddingHorizontal: 12, fontSize: 12 }]}>
-							{reconnecting ? t("code.reconnecting") : t("code.live")}
-							{needle
-								? `  ${t("code.resultCount", { n: visible.length })}`
-								: ""}
-						</Text>
+						<View
+							style={{
+								flexDirection: "row",
+								alignItems: "center",
+								gap: 8,
+								paddingHorizontal: 12,
+							}}
+						>
+							<Text style={[{ fontSize: 12 }, muted, { flex: 1 }]}>
+								{reconnecting ? t("code.reconnecting") : t("code.live")}
+								{needle
+									? `  ${t("code.resultCount", { n: visible.length })}`
+									: ""}
+							</Text>
+							{reconnecting || error ? (
+								<Pressable
+									accessibilityRole="button"
+									accessibilityLabel={t("code.retry")}
+									onPress={() => {
+										setError("");
+										setReconnecting(false);
+										setSessionsSeq((seq) => seq + 1);
+									}}
+								>
+									<Text style={{ color: colors.muted, fontWeight: "600" }}>
+										{t("code.retry")}
+									</Text>
+								</Pressable>
+							) : null}
+						</View>
 						{error ? (
 							<Text style={{ color: colors.danger, padding: 12 }}>{error}</Text>
 						) : null}

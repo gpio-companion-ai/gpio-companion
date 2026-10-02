@@ -42,6 +42,7 @@ import {
 } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuthSession } from "../hooks/useAuth.ts";
 import { useDeviceHub } from "../hooks/useDeviceHub.ts";
 import { useT } from "../hooks/useLocale.tsx";
 import useMobile from "../hooks/useMobile.ts";
@@ -79,7 +80,11 @@ export default function ProjectBrowser({
 	boardModel?: string | null;
 }) {
 	const t = useT();
+	const session = useAuthSession();
+	const userId = session.data?.id ?? "";
 	const [configured, setConfigured] = useState(true);
+	const [githubConnected, setGithubConnected] = useState(false);
+	const [refreshing, setRefreshing] = useState(false);
 	const [repos, setRepos] = useState<GithubRepo[]>([]);
 	const [loading, setLoading] = useState(true);
 	const [loadingRepo, setLoadingRepo] = useState(false);
@@ -134,36 +139,119 @@ export default function ProjectBrowser({
 		}
 	}, [breadboardJson, verifyResults]);
 
-	useEffect(() => {
-		listProjects()
-			.then((result) => {
-				const data = unwrapAction(result);
+	const refreshStatus = useCallback(
+		async (signal?: { cancelled: boolean }) => {
+			if (!userId) {
+				setConfigured(false);
+				setGithubConnected(false);
+				setRepos([]);
+				setLoading(false);
+				onConfigured?.(false);
+				return;
+			}
+			setRefreshing(true);
+			// Fetch the two statuses independently: a transient list failure
+			// (token mint, GitHub 5xx) must not discard a successful app
+			// status, or the stepper sticks on GitHub even though the App is
+			// installed.
+			let listed = false;
+			let listError = "";
+			let appConnected = false;
+			try {
+				const data = unwrapAction(await listProjects());
+				if (signal?.cancelled) {
+					return;
+				}
+				listed = data.configured;
 				setConfigured(data.configured);
 				setRepos(data.repos);
-				onConfigured?.(data.configured);
-			})
-			.catch((err: unknown) => {
-				setError(
-					translateError(
-						t,
-						err instanceof Error ? err.message : "failed to list project",
-					),
-				);
-			})
-			.finally(() => {
-				setLoading(false);
-			});
-	}, [onConfigured, t]);
+			} catch (err: unknown) {
+				if (signal?.cancelled) {
+					return;
+				}
+				const message =
+					err instanceof Error ? err.message : "failed to list project";
+				// Auth race: session not ready yet. Stay silent; the effect
+				// re-runs when userId arrives instead of sticking the stepper
+				// on GitHub with a "sign in first" error.
+				if (!userId || message === "sign in first") {
+					setLoading(false);
+					setRefreshing(false);
+					return;
+				}
+				listError = message;
+			}
+			try {
+				const app = unwrapAction(await getGithubApp());
+				if (signal?.cancelled) {
+					return;
+				}
+				setCanCreate(app.canCreate);
+				setInstallUrl(app.installUrl);
+				setGithubConnected(app.connected);
+				appConnected = app.connected;
+			} catch {
+				undefined;
+			}
+			if (signal?.cancelled) {
+				return;
+			}
+			// Done when the App is installed OR the project list works: an
+			// installed App with a transient list failure still advances the
+			// stepper while the poller keeps retrying the list.
+			const ready = listed || appConnected;
+			onConfigured?.(ready);
+			if (ready || appConnected) {
+				setError("");
+			} else if (listError) {
+				setError(translateError(t, listError));
+			}
+			setLoading(false);
+			setRefreshing(false);
+		},
+		[onConfigured, t, userId],
+	);
+
+	const refreshRef = useRef(refreshStatus);
+	refreshRef.current = refreshStatus;
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: refresh on login + manual retry
+	useEffect(() => {
+		const signal = { cancelled: false };
+		setLoading(true);
+		void refreshRef.current(signal);
+		return () => {
+			signal.cancelled = true;
+		};
+	}, [userId]);
 
 	useEffect(() => {
-		void getGithubApp()
-			.then((result) => {
-				const data = unwrapAction(result);
-				setCanCreate(data.canCreate);
-				setInstallUrl(data.installUrl);
-			})
-			.catch(() => undefined);
+		function onVisible() {
+			if (document.visibilityState === "hidden") {
+				return;
+			}
+			void refreshRef.current();
+		}
+		document.addEventListener("visibilitychange", onVisible);
+		window.addEventListener("focus", onVisible);
+		return () => {
+			document.removeEventListener("visibilitychange", onVisible);
+			window.removeEventListener("focus", onVisible);
+		};
 	}, []);
+
+	// Mirror desktop/mobile: while GitHub is not fully ready (installed +
+	// can create + can list), poll so returning from the GitHub install tab
+	// advances the /project stepper without a manual reload.
+	useEffect(() => {
+		if (loading || !userId || (githubConnected && canCreate && configured)) {
+			return;
+		}
+		const timer = window.setInterval(() => {
+			void refreshRef.current();
+		}, 2500);
+		return () => window.clearInterval(timer);
+	}, [loading, userId, githubConnected, canCreate, configured]);
 
 	useEffect(() => {
 		if (!uuid) {
@@ -704,9 +792,21 @@ export default function ProjectBrowser({
 	if (!configured) {
 		return (
 			<Alert severity="info">
-				<Button href="/profile/github" variant="text">
-					{t("project.connectGithubAlert")}
-				</Button>
+				<Stack spacing={1}>
+					<Button href="/profile/github" variant="text">
+						{t("project.connectGithubAlert")}
+					</Button>
+					{userId ? (
+						<Button
+							variant="outlined"
+							size="small"
+							disabled={refreshing}
+							onClick={() => void refreshRef.current()}
+						>
+							{refreshing ? t("project.reloading") : t("project.reload")}
+						</Button>
+					) : null}
+				</Stack>
 			</Alert>
 		);
 	}
@@ -835,7 +935,26 @@ export default function ProjectBrowser({
 				</Stack>
 			</Paper>
 			<Stack spacing={1.5}>
-				{error ? <Alert severity="error">{error}</Alert> : null}
+				{error ? (
+					<Alert severity="error">
+						<Stack
+							direction={mobile ? "column" : "row"}
+							spacing={1}
+							className="min-[900px]:items-center min-[900px]:justify-between"
+						>
+							<Typography>{error}</Typography>
+							<Button
+								variant="outlined"
+								size="small"
+								disabled={refreshing}
+								onClick={() => void refreshRef.current()}
+								className={mobile ? "w-full" : undefined}
+							>
+								{refreshing ? t("project.reloading") : t("project.reload")}
+							</Button>
+						</Stack>
+					</Alert>
+				) : null}
 				{loadingRepo ? (
 					<>
 						<PreviewSkeleton />

@@ -4,8 +4,9 @@ description: >-
   Generate a Wokwi-style breadboard diagram.json so the gpio-companion dashboard
   can show how to plug parts and jumpers. Use when wiring a breadboard, mapping
   GPIO header or Arduino-proxy pins to holes, finishing a bench test circuit,
-  or drawing a blink/LED sketch preview. Always GET /v1/arduino-proxy first; if
-  connected, require a gpio-arduino-proxy part and Arduino pin wires.
+  or drawing a blink/LED sketch preview. Always run `gpio-companion proxy
+  status` first; if connected, require a gpio-arduino-proxy part and Arduino
+  pin wires.
 ---
 
 # gpio-breadboard
@@ -15,12 +16,12 @@ Write a plug map the dashboard can render. Do **not** use tscircuit for this fil
 ## Check proxy first
 
 ```sh
-curl -s http://127.0.0.1:4150/v1/arduino-proxy
+gpio-companion proxy status
 ```
 
-You call loopback yourself. **Never** tell the user to curl it.
+You run that board command yourself. **Never** tell the user board commands.
 
-Do not write `diagram.json` until this GET returns.
+Do not write `diagram.json` until this returns.
 
 If `connected` is true: the circuit is on the USB Arduino. Require a
 `gpio-arduino-proxy` part. `attrs.board` and the wire prefix are `board` from
@@ -32,9 +33,13 @@ companion GPIO and Arduino GPIO on one net. Do not mix 3V3 and 5V. AVR 5V must
 not jumper to this companion's 3.3V header.
 
 If `connected` is false: drive the companion header (skill `gpio-host`,
-`POST /v1/run`). `PUT /v1/gpio` is one-shot testing only.
+`gpio-companion sketch run --path <dir>`). `gpio-companion gpio set` is
+one-shot testing only.
 
-Project **Verify circuit** (`POST /v1/verify` `{ repo }`) treats this diagram as a wiring contract: breadboard rows `a–e` / `f–j` and each rail polarity are nets. Continuity needs two GPIOs on one net (companion header **or** Arduino, not mixed). A lone GPIO (typical LED) is unknown electrically.
+Project **Verify circuit** (`gpio-companion verify start --repo <name>`) treats
+this diagram as a wiring contract: breadboard rows `a–e` / `f–j` and each rail
+polarity are nets. Continuity needs two GPIOs on one net (companion header
+**or** Arduino, not mixed). A lone GPIO (typical LED) is unknown electrically.
 
 ## Output
 
@@ -122,7 +127,7 @@ USB Arduino proxy live (`connected` true) — MCU wires on `uno:*`, not `header:
 
 - Load `gpio-pinout-raspberrypi` or `gpio-pinout-orangepi` from `/etc/gpio-companion/config.json` `hardware` before placing jumpers.
 - `gpio-companion-header` pins are **physical** 1–40. `attrs.hardware` must be `raspberrypi` or `orangepi`.
-- `gpio-arduino-proxy` is the USB Arduino (Uno/Nano/Mega/MKR/Zero/ESP32). Required when `GET /v1/arduino-proxy` is connected. `attrs.board` is the GET `board` (`uno`, `nano`, `mega`, `nano_33_iot`, `mkrwifi1010`, `mkrzero`, `mzero`, `esp32`, `esp32s3`, `esp32c3`). Wire prefix matches that id: `mega:13` / `mega:A0` on a Mega, `uno:13` only on an Uno, plus `5V` / `3V3` / `GND` / `VIN`. Mega A0 is pin 54, not 14. Place it beside the breadboard like the companion header. Do not mix AVR 5V with companion 3V3.
+- `gpio-arduino-proxy` is the USB Arduino (Uno/Nano/Mega/MKR/Zero/ESP32). Required when `gpio-companion proxy status` is connected. `attrs.board` is that `board` (`uno`, `nano`, `mega`, `nano_33_iot`, `mkrwifi1010`, `mkrzero`, `mzero`, `esp32`, `esp32s3`, `esp32c3`). Wire prefix matches that id: `mega:13` / `mega:A0` on a Mega, `uno:13` only on an Uno, plus `5V` / `3V3` / `GND` / `VIN`. Mega A0 is pin 54, not 14. Place it beside the breadboard like the companion header. Do not mix AVR 5V with companion 3V3.
 - Always include one `wokwi-breadboard-half` (30 rows), `wokwi-breadboard` (63), or `wokwi-breadboard-mini`.
 - Portrait plug map: columns `a`–`e` then `f`–`j` on X, rows `1`–`30` down Y. Power rails are vertical on both long sides. Left: `tp.*` (+) then `tn.*` (−). Right: `bn.*` (−) then `bp.*` (+). Rail index matches the row (`tn.10` is beside `10a`). Mini has no rails.
 - Breadboard holes: `{row}{column}` such as `10a` … `10e` / `10f` … `10j`. Rails: `tp.1`, `tn.1`, `bp.1`, `bn.1`.
