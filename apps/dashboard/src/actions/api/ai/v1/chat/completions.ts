@@ -154,7 +154,7 @@ function sseResponse(
 					newline = pending.indexOf("\n");
 				}
 			},
-			async flush() {
+			async flush(controller) {
 				const tail = `${pending}${decoder.decode()}`.trimEnd();
 				if (tail.length > 0) {
 					const normalized = normalizeSseLine(tail, model);

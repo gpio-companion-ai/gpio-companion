@@ -173,4 +173,26 @@ describe("ai proxy", () => {
 		const payload = { error: { message: "boom" } };
 		expect(toChatChunk("m", payload)).toBe(payload);
 	});
+
+	test("normalizes native chunk with null response", () => {
+		const line = normalizeSseLine(
+			'data: {"response":null,"usage":{"prompt_tokens":7,"completion_tokens":2}}',
+			"m",
+		);
+		const chunk = JSON.parse(line.slice(6)) as {
+			choices: unknown[];
+			usage: { prompt_tokens: number };
+		};
+		expect(chunk.choices).toEqual([]);
+		expect(chunk.usage.prompt_tokens).toBe(7);
+	});
+
+	test("converts empty native delta to an empty content delta", () => {
+		const line = normalizeSseLine('data: {"response":""}', "m");
+		const chunk = JSON.parse(line.slice(6)) as {
+			choices: Array<{ delta: { content: string }; finish_reason: null }>;
+		};
+		expect(chunk.choices[0]?.delta.content).toBe("");
+		expect(chunk.choices[0]?.finish_reason).toBeNull();
+	});
 });
