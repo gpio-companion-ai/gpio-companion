@@ -1,6 +1,7 @@
 import { GET as loadApp, POST as stopApp } from "@api/app";
 import { GET as loadRun } from "@api/run";
 import { POST as stopRun } from "@api/run/stop";
+import SshPanel from "@components/deck/SshPanel.tsx";
 import FlashPanel from "@components/FlashPanel";
 import FlashProxyButton from "@components/FlashProxyButton";
 import GpioPanel from "@components/GpioPanel";
@@ -123,6 +124,10 @@ export default function DockBody() {
 
 	if (dockTab === "actions") {
 		return <DockActions uuid={uuid} online={online} />;
+	}
+
+	if (dockTab === "ssh") {
+		return <SshPanel uuid={uuid} />;
 	}
 
 	return (

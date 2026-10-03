@@ -19,6 +19,7 @@ import { useT } from "../locale";
 import FlashPanel from "./FlashPanel";
 import FlashProxyButton from "./FlashProxyButton";
 import GpioPanel from "./GpioPanel";
+import SshPanel from "./SshPanel";
 import VerifyPanel from "./VerifyPanel";
 
 export type DesktopDockTab =
@@ -26,7 +27,8 @@ export type DesktopDockTab =
 	| "gpio"
 	| "flash"
 	| "problems"
-	| "actions";
+	| "actions"
+	| "ssh";
 
 export default function DockBody({
 	tab,
@@ -82,6 +84,9 @@ export default function DockBody({
 	}
 	if (tab === "actions") {
 		return <DockActions uuid={uuid} online={Boolean(connected)} />;
+	}
+	if (tab === "ssh") {
+		return <SshPanel uuid={uuid} />;
 	}
 	return (
 		<div className="b6-dock-console">

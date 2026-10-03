@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "@shpaw415/mui-lite/style.css";
+@import "@xterm/xterm/css/xterm.css";
 
 /* Theme triplets for content portaled to document.body (outside the
    ThemeProvider wrapper, where mui-lite's --bg-surface etc. don't reach).
@@ -726,6 +727,24 @@ body {
 
 .b6-console pre.is-empty {
 	color: rgb(var(--text-secondary));
+}
+
+.b6-ssh {
+	min-height: 0;
+	flex: 1;
+}
+
+.b6-ssh-term {
+	min-height: 0;
+	flex: 1;
+	padding: 4px 6px;
+	border: 1px solid rgba(var(--text-main), 0.14);
+	border-radius: 8px;
+	background: rgb(var(--bg-main));
+}
+
+.b6-ssh-term .xterm {
+	height: 100%;
 }
 
 .b6-dock-tabs {

@@ -4,6 +4,7 @@ import BuildIcon from "@material-design-icons/svg/filled/build.svg";
 import ChevronLeftIcon from "@material-design-icons/svg/filled/chevron_left.svg";
 import ChevronRightIcon from "@material-design-icons/svg/filled/chevron_right.svg";
 import CloseIcon from "@material-design-icons/svg/filled/close.svg";
+import ComputerIcon from "@material-design-icons/svg/filled/computer.svg";
 import DarkModeIcon from "@material-design-icons/svg/filled/dark_mode.svg";
 import FolderIcon from "@material-design-icons/svg/filled/folder.svg";
 import LightModeIcon from "@material-design-icons/svg/filled/light_mode.svg";
@@ -65,7 +66,7 @@ const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
 
 type DeckTranslate = (key: `deck.${string}`) => string;
 type FocusRegion = "primary";
-type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
+type DockTab = "console" | "gpio" | "flash" | "problems" | "actions" | "ssh";
 type ContextLink = {
 	href: string;
 	labelKey: `deck.${string}`;
@@ -77,6 +78,7 @@ const DOCK_TABS: Array<[DockTab, ComponentType]> = [
 	["flash", BuildIcon],
 	["problems", WarningIcon],
 	["actions", StopCircleIcon],
+	["ssh", ComputerIcon],
 ];
 
 const UI_NAVIGATE_HREF: Record<UiNavigateTarget, string> = {
@@ -561,7 +563,9 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	}, [dockHeight]);
 
 	useEffect(() => {
-		if (mode === "easy" && dockTab === "problems") setDockTab("flash");
+		if (mode === "easy" && (dockTab === "problems" || dockTab === "ssh")) {
+			setDockTab("flash");
+		}
 	}, [dockTab, mode, setDockTab]);
 
 	useEffect(() => {
@@ -960,7 +964,8 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 							/>
 							<div className="b6-dock-tabs" role="tablist">
 								{DOCK_TABS.filter(
-									([tab]) => mode === "expert" || tab !== "problems",
+									([tab]) =>
+										mode === "expert" || (tab !== "problems" && tab !== "ssh"),
 								).map(([tab, Icon]) => (
 									<button
 										key={tab}

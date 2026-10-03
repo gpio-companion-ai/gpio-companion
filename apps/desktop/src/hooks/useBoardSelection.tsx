@@ -12,7 +12,13 @@ const LEGACY_STORAGE_KEY = "gpio-companion-t3-device";
 
 export type FlashSketchPreselect = { dir: string; project: string };
 
-export type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
+export type DockTab =
+	| "console"
+	| "gpio"
+	| "flash"
+	| "problems"
+	| "actions"
+	| "ssh";
 
 type BoardSelectionValue = {
 	uuid: string;

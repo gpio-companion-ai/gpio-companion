@@ -147,6 +147,13 @@ export const en = {
 			stopApp: "Stop custom server",
 			appRunning: "{name} is running.",
 			appIdle: "No custom server is running.",
+			ssh: "SSH",
+			sshHint: "Open a shell on the selected board over SSH.",
+			sshOpen: "Connect SSH",
+			sshDisconnect: "Disconnect",
+			sshConnecting: "Connecting…",
+			sshClosed: "Session closed.",
+			sshFailed: "SSH failed: {message}",
 		},
 		status: {
 			ready: "Ready",

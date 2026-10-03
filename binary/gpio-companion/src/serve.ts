@@ -52,6 +52,7 @@ import {
 	isGpioWsRefresh,
 	isOpencodeProxyPath,
 	isRunPath,
+	isSshPath,
 	isUiPath,
 	isUsbArduinoPort,
 	isVerifyPath,
@@ -98,6 +99,7 @@ import {
 	redactLogText,
 	scopeOpencodeSearch,
 	secretsStatus,
+	SSH_PATH,
 	UI_PATH,
 	UI_REPLY_POLL_MS,
 	UiError,
@@ -188,6 +190,10 @@ import {
 import { createHostRun, type RunController } from "./run.ts";
 import type { SecretsStore } from "./secrets.ts";
 import { listBoardSketches } from "./sketches.ts";
+import {
+	createSshController,
+	type SshController,
+} from "./ssh.ts";
 import { type ConfigStore, DEFAULT_PORT } from "./store.ts";
 import type { ApplyTunnel } from "./tunnel.ts";
 import { createUiHub, type UiHub } from "./ui.ts";
@@ -243,6 +249,7 @@ export type ServeOptions = {
 	proxy?: ArduinoProxyController;
 	console?: ConsoleHub;
 	ui?: UiHub;
+	ssh?: SshController;
 	uiReplyPollMs?: number;
 	projectsDir?: string;
 };
@@ -261,6 +268,7 @@ export type DeviceRequestExtras = {
 	proxy?: ArduinoProxyController;
 	console?: ConsoleHub;
 	ui?: UiHub;
+	ssh?: SshController;
 	uiReplyPollMs?: number;
 	projectsDir?: string;
 	applyUpdate?: ApplyUpdate;
@@ -281,7 +289,15 @@ export type DeviceRequestExtras = {
 };
 
 type TunnelWsData = {
-	stream: "debug" | "gpio" | "console" | "files" | "opencode" | "ui" | "app";
+	stream:
+		| "debug"
+		| "gpio"
+		| "console"
+		| "files"
+		| "opencode"
+		| "ui"
+		| "app"
+		| "ssh";
 	repo?: string;
 	lastEventId?: string;
 	appSuffix?: string;
@@ -309,6 +325,7 @@ export type DeviceApiServer = ReturnType<typeof Bun.serve<TunnelWsData>> & {
 	verify: VerifyController;
 	console: ConsoleHub;
 	app: AppController;
+	ssh: SshController;
 };
 
 export function startDeviceApi(options: ServeOptions): DeviceApiServer {
@@ -332,6 +349,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 	});
 	const consoleHub = options.console ?? createConsoleHub();
 	const uiHub = options.ui ?? createUiHub();
+	const ssh = options.ssh ?? createSshController();
 	const app =
 		options.app ?? createAppController({ projectsDir: options.projectsDir });
 	const fileHub = createBoardFileHub(options.projectsDir ?? projectsRoot());
@@ -523,6 +541,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 			}),
 		app,
 		verify,
+		ssh,
 		projectsDir: options.projectsDir,
 		applyUpdate: options.applyUpdate,
 		applyProjects: options.applyProjects,
@@ -615,6 +634,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 				path !== GPIO_PATH &&
 				path !== CONSOLE_PATH &&
 				path !== UI_PATH &&
+				path !== SSH_PATH &&
 				!watchRepo &&
 				!eventRepo &&
 				!appFrame
@@ -661,6 +681,23 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 						path: CONSOLE_PATH,
 						stream: "console",
 						label: "console",
+						allowOrigin: (origin) => isAllowedDebugOrigin(origin, dashboardUrl),
+						deviceAuth: options.deviceAuth,
+						clock,
+						nonces,
+					})) ?? (undefined as never)
+				);
+			}
+			if (
+				request.method === "GET" &&
+				path === SSH_PATH &&
+				upgrade === "websocket"
+			) {
+				return (
+					(await acceptSignedUpgrade(request, server, {
+						path: SSH_PATH,
+						stream: "ssh",
+						label: "ssh",
 						allowOrigin: (origin) => isAllowedDebugOrigin(origin, dashboardUrl),
 						deviceAuth: options.deviceAuth,
 						clock,
@@ -818,6 +855,9 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					startAppBridge(ws as AppSocket);
 					return;
 				}
+				if (ws.data.stream === "ssh") {
+					return;
+				}
 				debug.add(ws);
 			},
 			message(ws, message) {
@@ -847,6 +887,10 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					} else {
 						ws.data.appPending?.push(message);
 					}
+					return;
+				}
+				if (ws.data.stream === "ssh") {
+					ssh.handle(ws, text);
 					return;
 				}
 			},
@@ -879,6 +923,10 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					}
 					return;
 				}
+				if (ws.data.stream === "ssh") {
+					ssh.remove(ws);
+					return;
+				}
 				debug.remove(ws);
 			},
 		},
@@ -889,6 +937,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 		verify,
 		console: consoleHub,
 		app,
+		ssh,
 	});
 }
 

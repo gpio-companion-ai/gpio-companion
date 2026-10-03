@@ -151,6 +151,13 @@ export const fr = {
 			stopApp: "Arrêter le serveur personnalisé",
 			appRunning: "{name} est en cours.",
 			appIdle: "Aucun serveur personnalisé en cours.",
+			ssh: "SSH",
+			sshHint: "Ouvrir un shell sur la carte sélectionnée via SSH.",
+			sshOpen: "Connecter SSH",
+			sshDisconnect: "Déconnecter",
+			sshConnecting: "Connexion…",
+			sshClosed: "Session fermée.",
+			sshFailed: "Échec SSH : {message}",
 		},
 		status: {
 			ready: "Prêt",

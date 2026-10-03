@@ -1359,6 +1359,12 @@ export function connectConsoleLive(uuid: string) {
 	});
 }
 
+export function connectSshLive(uuid: string) {
+	return apiRequest<{ wsUrl: string }>("POST", "/api/mobile/ssh-live", {
+		uuid,
+	});
+}
+
 export function connectUiLive(uuid: string) {
 	return apiRequest<{ wsUrl: string }>("POST", "/api/mobile/ui-live", {
 		uuid,

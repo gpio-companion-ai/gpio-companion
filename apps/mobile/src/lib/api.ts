@@ -982,6 +982,13 @@ export function connectConsoleLive(token: string, uuid: string) {
 	});
 }
 
+export function connectSshLive(token: string, uuid: string) {
+	return request<{ wsUrl: string }>(token, "/api/mobile/ssh-live", {
+		method: "POST",
+		body: JSON.stringify({ uuid }),
+	});
+}
+
 export function connectUiLive(token: string, uuid: string) {
 	return request<{ wsUrl: string }>(token, "/api/mobile/ui-live", {
 		method: "POST",

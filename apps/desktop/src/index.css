@@ -1,4 +1,5 @@
 @import "@shpaw415/mui-lite/style.css";
+@import "@xterm/xterm/css/xterm.css";
 
 /* Theme triplets for content portaled to document.body (outside the
    ThemeProvider wrapper, where mui-lite's --bg-surface etc. don't reach).

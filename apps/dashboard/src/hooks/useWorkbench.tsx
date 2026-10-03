@@ -32,7 +32,13 @@ export type SidebarEntry = {
 
 export type ConsoleLinkStatus = "idle" | "connecting" | "live" | "reconnecting";
 export type BoardAction = "run" | "flash" | "verify" | "save";
-export type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
+export type DockTab =
+	| "console"
+	| "gpio"
+	| "flash"
+	| "problems"
+	| "actions"
+	| "ssh";
 export type FlashSketchPreselect = { dir: string; project: string };
 
 type WorkbenchValue = {

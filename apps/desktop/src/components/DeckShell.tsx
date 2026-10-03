@@ -370,7 +370,9 @@ export default function DeckShell({
 	}, [admin, deviceTab, mode, onDeviceTab]);
 
 	useEffect(() => {
-		if (isEasy && dockTab === "problems") setDockTab("flash");
+		if (isEasy && (dockTab === "problems" || dockTab === "ssh")) {
+			setDockTab("flash");
+		}
 	}, [dockTab, isEasy, setDockTab]);
 
 	const startResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -634,7 +636,7 @@ export default function DeckShell({
 								"gpio",
 								"flash",
 								"actions",
-								...(isEasy ? [] : ["problems"]),
+								...(isEasy ? [] : ["problems", "ssh"]),
 							] as DockTab[]
 						).map((item) => (
 							<button

@@ -70,6 +70,7 @@ import { useGpioTunnel } from "../lib/use-gpio-tunnel.ts";
 import { useUiSocket } from "../lib/use-ui-socket.ts";
 import AppWebView from "./AppWebView.tsx";
 import BoardPresenceAlerts from "./BoardPresenceAlerts.tsx";
+import DockSsh from "./DockSsh.tsx";
 import { ErrorText, PrimaryButton, TextButton } from "./ui.tsx";
 
 const logo = require("../../assets/logo.png");
@@ -1133,7 +1134,7 @@ function CommandRow({
 	);
 }
 
-type DockTab = "console" | "gpio" | "flash" | "problems" | "actions";
+type DockTab = "console" | "gpio" | "flash" | "problems" | "actions" | "ssh";
 
 function DockStatusRow({ name, status }: { name: string; status: string }) {
 	const colors = useColorMode().colors;
@@ -1602,7 +1603,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 					next === "gpio" ||
 					next === "flash" ||
 					next === "problems" ||
-					next === "actions"
+					next === "actions" ||
+					next === "ssh"
 				) {
 					setTab(next);
 					setCollapsed(false);
@@ -1802,7 +1804,7 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 	}, []);
 
 	useEffect(() => {
-		if (isEasy && tab === "problems") setTab("console");
+		if (isEasy && (tab === "problems" || tab === "ssh")) setTab("console");
 	}, [isEasy, tab]);
 
 	useEffect(() => {
@@ -1869,7 +1871,7 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 	);
 	const tabs: DockTab[] = isEasy
 		? ["console", "gpio", "flash", "actions"]
-		: ["console", "gpio", "flash", "problems", "actions"];
+		: ["console", "gpio", "flash", "problems", "actions", "ssh"];
 	const helpKey = `deck.${tab}Help` as DeckKey;
 	const currentBoard = pairedBoards.find((board) => board.device.uuid === uuid);
 	const boardLabel = currentBoard
@@ -2006,6 +2008,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 						/>
 					) : tab === "actions" ? (
 						<DockActions uuid={uuid} token={auth.token} />
+					) : tab === "ssh" ? (
+						<DockSsh uuid={uuid} token={auth.token} />
 					) : tab === "gpio" ? (
 						<DockGpio
 							status={gpioTunnel.status}

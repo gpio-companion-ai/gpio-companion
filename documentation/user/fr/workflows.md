@@ -144,6 +144,15 @@ Vous pouvez aussi démarrer et ouvrir les applis de carte vous-même :
   contrôle du matériel passe toujours par les croquis, la gravure et le GPIO
   en direct habituels.
 
+## SSH vers votre carte
+
+En mode Expert, le dock a un onglet **SSH**. Sélectionnez votre carte,
+choisissez **Connecter SSH**, et un terminal ouvre un shell sur la carte
+elle-même. Les invites de connexion s’affichent directement dans le terminal —
+tapez le mot de passe de la carte (masqué) ou utilisez ses clés SSH
+configurées. Choisissez **Déconnecter** pour fermer la session. Le même onglet
+existe sur le web, le bureau et le mobile.
+
 ## Mises à jour et dépannage
 
 Les mises à jour s’installent normalement seules. Pour en demander une, passez en mode **Expert**, ouvrez **Appareils → Débogage**, sélectionnez une carte en ligne et choisissez **Mettre à jour le compagnon**. La carte peut apparaître brièvement hors ligne pendant le redémarrage des services.

@@ -19,6 +19,8 @@
 		"@shpaw415/mui-lite": "^0.1.6",
 		"@tailwindcss/cli": "^4.3.3",
 		"@wokwi/elements": "^1.9.2",
+		"@xterm/addon-fit": "^0.11.0",
+		"@xterm/xterm": "^6.0.0",
 		"drizzle-orm": "^0.45.3",
 		"echarts": "^6.1.0",
 		"frame-master": "^4.0.3",

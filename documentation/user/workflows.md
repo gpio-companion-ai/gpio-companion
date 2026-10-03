@@ -145,6 +145,14 @@ You can also start and open board apps yourself:
 - A board app is a custom surface for that project. Hardware control still
   goes through the usual sketches, flashing, and Live GPIO.
 
+## SSH into your board
+
+In Expert mode, the dock has an **SSH** tab. Select your board, choose
+**Connect SSH**, and a terminal opens a shell on the board itself. Sign-in
+prompts appear right in the terminal — type your board password (masked) or
+use its configured SSH keys. Choose **Disconnect** to close the session. The
+same tab exists on web, desktop, and mobile.
+
 ## Updates and troubleshooting
 
 Updates normally install automatically. To request one manually, switch the app to **Expert** mode, open **Devices → Debug**, select an online board, and choose **Update companion**. The board may appear offline briefly while services restart.
