@@ -17,6 +17,7 @@ import {
 	boardFileDirty,
 	boardFileLanguage,
 	boardFileTree,
+	boardImageDataUrl,
 	type CodeEditorSelection,
 	clampSplitPercent,
 	codeAttachFileName,
@@ -28,10 +29,12 @@ import {
 	filterBoardNodes,
 	findSketchByName,
 	isMarkdownPath,
+	isSvgPath,
 	OC_EDITOR_SPLIT_KEY,
 	parseBoardFileEvent,
 	sketchNameFromPath,
 	stageExplorerFile,
+	svgDataUrl,
 } from "gpio-companion";
 import {
 	Fragment,
@@ -96,7 +99,7 @@ type Props = {
 
 type OpenFile = {
 	path: string;
-	kind: "text" | "model" | "binary";
+	kind: "text" | "model" | "image" | "binary";
 	text: string;
 	base64: string;
 };
@@ -127,6 +130,7 @@ export default function ProjectFiles({
 	const [draft, setDraft] = useState("");
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
 	const [mdView, setMdView] = useState<"parsed" | "raw">("parsed");
+	const [svgView, setSvgView] = useState<"preview" | "source">("preview");
 	const [stale, setStale] = useState(false);
 	const [note, setNote] = useState("");
 	const [saved, setSaved] = useState("");
@@ -393,6 +397,7 @@ export default function ProjectFiles({
 			openedPath.current = path;
 			setDiagramView(path === BREADBOARD_DIAGRAM_JSON ? "board" : "json");
 			setMdView(isMarkdownPath(path) ? "parsed" : "raw");
+			setSvgView(isSvgPath(path) ? "preview" : "source");
 		}
 		setStale(false);
 		setNote("");
@@ -1097,6 +1102,26 @@ export default function ProjectFiles({
 										</button>
 									</span>
 								) : null}
+								{file.kind === "text" && isSvgPath(file.path) ? (
+									<span className="oc-view-toggle">
+										<button
+											type="button"
+											className={`oc-mini${svgView === "preview" ? " is-on" : ""}`}
+											aria-pressed={svgView === "preview"}
+											onClick={() => setSvgView("preview")}
+										>
+											{t("code.preview")}
+										</button>
+										<button
+											type="button"
+											className={`oc-mini${svgView === "source" ? " is-on" : ""}`}
+											aria-pressed={svgView === "source"}
+											onClick={() => setSvgView("source")}
+										>
+											{t("code.viewSource")}
+										</button>
+									</span>
+								) : null}
 								{file.kind === "text" ? (
 									<button
 										type="button"
@@ -1121,6 +1146,14 @@ export default function ProjectFiles({
 									/>
 								) : file.kind === "model" ? (
 									<ModelViewer glbBase64={file.base64} fill />
+								) : file.kind === "image" ? (
+									<div className="oc-md-preview">
+										<img
+											className="oc-image-preview"
+											src={boardImageDataUrl(file.base64, file.path)}
+											alt={file.path}
+										/>
+									</div>
 								) : file.kind === "binary" ? (
 									<p className="oc-editor-note">{t("code.binary")}</p>
 								) : file.kind === "text" &&
@@ -1129,17 +1162,27 @@ export default function ProjectFiles({
 									<div className="oc-md-preview">
 										<MarkdownView text={draft} />
 									</div>
+								) : file.kind === "text" &&
+									isSvgPath(file.path) &&
+									svgView === "preview" ? (
+									<div className="oc-md-preview">
+										<img
+											className="oc-image-preview"
+											src={svgDataUrl(draft)}
+											alt={file.path}
+										/>
+									</div>
 								) : (
-								<CodeEditor
-									path={file.path}
-									value={draft}
-									theme={mode === "dark" ? "vs-dark" : "vs"}
-									onChange={setDraft}
-									onSave={() => void saveBoard()}
-									onSelection={(selectedPath, selection) =>
-										editorSelectionRef.current?.(selectedPath, selection)
-									}
-								/>
+									<CodeEditor
+										path={file.path}
+										value={draft}
+										theme={mode === "dark" ? "vs-dark" : "vs"}
+										onChange={setDraft}
+										onSave={() => void saveBoard()}
+										onSelection={(selectedPath, selection) =>
+											editorSelectionRef.current?.(selectedPath, selection)
+										}
+									/>
 								)}
 							</div>
 						</section>

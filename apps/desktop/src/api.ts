@@ -798,7 +798,7 @@ export type BoardFileList = {
 
 export type BoardFileRead = {
 	path: string;
-	kind: "text" | "model" | "binary";
+	kind: "text" | "model" | "image" | "binary";
 	text?: string;
 	base64?: string;
 };

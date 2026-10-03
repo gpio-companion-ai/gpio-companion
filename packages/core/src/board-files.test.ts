@@ -7,12 +7,17 @@ import {
 	boardFileRelative,
 	boardFileTree,
 	boardFileWatchPath,
+	boardImageDataUrl,
+	boardImageMime,
+	isImagePath,
 	isMarkdownPath,
+	isSvgPath,
 	parseBoardFileEvent,
 	parseBoardFileRemovePut,
 	parseBoardFileRenamePut,
 	parseBoardFileWatchPath,
 	parseBoardFileWritePut,
+	svgDataUrl,
 } from "./board-files.ts";
 
 describe("board file paths", () => {
@@ -50,6 +55,29 @@ describe("board file kinds", () => {
 		expect(isMarkdownPath("src/main.c")).toBe(false);
 		expect(isMarkdownPath("docs")).toBe(false);
 		expect(isMarkdownPath(".md")).toBe(false);
+	});
+
+	test("classifies images and svg separately", () => {
+		expect(boardFileKindFromName("uploads/photo.PNG")).toBe("image");
+		expect(boardFileKindFromName("assets/pic.jpeg")).toBe("image");
+		expect(boardFileKindFromName("assets/pic.webp")).toBe("image");
+		expect(boardFileKindFromName("diagram.svg")).toBe("text");
+		expect(boardFileKindFromName("scan.pdf")).toBe("binary");
+		expect(isImagePath("uploads/photo.png")).toBe(true);
+		expect(isImagePath("diagram.svg")).toBe(false);
+		expect(isSvgPath("diagram.svg")).toBe(true);
+		expect(isSvgPath("diagram.svgx")).toBe(false);
+		expect(boardImageMime("a.png")).toBe("image/png");
+		expect(boardImageMime("a.jpg")).toBe("image/jpeg");
+		expect(boardImageDataUrl("QUJD", "a.gif")).toBe(
+			"data:image/gif;base64,QUJD",
+		);
+		expect(svgDataUrl('<svg x="1"/>')).toBe(
+			`data:image/svg+xml;utf8,${encodeURIComponent('<svg x="1"/>')}`,
+		);
+		expect(() => assertBoardTextWrite("a.png", "nope")).toThrow(
+			"file is not text",
+		);
 	});
 
 	test("refuses binary writes", () => {

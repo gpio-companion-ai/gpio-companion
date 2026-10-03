@@ -307,8 +307,9 @@ function ToolStack({ parts }: { parts: OpencodePart[] }) {
 		parts.length === 1
 			? names
 			: t("code.toolStack", { n: parts.length, names });
+	const status = stackStatus(parts);
 	return (
-		<div className={`oc-tools is-${stackStatus(parts)}`}>
+		<div className={`oc-tools is-${status}${open ? " is-open" : ""}`}>
 			<button
 				type="button"
 				className="oc-tools-toggle"
@@ -318,38 +319,87 @@ function ToolStack({ parts }: { parts: OpencodePart[] }) {
 					setOpen((value) => !value);
 				}}
 			>
-				<i className="oc-mark" />
-				<strong>{label}</strong>
-				<span aria-hidden="true">{open ? "▾" : "▸"}</span>
+				<i className="oc-chevron" aria-hidden="true" />
+				<strong className="oc-tools-label">{label}</strong>
+				<i className={`oc-tool-state is-${status}`} aria-hidden="true" />
 			</button>
-			{open
-				? parts.map((part) => {
+			{open ? (
+				<div className="oc-tools-rows">
+					{parts.map((part) => {
 						const body = toolInfo(
 							part,
 							t("code.toolInput"),
 							t("code.toolOutput"),
 						);
 						return (
-							<div key={part.id}>
+							<div key={part.id} className={`oc-tool-row is-${part.status}`}>
 								<button
 									type="button"
-									className={`oc-tool is-${part.status}`}
+									className="oc-tool-head"
 									aria-expanded={info === part.id}
 									onClick={() =>
 										setInfo((current) => (current === part.id ? "" : part.id))
 									}
 								>
-									<i className="oc-mark" />
-									<strong>{part.tool}</strong>
-									{part.text ? <span>{part.text}</span> : null}
+									<i className="oc-chevron" aria-hidden="true" />
+									<strong className="oc-tool-name">{part.tool}</strong>
+									{part.text ? (
+										<span className="oc-tool-summary">{part.text}</span>
+									) : null}
+									<i
+										className={`oc-tool-state is-${part.status}`}
+										aria-hidden="true"
+									/>
 								</button>
 								{info === part.id && body ? (
 									<pre className="oc-code oc-tool-info">{body}</pre>
 								) : null}
 							</div>
 						);
-					})
-				: null}
+					})}
+				</div>
+			) : null}
+		</div>
+	);
+}
+
+function ThinkingStack({ parts }: { parts: OpencodePart[] }) {
+	const t = useT();
+	const running = parts.some((part) => part.status === "running");
+	const touched = useRef(false);
+	const [open, setOpen] = useState(running);
+	useEffect(() => {
+		if (!touched.current) {
+			setOpen(running);
+		}
+	}, [running]);
+	const body = parts
+		.map((part) => part.text)
+		.filter(Boolean)
+		.join("\n");
+	return (
+		<div
+			className={`oc-tools oc-thinking is-${running ? "running" : "done"}${open ? " is-open" : ""}`}
+		>
+			<button
+				type="button"
+				className="oc-tools-toggle"
+				aria-expanded={open}
+				onClick={() => {
+					touched.current = true;
+					setOpen((value) => !value);
+				}}
+			>
+				<i className="oc-chevron" aria-hidden="true" />
+				<strong className="oc-tools-label">{t("code.thinking")}</strong>
+				<i
+					className={`oc-tool-state is-${running ? "running" : "done"}`}
+					aria-hidden="true"
+				/>
+			</button>
+			{open && body ? (
+				<pre className="oc-code oc-tool-info oc-thinking-info">{body}</pre>
+			) : null}
 		</div>
 	);
 }
@@ -358,13 +408,15 @@ function TurnView({ turn, caret }: { turn: OpencodeTurn; caret: boolean }) {
 	const blocks =
 		turn.role === "assistant" ? opencodeToolStacks(turn.parts) : [];
 	return (
-		<article className="oc-turn">
+		<article className={`oc-turn is-${turn.role}`}>
 			{turn.role === "user" ? (
 				<p className="oc-user">{turn.text}</p>
 			) : (
 				blocks.map((block) =>
 					block.type === "text" ? (
 						<Blocks key={block.id} text={block.text} />
+					) : block.type === "thinking" ? (
+						<ThinkingStack key={block.id} parts={block.parts} />
 					) : (
 						<ToolStack key={block.id} parts={block.parts} />
 					),

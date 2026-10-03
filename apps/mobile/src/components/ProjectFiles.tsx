@@ -17,6 +17,7 @@ import {
 	boardFileApplyEvent,
 	boardFileDirty,
 	boardFileTree,
+	boardImageDataUrl,
 	type CodeEditorSelection,
 	countBoardFiles,
 	EDITOR_EMBED_MESSAGE_TYPE,
@@ -27,6 +28,7 @@ import {
 	filterBoardNodes,
 	isEditorEmbedSave,
 	isMarkdownPath,
+	isSvgPath,
 	parseBoardFileEvent,
 	parseEditorEmbedChange,
 	parseEditorEmbedSelection,
@@ -67,6 +69,8 @@ import type { Colors } from "../lib/theme.ts";
 import BreadboardWebView from "./BreadboardWebView.tsx";
 import ModelWebView from "./ModelWebView.tsx";
 import { MarkdownView } from "./OcMarkdown.tsx";
+import SvgPreview from "./SvgPreview.tsx";
+import ZoomableImage from "./ZoomableImage.tsx";
 
 type Props = {
 	token: string;
@@ -87,7 +91,7 @@ type Props = {
 
 type OpenFile = {
 	path: string;
-	kind: "text" | "model" | "binary";
+	kind: "text" | "model" | "image" | "binary";
 	text: string;
 	base64: string;
 };
@@ -131,6 +135,7 @@ export default function ProjectFiles({
 	const [draft, setDraft] = useState("");
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
 	const [mdView, setMdView] = useState<"parsed" | "raw">("parsed");
+	const [svgView, setSvgView] = useState<"preview" | "source">("preview");
 	const [rev, setRev] = useState(0);
 	const [stale, setStale] = useState(false);
 	const [note, setNote] = useState("");
@@ -331,6 +336,7 @@ export default function ProjectFiles({
 				openedPath.current = path;
 				setDiagramView(path === BREADBOARD_DIAGRAM_JSON ? "board" : "json");
 				setMdView(isMarkdownPath(path) ? "parsed" : "raw");
+				setSvgView(isSvgPath(path) ? "preview" : "source");
 			}
 			setRev((value) => value + 1);
 			setStale(false);
@@ -1006,6 +1012,32 @@ export default function ProjectFiles({
 								</Pressable>
 							</View>
 						) : null}
+						{file.kind === "text" && isSvgPath(file.path) ? (
+							<View style={{ flexDirection: "row", gap: 8 }}>
+								<Pressable onPress={() => setSvgView("preview")}>
+									<Text
+										style={{
+											color:
+												svgView === "preview" ? colors.primary : colors.muted,
+											fontWeight: "600",
+										}}
+									>
+										{t("code.preview")}
+									</Text>
+								</Pressable>
+								<Pressable onPress={() => setSvgView("source")}>
+									<Text
+										style={{
+											color:
+												svgView === "source" ? colors.primary : colors.muted,
+											fontWeight: "600",
+										}}
+									>
+										{t("code.viewSource")}
+									</Text>
+								</Pressable>
+							</View>
+						) : null}
 						{file.kind === "text" ? (
 							<Pressable
 								disabled={!dirty || busy === "board"}
@@ -1034,6 +1066,17 @@ export default function ProjectFiles({
 						</View>
 					) : file.kind === "model" ? (
 						<ModelWebView glbBase64={file.base64} />
+					) : file.kind === "image" ? (
+						<ScrollView
+							style={{ flex: 1 }}
+							contentContainerStyle={{ padding: 12 }}
+						>
+							<ZoomableImage
+								uri={boardImageDataUrl(file.base64, file.path)}
+								title={file.path}
+								height={320}
+							/>
+						</ScrollView>
 					) : file.kind === "binary" ? (
 						<Text style={{ color: colors.muted, padding: 12 }}>
 							{t("code.binary")}
@@ -1047,17 +1090,21 @@ export default function ProjectFiles({
 						>
 							<MarkdownView text={draft} color={colors.text} />
 						</ScrollView>
+					) : file.kind === "text" &&
+						isSvgPath(file.path) &&
+						svgView === "preview" ? (
+						<SvgPreview text={draft} />
 					) : (
-					<EditorFrame
-						locale={locale}
-						theme={mode}
-						payload={{ ...payload, text: draft, path: file.path }}
-						onChange={setDraft}
-						onSave={() => void saveBoard(draftRef.current)}
-						onSelection={(path, selection) =>
-							editorSelectionRef.current?.(path, selection)
-						}
-					/>
+						<EditorFrame
+							locale={locale}
+							theme={mode}
+							payload={{ ...payload, text: draft, path: file.path }}
+							onChange={setDraft}
+							onSave={() => void saveBoard(draftRef.current)}
+							onSelection={(path, selection) =>
+								editorSelectionRef.current?.(path, selection)
+							}
+						/>
 					)}
 				</View>
 			) : (

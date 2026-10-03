@@ -454,6 +454,129 @@ describe("opencode session client", () => {
 		expect(part?.output).toContain("failed");
 	});
 
+	test("streams reasoning into collapsible thinking parts, not text", () => {
+		let view = { ...emptyOpencodeView(), sessionID: "ses_1" };
+		view = applyOpencodeEvent(view, {
+			type: "message.part.updated",
+			properties: {
+				sessionID: "ses_1",
+				part: {
+					id: "prt_r1",
+					messageID: "msg_2",
+					type: "reasoning",
+					text: "",
+					time: { start: 1 },
+				},
+			},
+		});
+		expect(view.turns[0]?.parts[0]?.type).toBe("thinking");
+		expect(view.turns[0]?.parts[0]?.status).toBe("running");
+		expect(view.turns[0]?.text).toBe("");
+		view = applyOpencodeEvent(view, {
+			type: "session.next.reasoning.delta",
+			properties: {
+				sessionID: "ses_1",
+				assistantMessageID: "msg_2",
+				reasoningID: "prt_r1",
+				delta: "checking pins",
+			},
+		});
+		expect(view.turns[0]?.parts[0]?.type).toBe("thinking");
+		expect(view.turns[0]?.parts[0]?.text).toBe("checking pins");
+		view = applyOpencodeEvent(view, {
+			type: "session.next.reasoning.ended",
+			properties: {
+				sessionID: "ses_1",
+				assistantMessageID: "msg_2",
+				reasoningID: "prt_r1",
+			},
+		});
+		expect(view.turns[0]?.parts[0]?.status).toBe("done");
+		const blocks = opencodeToolStacks(view.turns[0]?.parts ?? []);
+		expect(blocks).toHaveLength(1);
+		expect(blocks[0]?.type).toBe("thinking");
+	});
+
+	test("reasoning snapshot does not clobber accumulated deltas", () => {
+		let view = { ...emptyOpencodeView(), sessionID: "ses_1" };
+		view = applyOpencodeEvent(view, {
+			type: "session.next.reasoning.started",
+			properties: {
+				sessionID: "ses_1",
+				assistantMessageID: "msg_2",
+				reasoningID: "prt_r1",
+			},
+		});
+		view = applyOpencodeEvent(view, {
+			type: "message.part.delta",
+			properties: {
+				sessionID: "ses_1",
+				messageID: "msg_2",
+				partID: "prt_r1",
+				delta: "partial ",
+			},
+		});
+		expect(view.turns[0]?.parts[0]?.type).toBe("thinking");
+		expect(view.turns[0]?.parts[0]?.text).toBe("partial ");
+		view = applyOpencodeEvent(view, {
+			type: "message.part.updated",
+			properties: {
+				sessionID: "ses_1",
+				part: {
+					id: "prt_r1",
+					messageID: "msg_2",
+					type: "reasoning",
+					text: "partial",
+					time: { start: 1, end: 2 },
+				},
+			},
+		});
+		expect(view.turns[0]?.parts[0]?.text).toBe("partial ");
+		expect(view.turns[0]?.parts[0]?.status).toBe("done");
+		view = applyOpencodeEvent(view, {
+			type: "message.part.updated",
+			properties: {
+				sessionID: "ses_1",
+				part: {
+					id: "prt_r1",
+					messageID: "msg_2",
+					type: "reasoning",
+					text: "partial and final",
+					time: { start: 1, end: 2 },
+				},
+			},
+		});
+		expect(view.turns[0]?.parts[0]?.text).toBe("partial and final");
+		expect(view.turns[0]?.parts[0]?.status).toBe("done");
+	});
+
+	test("keeps reasoning parts from history as thinking", () => {
+		const turns = opencodeTurns([
+			{
+				info: { id: "msg_1", role: "assistant" },
+				parts: [
+					{ id: "p1", type: "reasoning", text: "hmm" },
+					{ id: "p2", type: "text", text: "hello" },
+					{ id: "p3", type: "reasoning", text: "more" },
+					{ id: "p4", type: "text", text: "world" },
+				],
+			},
+		]);
+		expect(turns[0]?.parts.map((part) => part.type)).toEqual([
+			"thinking",
+			"text",
+			"thinking",
+			"text",
+		]);
+		const blocks = opencodeToolStacks(turns[0]?.parts ?? []);
+		expect(blocks.map((block) => block.type)).toEqual([
+			"thinking",
+			"text",
+			"thinking",
+			"text",
+		]);
+	});
+
 	test("batches adjacent tool calls and keeps text between stacks", () => {
 		expect(
 			opencodeToolStacks([

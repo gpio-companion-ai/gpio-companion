@@ -173,7 +173,7 @@ export type OpencodeToolStatus = "running" | "done" | "error";
 
 export type OpencodePart = {
 	id: string;
-	type: "text" | "tool";
+	type: "text" | "tool" | "thinking";
 	text: string;
 	tool: string;
 	status: OpencodeToolStatus;
@@ -183,6 +183,7 @@ export type OpencodePart = {
 
 export type OpencodeTurnBlock =
 	| { type: "text"; id: string; text: string }
+	| { type: "thinking"; id: string; parts: OpencodePart[] }
 	| { type: "tools"; id: string; parts: OpencodePart[] };
 
 export type OpencodeTurn = {
@@ -790,6 +791,7 @@ export function opencodeToolStacks(parts: OpencodePart[]): OpencodeTurnBlock[] {
 	const blocks: OpencodeTurnBlock[] = [];
 	let text: OpencodePart[] = [];
 	let tools: OpencodePart[] = [];
+	let thinking: OpencodePart[] = [];
 	const flushText = () => {
 		const joined = text
 			.map((part) => part.text)
@@ -809,19 +811,36 @@ export function opencodeToolStacks(parts: OpencodePart[]): OpencodeTurnBlock[] {
 			blocks.push({ type: "tools", id, parts: grouped });
 		}
 	};
+	const flushThinking = () => {
+		const id = thinking[0]?.id;
+		const grouped = thinking;
+		thinking = [];
+		if (grouped.length > 0 && id) {
+			blocks.push({ type: "thinking", id, parts: grouped });
+		}
+	};
 	for (const part of parts) {
 		if (part.type === "tool") {
 			flushText();
+			flushThinking();
 			tools.push(part);
 			continue;
 		}
+		if (part.type === "thinking") {
+			flushText();
+			flushTools();
+			thinking.push(part);
+			continue;
+		}
 		flushTools();
+		flushThinking();
 		if (part.text) {
 			text.push(part);
 		}
 	}
 	flushText();
 	flushTools();
+	flushThinking();
 	return blocks;
 }
 
@@ -871,6 +890,19 @@ function partsFrom(raw: unknown[]): OpencodePart[] {
 		}
 		if (record.type === "tool" && typeof record.tool === "string") {
 			parts.push(toolPart(id, record));
+			continue;
+		}
+		if (record.type === "reasoning" && typeof record.text === "string") {
+			if (isHiddenContextText(record.text)) {
+				continue;
+			}
+			parts.push({
+				id,
+				type: "thinking",
+				text: record.text,
+				tool: "",
+				status: "done",
+			});
 		}
 	}
 	return parts;
@@ -960,6 +992,52 @@ function appendTextPart(
 		text,
 		tool: "",
 		status: "done",
+	});
+}
+
+function appendThinkingPart(
+	turns: OpencodeTurn[],
+	messageID: string,
+	partID: string,
+	delta: string,
+): OpencodeTurn[] {
+	const current = turns.find((item) => item.id === messageID);
+	const existing = current?.parts.find(
+		(item) => item.id === partID && item.type === "thinking",
+	);
+	const text = `${existing?.text ?? ""}${delta}`.slice(0, 20_000);
+	return upsertPart(turns, messageID, "assistant", {
+		id: partID,
+		type: "thinking",
+		text,
+		tool: "",
+		status: "running",
+	});
+}
+
+function upsertThinkingSnapshot(
+	turns: OpencodeTurn[],
+	messageID: string,
+	partID: string,
+	text: string,
+	done: boolean,
+): OpencodeTurn[] {
+	const current = turns.find((item) => item.id === messageID);
+	const existing = current?.parts.find(
+		(item) => item.id === partID && item.type === "thinking",
+	);
+	// Deltas may have already accumulated more text than an in-flight
+	// snapshot carries; only a longer snapshot (or a final one) wins.
+	const next =
+		text.length >= (existing?.text.length ?? -1)
+			? text
+			: (existing?.text ?? "");
+	return upsertPart(turns, messageID, "assistant", {
+		id: partID,
+		type: "thinking",
+		text: next.slice(0, 20_000),
+		tool: "",
+		status: done ? "done" : "running",
 	});
 }
 
@@ -1910,6 +1988,20 @@ export function applyOpencodeEvent(
 					),
 				};
 			}
+			if (part.type === "reasoning") {
+				const time = asRecord(part.time);
+				return {
+					...view,
+					busy: true,
+					turns: upsertThinkingSnapshot(
+						view.turns,
+						messageID,
+						typeof part.id === "string" ? part.id : `${messageID}:reasoning`,
+						typeof part.text === "string" ? part.text : "",
+						typeof time?.end === "number",
+					),
+				};
+			}
 			return view;
 		}
 		case "message.part.delta":
@@ -1930,15 +2022,62 @@ export function applyOpencodeEvent(
 			}
 			const partID =
 				typeof properties.partID === "string" ? properties.partID : messageID;
+			const message = view.turns.find((item) => item.id === messageID);
+			const thinking = message?.parts.find(
+				(item) => item.id === partID && item.type === "thinking",
+			);
 			return {
 				...view,
 				busy: true,
-				turns: appendTextPart(
+				turns: thinking
+					? appendThinkingPart(view.turns, messageID, partID, delta)
+					: appendTextPart(view.turns, messageID, "assistant", partID, delta),
+			};
+		}
+		case "session.next.reasoning.started":
+		case "session.next.reasoning.delta":
+		case "session.next.reasoning.ended": {
+			if (sessionID !== view.sessionID) {
+				return view;
+			}
+			const messageID =
+				typeof properties.messageID === "string"
+					? properties.messageID
+					: typeof properties.assistantMessageID === "string"
+						? properties.assistantMessageID
+						: "";
+			const reasoningID =
+				typeof properties.reasoningID === "string"
+					? properties.reasoningID
+					: typeof properties.partID === "string"
+						? properties.partID
+						: "";
+			if (!messageID || !reasoningID) {
+				return view;
+			}
+			if (body.type === "session.next.reasoning.delta") {
+				const delta =
+					typeof properties.delta === "string" ? properties.delta : "";
+				if (!delta) {
+					return view;
+				}
+				return {
+					...view,
+					busy: true,
+					turns: appendThinkingPart(view.turns, messageID, reasoningID, delta),
+				};
+			}
+			const time = asRecord(properties.time);
+			return {
+				...view,
+				busy: true,
+				turns: upsertThinkingSnapshot(
 					view.turns,
 					messageID,
-					"assistant",
-					partID,
-					delta,
+					reasoningID,
+					typeof properties.text === "string" ? properties.text : "",
+					body.type === "session.next.reasoning.ended" ||
+						typeof time?.end === "number",
 				),
 			};
 		}

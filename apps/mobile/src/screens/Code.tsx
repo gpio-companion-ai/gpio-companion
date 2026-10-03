@@ -67,6 +67,7 @@ import {
 	type OpencodePermissionMode,
 	type OpencodePermissionResponse,
 	type OpencodePromptEpoch,
+	type OpencodeToolStatus,
 	type OpencodeTurn,
 	type OpencodeView,
 	opencodeEventResumeUrl,
@@ -101,9 +102,12 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
 	AccessibilityInfo,
+	ActivityIndicator,
 	Alert,
+	Animated,
 	BackHandler,
 	DeviceEventEmitter,
+	Easing,
 	Modal,
 	Pressable,
 	ScrollView,
@@ -3482,6 +3486,74 @@ function toolInfo(
 	return chunks.join("\n\n");
 }
 
+function ToolShine({ color }: { color: string }) {
+	const [width, setWidth] = useState(0);
+	const pos = useRef(new Animated.Value(0)).current;
+	useEffect(() => {
+		const loop = Animated.loop(
+			Animated.timing(pos, {
+				toValue: 1,
+				duration: 1600,
+				easing: Easing.linear,
+				useNativeDriver: true,
+			}),
+		);
+		loop.start();
+		return () => loop.stop();
+	}, [pos]);
+	return (
+		<View
+			pointerEvents="none"
+			onLayout={(event) => setWidth(event.nativeEvent.layout.width)}
+			style={{
+				position: "absolute",
+				top: 0,
+				right: 0,
+				bottom: 0,
+				left: 0,
+				overflow: "hidden",
+			}}
+		>
+			<Animated.View
+				style={{
+					position: "absolute",
+					top: 0,
+					bottom: 0,
+					width: 100,
+					backgroundColor: color,
+					opacity: 0.14,
+					transform: [
+						{
+							translateX: pos.interpolate({
+								inputRange: [0, 1],
+								outputRange: [-140, width + 140],
+							}),
+						},
+					],
+				}}
+			/>
+		</View>
+	);
+}
+
+function ToolState({ status }: { status: OpencodeToolStatus }) {
+	const colors = useColors();
+	if (status === "running") {
+		return <ActivityIndicator size="small" color={colors.primary} />;
+	}
+	return (
+		<Text
+			style={{
+				fontSize: 12,
+				fontWeight: "700",
+				color: status === "error" ? colors.warning : colors.success,
+			}}
+		>
+			{status === "error" ? "✕" : "✓"}
+		</Text>
+	);
+}
+
 function ToolStack({
 	parts,
 	color,
@@ -3511,7 +3583,16 @@ function ToolStack({
 			: t("code.toolStack", { n: parts.length, names });
 	const status = stackStatus(parts);
 	return (
-		<View style={{ gap: 4 }}>
+		<View
+			style={{
+				marginBottom: 12,
+				borderWidth: 1,
+				borderColor: colors.border,
+				borderRadius: 10,
+				backgroundColor: colors.chipBg,
+				overflow: "hidden",
+			}}
+		>
 			<Pressable
 				accessibilityRole="button"
 				accessibilityState={{ expanded: open }}
@@ -3519,31 +3600,102 @@ function ToolStack({
 					touched.current = true;
 					setOpen((value) => !value);
 				}}
+				style={({ pressed }) => ({
+					minHeight: 36,
+					flexDirection: "row",
+					alignItems: "center",
+					gap: 8,
+					paddingHorizontal: 10,
+					paddingVertical: 6,
+					backgroundColor: pressed ? "rgba(128,128,128,0.1)" : "transparent",
+				})}
 			>
-				<Text style={{ color: status === "error" ? colors.warning : muted }}>
-					{open ? "▾" : "▸"} {label}
+				<Text style={{ color: muted, fontSize: 10 }}>
+					{open ? "▾" : "▸"}
 				</Text>
+				<Text
+					numberOfLines={1}
+					style={{ flex: 1, minWidth: 0, color, fontWeight: "600" }}
+				>
+					{label}
+				</Text>
+				<ToolState status={status} />
 			</Pressable>
-			{open
-				? parts.map((part) => {
+			{open ? (
+				<View style={{ borderTopWidth: 1, borderTopColor: colors.border }}>
+					{parts.map((part, partIndex) => {
 						const body = toolInfo(
 							part,
 							t("code.toolInput"),
 							t("code.toolOutput"),
 						);
+						const partRunning = part.status === "running";
 						return (
-							<View key={part.id} style={{ paddingLeft: 12, gap: 4 }}>
+							<View
+								key={part.id}
+								style={{
+									position: "relative",
+									overflow: "hidden",
+									borderTopWidth: partIndex === 0 ? 0 : 1,
+									borderTopColor: colors.border,
+									...(partRunning
+										? {
+												borderLeftWidth: 3,
+												borderLeftColor: colors.primary,
+											}
+										: null),
+								}}
+							>
+								{partRunning ? <ToolShine color={colors.primary} /> : null}
 								<Pressable
 									accessibilityRole="button"
 									accessibilityState={{ expanded: info === part.id }}
 									onPress={() =>
 										setInfo((current) => (current === part.id ? "" : part.id))
 									}
+									style={({ pressed }) => ({
+										minHeight: 34,
+										flexDirection: "row",
+										alignItems: "center",
+										gap: 8,
+										paddingLeft: 13,
+										paddingRight: 10,
+										paddingVertical: 5,
+										backgroundColor: pressed
+											? "rgba(128,128,128,0.1)"
+											: "transparent",
+									})}
 								>
-									<Text style={{ color: muted }}>
-										{part.tool}
-										{part.text ? `  ${part.text}` : ""}
+									<Text style={{ color: muted, fontSize: 10 }}>
+										{info === part.id ? "▾" : "▸"}
 									</Text>
+									<Text
+										numberOfLines={1}
+										style={{
+											maxWidth: "45%",
+											color,
+											fontWeight: "600",
+											textTransform: "capitalize",
+										}}
+									>
+										{part.tool}
+									</Text>
+									{part.text ? (
+										<Text
+											numberOfLines={1}
+											style={{
+												flex: 1,
+												minWidth: 0,
+												color: muted,
+												fontSize: 12,
+											}}
+										>
+											{part.text}
+										</Text>
+									) : (
+										<View style={{ flex: 1 }} />
+									)}
+									<ToolState status={part.status} />
 								</Pressable>
 								{info === part.id && body ? (
 									<ScrollView horizontal nestedScrollEnabled>
@@ -3552,7 +3704,9 @@ function ToolStack({
 												color,
 												fontFamily: "monospace",
 												fontSize: 12,
-												backgroundColor: colors.chipBg,
+												backgroundColor: colors.surface,
+												marginHorizontal: 10,
+												marginBottom: 8,
 												padding: 8,
 												borderRadius: 8,
 											}}
@@ -3563,8 +3717,91 @@ function ToolStack({
 								) : null}
 							</View>
 						);
-					})
-				: null}
+					})}
+				</View>
+			) : null}
+		</View>
+	);
+}
+
+function ThinkingStack({
+	parts,
+	muted,
+}: {
+	parts: OpencodePart[];
+	muted: string;
+}) {
+	const t = useT();
+	const colors = useColors();
+	const running = parts.some((part) => part.status === "running");
+	const touched = useRef(false);
+	const [open, setOpen] = useState(running);
+	useEffect(() => {
+		if (!touched.current) {
+			setOpen(running);
+		}
+	}, [running]);
+	const body = parts
+		.map((part) => part.text)
+		.filter(Boolean)
+		.join("\n");
+	return (
+		<View
+			style={{
+				position: "relative",
+				marginBottom: 12,
+				borderWidth: 1,
+				borderColor: colors.border,
+				borderRadius: 10,
+				backgroundColor: colors.chipBg,
+				overflow: "hidden",
+			}}
+		>
+			{running ? <ToolShine color={colors.primary} /> : null}
+			<Pressable
+				accessibilityRole="button"
+				accessibilityState={{ expanded: open }}
+				onPress={() => {
+					touched.current = true;
+					setOpen((value) => !value);
+				}}
+				style={({ pressed }) => ({
+					minHeight: 36,
+					flexDirection: "row",
+					alignItems: "center",
+					gap: 8,
+					paddingHorizontal: 10,
+					paddingVertical: 6,
+					backgroundColor: pressed ? "rgba(128,128,128,0.1)" : "transparent",
+				})}
+			>
+				<Text style={{ color: muted, fontSize: 10 }}>
+					{open ? "▾" : "▸"}
+				</Text>
+				<Text
+					numberOfLines={1}
+					style={{ flex: 1, minWidth: 0, color: muted, fontStyle: "italic" }}
+				>
+					{t("code.thinking")}
+				</Text>
+				<ToolState status={running ? "running" : "done"} />
+			</Pressable>
+			{open && body ? (
+				<Text
+					style={{
+						color: muted,
+						fontSize: 12,
+						fontStyle: "italic",
+						backgroundColor: colors.surface,
+						marginHorizontal: 10,
+						marginBottom: 8,
+						padding: 8,
+						borderRadius: 8,
+					}}
+				>
+					{body}
+				</Text>
+			) : null}
 		</View>
 	);
 }
@@ -3581,13 +3818,15 @@ function Turn({
 	bubble: string;
 }) {
 	return (
-		<View style={{ gap: 6 }}>
+		<View style={{ gap: 8, marginBottom: 12 }}>
 			{turn.role === "user" ? (
 				<View
 					style={{
+						alignSelf: "flex-end",
+						maxWidth: "85%",
 						backgroundColor: bubble,
-						borderRadius: 8,
-						paddingHorizontal: 12,
+						borderRadius: 14,
+						paddingHorizontal: 14,
 						paddingVertical: 8,
 					}}
 				>
@@ -3597,6 +3836,8 @@ function Turn({
 				opencodeToolStacks(turn.parts).map((block) =>
 					block.type === "text" ? (
 						<Blocks key={block.id} text={block.text} color={color} />
+					) : block.type === "thinking" ? (
+						<ThinkingStack key={block.id} parts={block.parts} muted={muted} />
 					) : (
 						<ToolStack
 							key={block.id}

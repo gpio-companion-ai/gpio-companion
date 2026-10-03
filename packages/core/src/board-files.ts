@@ -12,6 +12,7 @@ export const BOARD_FILE_LIST_MAX = 4000;
 export const BOARD_FILE_DEPTH_MAX = 12;
 export const BOARD_FILE_TEXT_MAX = 1024 * 1024;
 export const BOARD_FILE_MODEL_MAX = 8 * 1024 * 1024;
+export const BOARD_FILE_IMAGE_MAX = 4 * 1024 * 1024;
 export const BOARD_UPLOAD_DIR = "uploads";
 export const BOARD_UPLOAD_BINARY_MAX = 4 * 1024 * 1024;
 export const BOARD_FILE_SKIP_DIRS = [".git", "node_modules"] as const;
@@ -92,6 +93,16 @@ const BINARY_EXT = new Set([
 	"dylib",
 ]);
 
+const IMAGE_EXT = new Set(["png", "jpg", "jpeg", "gif", "webp"]);
+
+const IMAGE_MIME: Record<string, string> = {
+	png: "image/png",
+	jpg: "image/jpeg",
+	jpeg: "image/jpeg",
+	gif: "image/gif",
+	webp: "image/webp",
+};
+
 export type BoardFileEntry = {
 	path: string;
 	type: "file" | "dir";
@@ -103,7 +114,7 @@ export type BoardFileList = {
 	entries: BoardFileEntry[];
 };
 
-export type BoardFileKind = "text" | "model" | "binary";
+export type BoardFileKind = "text" | "model" | "image" | "binary";
 
 export type BoardFileRead = {
 	path: string;
@@ -301,6 +312,9 @@ export function boardFileKindFromName(path: string): BoardFileKind | "unknown" {
 	if (TEXT_EXT.has(ext)) {
 		return "text";
 	}
+	if (IMAGE_EXT.has(ext)) {
+		return "image";
+	}
 	if (BINARY_EXT.has(ext)) {
 		return "binary";
 	}
@@ -310,6 +324,26 @@ export function boardFileKindFromName(path: string): BoardFileKind | "unknown" {
 export function isMarkdownPath(path: string): boolean {
 	const ext = boardFileExtension(path);
 	return ext === "md" || ext === "markdown";
+}
+
+export function isImagePath(path: string): boolean {
+	return IMAGE_EXT.has(boardFileExtension(path));
+}
+
+export function isSvgPath(path: string): boolean {
+	return boardFileExtension(path) === "svg";
+}
+
+export function boardImageMime(path: string): string {
+	return IMAGE_MIME[boardFileExtension(path)] ?? "application/octet-stream";
+}
+
+export function boardImageDataUrl(base64: string, path: string): string {
+	return `data:${boardImageMime(path)};base64,${base64}`;
+}
+
+export function svgDataUrl(text: string): string {
+	return `data:image/svg+xml;utf8,${encodeURIComponent(text)}`;
 }
 
 export function boardFileLanguage(path: string): string {
@@ -431,7 +465,7 @@ export function assertBoardTextWrite(path: string, text: string): void {
 		throw new Error("file is too large");
 	}
 	const kind = boardFileKindFromName(path);
-	if (kind === "model" || kind === "binary") {
+	if (kind === "model" || kind === "image" || kind === "binary") {
 		throw new Error("file is not text");
 	}
 	if (text.includes("\0")) {

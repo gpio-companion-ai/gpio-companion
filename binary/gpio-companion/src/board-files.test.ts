@@ -46,6 +46,25 @@ describe("board files", () => {
 		expect(again.text).toBe("later\n");
 	});
 
+	test("reads uploaded images as base64 and svg as text", async () => {
+		const root = makeRoot();
+		mkdirSync(join(root, "blink", "uploads"), { recursive: true });
+		writeFileSync(join(root, "blink", "uploads", "board.png"), "PNGDATA");
+		writeFileSync(
+			join(root, "blink", "diagram.svg"),
+			'<svg xmlns="http://www.w3.org/2000/svg"></svg>',
+		);
+		const image = await readBoardFile(root, "blink", "uploads/board.png");
+		expect(image).toEqual({
+			path: "uploads/board.png",
+			kind: "image",
+			base64: Buffer.from("PNGDATA").toString("base64"),
+		});
+		const svg = await readBoardFile(root, "blink", "diagram.svg");
+		expect(svg.kind).toBe("text");
+		expect(svg.text).toContain("<svg");
+	});
+
 	test("writes an uploaded image only under uploads", async () => {
 		const root = makeRoot();
 		mkdirSync(join(root, "blink"), { recursive: true });

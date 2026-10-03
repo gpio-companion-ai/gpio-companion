@@ -15,6 +15,7 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import {
 	assertBoardUploadBinary,
 	BOARD_FILE_DEPTH_MAX,
+	BOARD_FILE_IMAGE_MAX,
 	BOARD_FILE_LIST_MAX,
 	BOARD_FILE_MODEL_MAX,
 	BOARD_FILE_SKIP_DIRS,
@@ -82,6 +83,16 @@ export async function readBoardFile(
 			base64: Buffer.from(bytes).toString("base64"),
 		};
 	}
+	if (named === "image") {
+		if (bytes.byteLength > BOARD_FILE_IMAGE_MAX) {
+			throw new Error("file is too large");
+		}
+		return {
+			path: rel,
+			kind: "image",
+			base64: Buffer.from(bytes).toString("base64"),
+		};
+	}
 	if (named === "binary" || !isUtf8Text(bytes)) {
 		return { path: rel, kind: "binary" };
 	}
@@ -103,7 +114,7 @@ export async function writeBoardFile(
 ): Promise<BoardFileWrite> {
 	const rel = boardFileRelative(path);
 	const kind = boardFileKindFromName(rel);
-	if (kind === "model" || kind === "binary") {
+	if (kind === "model" || kind === "image" || kind === "binary") {
 		throw new Error("file is not text");
 	}
 	if (Buffer.byteLength(text) > BOARD_FILE_TEXT_MAX) {
