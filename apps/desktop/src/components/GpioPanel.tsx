@@ -137,7 +137,7 @@ export default function GpioPanel({
 	const available = Boolean(uuid) && connected !== false;
 	const pins = snapshot?.pins ?? [];
 	const selectedPin = pins.find((pin) => pin.physical === selected);
-	const sketchReadOnly = target === "header" && (snapshot?.sketch ?? false);
+	const sketchReadOnly = Boolean(snapshot?.sketch);
 	const livePinsRef = useRef("");
 	const onGpio = useCallback(
 		(next: GpioSnapshot) => {

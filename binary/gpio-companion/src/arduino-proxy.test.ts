@@ -73,6 +73,48 @@ describe("memory arduino proxy", () => {
 		expect(status.board).toBe("mega");
 		expect(status.pins.some((pin) => pin.physical === 54)).toBe(true);
 	});
+
+	test("merges sketch pin status into the snapshot", () => {
+		const proxy = memoryArduinoProxy({ connected: true });
+		proxy.apply("raspberrypi", { physical: 13, dir: "out", value: 0 });
+		proxy.setSketchStatus?.(() => ({
+			pid: process.pid,
+			pins: [
+				{ physical: 9, mode: "out", value: 1 },
+				{ physical: 11, mode: "out", analog: 200 },
+				{ physical: 14, mode: "in", adc: 512 },
+			],
+		}));
+		const snapshot = proxy.snapshot("raspberrypi");
+		expect(snapshot.sketch).toBe(true);
+		const pin9 = snapshot.pins.find((pin) => pin.physical === 9);
+		expect(pin9?.sketch).toBe(true);
+		expect(pin9?.dir).toBe("out");
+		expect(pin9?.value).toBe(1);
+		const pin11 = snapshot.pins.find((pin) => pin.physical === 11);
+		expect(pin11?.sketch).toBe(true);
+		expect(pin11?.dir).toBe("pwm");
+		expect(pin11?.analog).toBe(200);
+		expect(pin11?.pwm).toBeCloseTo(78.4, 1);
+		expect(pin11?.value).toBe(1);
+		const pin14 = snapshot.pins.find((pin) => pin.physical === 14);
+		expect(pin14?.sketch).toBe(true);
+		expect(pin14?.dir).toBe("in");
+		expect(pin14?.adc).toBe(512);
+		const pin13 = snapshot.pins.find((pin) => pin.physical === 13);
+		expect(pin13?.sketch).toBeUndefined();
+		expect(pin13?.value).toBe(0);
+	});
+
+	test("snapshot has no sketch flag without a running sketch", () => {
+		const proxy = memoryArduinoProxy({ connected: true });
+		proxy.setSketchStatus?.(() => null);
+		const snapshot = proxy.snapshot("raspberrypi");
+		expect(snapshot.sketch).toBeUndefined();
+		expect(
+			snapshot.pins.some((pin) => pin.sketch === true),
+		).toBe(false);
+	});
 });
 
 describe("live handshake", () => {

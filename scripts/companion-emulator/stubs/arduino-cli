@@ -2,8 +2,12 @@
 . "${GPIO_EMU_STUBS}/_common.sh"
 cmd="$1"
 if [ "$1" = "board" ] && [ "$2" = "list" ]; then
-	cat <<'EOF'
-{"detected_ports":[{"port":{"address":"/dev/ttyACM99","protocol":"serial"},"matching_boards":[{"fqbn":"arduino:avr:uno","name":"Arduino Uno"}]}]}
+	addr="/dev/ttyACM99"
+	if [ -n "${GPIO_EMU_ROOT:-}" ] && [ -e "${GPIO_EMU_ROOT}/ttyACM99" ]; then
+		addr="${GPIO_EMU_ROOT}/ttyACM99"
+	fi
+	cat <<EOF
+{"detected_ports":[{"port":{"address":"$addr","protocol":"serial"},"matching_boards":[{"fqbn":"arduino:avr:uno","name":"Arduino Uno"}]}]}
 EOF
 	exit 0
 fi

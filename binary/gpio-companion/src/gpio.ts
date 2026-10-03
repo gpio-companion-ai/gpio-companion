@@ -84,12 +84,13 @@ export type GpioController = {
 
 export type SketchPinStatus = {
 	physical: number;
-	chip: string;
-	line: number;
+	chip?: string;
+	line?: number;
 	mode: "in" | "out";
 	value?: 0 | 1;
 	analog?: number;
 	hz?: number;
+	adc?: number;
 };
 
 export type SketchStatus = {
@@ -152,23 +153,20 @@ export function readSketchStatus(
 		}
 		const pin = item as Record<string, unknown>;
 		const physical = Number(pin.physical);
-		const line = Number(pin.line);
-		if (
-			!Number.isInteger(physical) ||
-			physical < 1 ||
-			physical > 40 ||
-			typeof pin.chip !== "string" ||
-			!pin.chip ||
-			!Number.isInteger(line)
-		) {
+		if (!Number.isInteger(physical) || physical < 0 || physical > 127) {
 			continue;
 		}
 		const status: SketchPinStatus = {
 			physical,
-			chip: pin.chip,
-			line,
 			mode: pin.mode === "out" ? "out" : "in",
 		};
+		if (typeof pin.chip === "string" && pin.chip) {
+			status.chip = pin.chip;
+		}
+		const line = Number(pin.line);
+		if (Number.isInteger(line)) {
+			status.line = line;
+		}
 		if (pin.value === 0 || pin.value === 1) {
 			status.value = pin.value;
 		}
@@ -181,6 +179,14 @@ export function readSketchStatus(
 		}
 		if (typeof pin.hz === "number" && pin.hz >= 31 && pin.hz <= 65535) {
 			status.hz = pin.hz;
+		}
+		if (
+			typeof pin.adc === "number" &&
+			pin.adc >= 0 &&
+			pin.adc <= 1023 &&
+			Number.isInteger(pin.adc)
+		) {
+			status.adc = pin.adc;
 		}
 		pins.push(status);
 	}

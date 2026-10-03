@@ -24,7 +24,7 @@ export type FlashTarget = {
 	baud?: number;
 };
 
-const USB_ARDUINO_PORT = /^\/dev\/tty(USB|ACM)[0-9]+$/;
+const USB_ARDUINO_PORT = /^\/(?:.*\/)?tty(USB|ACM)[0-9]+$/;
 
 export function isUsbArduinoPort(address: string): boolean {
 	return USB_ARDUINO_PORT.test(address);

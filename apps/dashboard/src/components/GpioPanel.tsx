@@ -105,7 +105,7 @@ export default function GpioPanel({
 
 	const pins = snapshot?.pins ?? [];
 	const selectedPin = pins.find((pin) => pin.physical === selected);
-	const sketchReadOnly = target === "header" && (snapshot?.sketch ?? false);
+	const sketchReadOnly = Boolean(snapshot?.sketch);
 
 	function drive(command: GpioApply) {
 		const next = target === "arduino-proxy" ? { ...command, target } : command;

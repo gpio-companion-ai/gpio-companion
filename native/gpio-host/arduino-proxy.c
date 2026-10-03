@@ -4,6 +4,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -42,6 +43,8 @@ typedef struct {
 	int mode;
 	int value;
 	int used;
+	int duty;
+	int adc_read;
 } PinState;
 
 static PinState pins[MAX_PINS];
@@ -295,6 +298,135 @@ static void fill_analog_aliases(void) {
 	}
 }
 
+#define STATUS_MS 100
+#define STATUS_PATH_MAX 256
+
+static char status_path[STATUS_PATH_MAX];
+static long long status_started_ms;
+static volatile int status_dirty = 1;
+static pthread_t status_thread;
+static volatile int status_thread_running;
+
+static void status_mark(void) {
+	status_dirty = 1;
+}
+
+static long long wall_ms(void) {
+	struct timespec now;
+	clock_gettime(CLOCK_REALTIME, &now);
+	return (long long)now.tv_sec * 1000L + now.tv_nsec / 1000000L;
+}
+
+static void write_status_file(void) {
+	if (!status_path[0]) {
+		return;
+	}
+	char buf[MAX_PINS * 128 + 256];
+	size_t pos = (size_t)snprintf(buf, sizeof(buf),
+		"{\"pid\":%d,\"started\":%lld,\"pins\":[", getpid(),
+		status_started_ms);
+	if (pos >= sizeof(buf)) {
+		return;
+	}
+	int first = 1;
+	for (int pin = 0; pin < MAX_PINS; pin++) {
+		PinState *state = &pins[pin];
+		if (state->kind != PIN_GPIO || !state->used) {
+			continue;
+		}
+		int out = state->duty >= 0 || state->mode == OUTPUT;
+		int value = state->duty >= 0
+			? (state->duty >= 128 ? 1 : 0)
+			: (state->value ? 1 : 0);
+		int n = snprintf(buf + pos, sizeof(buf) - pos,
+			"%s{\"physical\":%d,\"mode\":\"%s\",\"value\":%d",
+			first ? "" : ",", pin, out ? "out" : "in", value);
+		if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+			break;
+		}
+		pos += (size_t)n;
+		first = 0;
+		if (state->duty >= 0) {
+			n = snprintf(buf + pos, sizeof(buf) - pos, ",\"analog\":%d",
+				state->duty);
+			if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+				break;
+			}
+			pos += (size_t)n;
+		}
+		if (state->adc && state->adc_read) {
+			int channel = pin < MAX_PINS ? analog_channel[pin] : -1;
+			if (channel >= 0 && channel < 16) {
+				n = snprintf(buf + pos, sizeof(buf) - pos, ",\"adc\":%d",
+					analog_value[channel]);
+				if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+					break;
+				}
+				pos += (size_t)n;
+			}
+		}
+		n = snprintf(buf + pos, sizeof(buf) - pos, "}");
+		if (n < 0 || pos + (size_t)n >= sizeof(buf)) {
+			break;
+		}
+		pos += (size_t)n;
+	}
+	pos += (size_t)snprintf(buf + pos, sizeof(buf) - pos, "]}\n");
+	char tmp[STATUS_PATH_MAX + 8];
+	snprintf(tmp, sizeof(tmp), "%s.tmp", status_path);
+	FILE *file = fopen(tmp, "w");
+	if (!file) {
+		return;
+	}
+	fwrite(buf, 1, pos, file);
+	fclose(file);
+	rename(tmp, status_path);
+}
+
+static void *status_loop(void *arg) {
+	(void)arg;
+	while (!gpio_host_stopping()) {
+		struct timespec ts = {
+			.tv_sec = STATUS_MS / 1000,
+			.tv_nsec = (STATUS_MS % 1000) * 1000000L,
+		};
+		while (clock_nanosleep(CLOCK_MONOTONIC, 0, &ts, &ts) == EINTR) {
+		}
+		if (status_dirty) {
+			status_dirty = 0;
+			write_status_file();
+		}
+	}
+	return NULL;
+}
+
+static void status_start(void) {
+	const char *path = getenv("GPIO_HOST_STATUS");
+	if (!path || !path[0]) {
+		return;
+	}
+	snprintf(status_path, sizeof(status_path), "%s", path);
+	status_started_ms = wall_ms();
+	write_status_file();
+	if (pthread_create(&status_thread, NULL, status_loop, NULL) == 0) {
+		status_thread_running = 1;
+	}
+}
+
+static void status_stop(void) {
+	if (status_thread_running) {
+		status_thread_running = 0;
+		pthread_join(status_thread, NULL);
+	}
+	if (!status_path[0]) {
+		return;
+	}
+	char tmp[STATUS_PATH_MAX + 8];
+	snprintf(tmp, sizeof(tmp), "%s.tmp", status_path);
+	unlink(tmp);
+	unlink(status_path);
+}
+
 static PinState *require_gpio(int pin, const char *op) {
 	if (pin < 0 || pin >= MAX_PINS || pins[pin].kind != PIN_GPIO) {
 		fprintf(stderr, "gpio-host-proxy: %s refused pin %d\n", op, pin);
@@ -381,6 +513,9 @@ void gpio_host_init(int argc, char **argv) {
 		die("missing --pinmap");
 	}
 	memset(pins, 0, sizeof(pins));
+	for (int pin = 0; pin < MAX_PINS; pin++) {
+		pins[pin].duty = -1;
+	}
 	parse_pinmap(pinmap);
 	fill_analog_aliases();
 	analog_map_from_pinmap();
@@ -390,9 +525,11 @@ void gpio_host_init(int argc, char **argv) {
 	Serial.println = serial_println;
 	Serial.printf = serial_printf;
 	serial_open();
+	status_start();
 }
 
 void gpio_host_shutdown(void) {
+	status_stop();
 	if (serial_fd < 0) {
 		return;
 	}
@@ -421,6 +558,8 @@ void pinMode(int pin, int mode) {
 	PinState *state = require_gpio(pin, "pinMode");
 	state->used = 1;
 	state->mode = mode;
+	state->duty = -1;
+	status_mark();
 	if (mode == INPUT_PULLUP) {
 		send_mode(pin, 11);
 	} else if (mode == OUTPUT) {
@@ -434,6 +573,8 @@ void digitalWrite(int pin, int value) {
 	PinState *state = require_gpio(pin, "digitalWrite");
 	state->used = 1;
 	state->value = value ? 1 : 0;
+	state->duty = -1;
+	status_mark();
 	send_digital(pin, state->value);
 }
 
@@ -452,6 +593,8 @@ void analogWrite(int pin, int value) {
 		value = 255;
 	}
 	state->value = value >= 128;
+	state->duty = value;
+	status_mark();
 	send_mode(pin, 3);
 	unsigned char buf[3] = {
 		(unsigned char)(ANALOG_MESSAGE | (pin & 0x0f)),
@@ -490,6 +633,10 @@ int analogRead(int pin) {
 		}
 		serial_wait(20);
 		if (analog_fresh[channel]) {
+			if (digital < MAX_PINS && pins[digital].kind == PIN_GPIO) {
+				pins[digital].adc_read = 1;
+			}
+			status_mark();
 			return analog_value[channel];
 		}
 	}

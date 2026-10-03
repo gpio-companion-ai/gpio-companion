@@ -1323,7 +1323,9 @@ function GpioSummaryLine({
 	const low = pins.filter((pin) => pin.value === 0).length;
 	return (
 		<Text style={{ color: colors.text, fontSize: 12, marginTop: 4 }}>
-			{`${prefix} · ${pins.length} GPIO · ${high} ${tCore("gpio.high")} · ${low} ${tCore("gpio.low")}`}
+			{`${prefix} · ${pins.length} GPIO · ${high} ${tCore("gpio.high")} · ${low} ${tCore("gpio.low")}${
+				snapshot.sketch ? ` · ${tCore("gpio.sketchReadOnly")}` : ""
+			}`}
 		</Text>
 	);
 }

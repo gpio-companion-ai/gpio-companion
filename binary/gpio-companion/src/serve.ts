@@ -298,7 +298,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 		gpio,
 		proxy,
 		hardware: async () => (await options.store.read()).hardware,
-		sketchRunning: () => Boolean(runRef?.statusPath?.()),
+		sketchTarget: () => runRef?.runTarget?.() ?? null,
 	});
 	const consoleHub = options.console ?? createConsoleHub();
 	const uiHub = options.ui ?? createUiHub();
@@ -365,7 +365,14 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 		});
 	runRef = run;
 	gpio.setSketchStatus?.(() =>
-		readSketchStatus(runRef?.statusPath?.() ?? null),
+		runRef?.runTarget?.() === "header"
+			? readSketchStatus(runRef?.statusPath?.() ?? null)
+			: null,
+	);
+	proxy.setSketchStatus?.(() =>
+		runRef?.runTarget?.() === "arduino-proxy"
+			? readSketchStatus(runRef?.statusPath?.() ?? null)
+			: null,
 	);
 	const verify =
 		options.verify ??
@@ -813,6 +820,7 @@ export async function handleDeviceRequest(
 			return handleGpio(
 				method,
 				bodyText,
+				url,
 				store,
 				extras?.gpio,
 				extras?.gpioStream,
@@ -1177,6 +1185,7 @@ export async function handleDeviceRequest(
 		return handleGpio(
 			method,
 			bodyText,
+			url,
 			store,
 			extras?.gpio,
 			extras?.gpioStream,
@@ -1503,6 +1512,7 @@ function json(body: unknown, status = 200): Response {
 async function handleGpio(
 	method: string,
 	bodyText: string,
+	url: URL,
 	store: ConfigStore,
 	gpio: GpioController | undefined,
 	gpioStream?: { publish(): void },
@@ -1514,6 +1524,12 @@ async function handleGpio(
 	}
 	const hardware = (await store.read()).hardware;
 	if (method === "GET") {
+		if (url.searchParams.get("target") === "arduino-proxy") {
+			if (!proxy) {
+				return json({ error: "arduino-proxy is unavailable" }, 503);
+			}
+			return json(proxy.snapshot(hardware));
+		}
 		return json(await gpio.snapshot(hardware));
 	}
 	if (method === "PUT") {
@@ -1522,6 +1538,12 @@ async function handleGpio(
 			return json({ error: "refresh is websocket-only" }, 400);
 		}
 		if (command.target === "arduino-proxy") {
+			if (run?.runTarget?.() === "arduino-proxy") {
+				return json(
+					{ error: "sketch is running — Live GPIO is read-only" },
+					409,
+				);
+			}
 			if (!proxy) {
 				return json({ error: "arduino-proxy is unavailable" }, 503);
 			}
@@ -1535,7 +1557,7 @@ async function handleGpio(
 		if (isGpioBusCommand(command)) {
 			throw new GpioError("bus ops need arduino-proxy");
 		}
-		if (run?.statusPath?.()) {
+		if (run?.runTarget?.() === "header") {
 			return json({ error: "sketch is running — Live GPIO is read-only" }, 409);
 		}
 		const snapshot = await gpio.apply(hardware, command);

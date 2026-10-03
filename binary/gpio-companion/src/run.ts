@@ -22,11 +22,14 @@ import {
 import type { ArduinoProxyController } from "./arduino-proxy.ts";
 import { type GpioController, killTree } from "./gpio.ts";
 
+export type RunTarget = "header" | "arduino-proxy";
+
 export type RunController = {
 	status(): RunStatus;
 	start(input: unknown): { started: true };
 	stop(): { stopped: true };
 	statusPath?(): string | null;
+	runTarget?(): RunTarget | null;
 };
 
 export type HostRunOptions = {
@@ -72,12 +75,16 @@ export function createRunController(options: HostRunOptions): RunController {
 	let last: RunResult | null = null;
 	let current: RunProcess | null = null;
 	let statusPath: string | null = null;
+	let runTarget: RunTarget | null = null;
 	return {
 		status() {
 			return { running, log, last };
 		},
 		statusPath() {
 			return statusPath;
+		},
+		runTarget() {
+			return runTarget;
 		},
 		start(input) {
 			const put = parseRunPut(input);
@@ -107,6 +114,9 @@ export function createRunController(options: HostRunOptions): RunController {
 				setStatusPath(path) {
 					statusPath = path;
 				},
+				setRunTarget(target) {
+					runTarget = target;
+				},
 			})
 				.then((result) => {
 					last = result;
@@ -128,6 +138,7 @@ export function createRunController(options: HostRunOptions): RunController {
 					current = null;
 					running = false;
 					statusPath = null;
+					runTarget = null;
 					options.onRunning?.(false);
 				});
 			return { started: true };
@@ -213,6 +224,7 @@ async function runJob(
 		setProc(proc: RunProcess | null): void;
 		cancelled(): boolean;
 		setStatusPath(path: string | null): void;
+		setRunTarget(target: RunTarget | null): void;
 	},
 ): Promise<RunResult> {
 	const stopped = (): RunResult => ({
@@ -233,6 +245,7 @@ async function runJob(
 	const statusFile = join(work, "gpio-host-status.json");
 	hooks.setStatusPath(statusFile);
 	const proxySketch = isArduinoProxySketchName(basename(put.dir));
+	hooks.setRunTarget(proxySketch ? "arduino-proxy" : "header");
 	let restore: { port: string; fqbn?: string } | null = null;
 	let restoreHeld = false;
 	try {
@@ -314,12 +327,11 @@ async function runJob(
 		};
 	} finally {
 		hooks.setStatusPath(null);
-		if (!proxySketch) {
-			try {
-				unlinkSync(statusFile);
-			} catch {
-				undefined;
-			}
+		hooks.setRunTarget(null);
+		try {
+			unlinkSync(statusFile);
+		} catch {
+			undefined;
 		}
 		if (restoreHeld && options.proxy) {
 			options.proxy.hold(false);
@@ -407,10 +419,9 @@ async function liveCompileAndRun(job: {
 		cwd: job.dir,
 		stdout: "pipe",
 		stderr: "pipe",
-		env:
-			job.proxy || !job.statusPath
-				? undefined
-				: { ...process.env, GPIO_HOST_STATUS: job.statusPath },
+		env: job.statusPath
+			? { ...process.env, GPIO_HOST_STATUS: job.statusPath }
+			: undefined,
 	});
 	if (job.cancelled?.()) {
 		await killTree(proc);

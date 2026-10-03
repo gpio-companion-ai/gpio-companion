@@ -12,8 +12,9 @@ import {
 import { join } from "node:path";
 import {
 	type ArduinoProxyBoard,
-	type ArduinoProxyStatus,
 	ArduinoProxyError,
+	type ArduinoProxyStatus,
+	analogToPwmPercent,
 	arduinoProxyBaud,
 	arduinoProxyBoard,
 	arduinoProxyBoardFromProbe,
@@ -21,7 +22,6 @@ import {
 	arduinoProxySnapshot,
 	createFirmataParser,
 	emptyArduinoProxyStatus,
-	FIRMWARE_BAUD_AVR,
 	encodeAnalogMappingQuery,
 	encodeAnalogWrite,
 	encodeCapabilityQuery,
@@ -34,6 +34,7 @@ import {
 	encodeSetPinMode,
 	encodeSpiTransfer,
 	encodeSystemReset,
+	FIRMWARE_BAUD_AVR,
 	type FlashPort,
 	type GpioApply,
 	type GpioBusCommand,
@@ -44,6 +45,7 @@ import {
 	isArduinoProxyFqbn,
 	parseArduinoBoardList,
 } from "gpio-companion";
+import type { SketchStatus } from "./gpio.ts";
 
 export type ProxySerial = {
 	write(bytes: Uint8Array): void;
@@ -60,6 +62,7 @@ export type ArduinoProxyController = {
 	release(): void;
 	attach(port: string, fqbn?: string): Promise<ArduinoProxyStatus>;
 	probe(): Promise<ArduinoProxyStatus>;
+	setSketchStatus?(sketchStatus: () => SketchStatus | null): void;
 };
 
 export type ArduinoProxyOptions = {
@@ -231,9 +234,7 @@ function isAgain(error: unknown): boolean {
 export function listUsbSerialPorts(devDir = "/dev"): string[] {
 	try {
 		return readdirSync(devDir)
-			.filter(
-				(name) => name.startsWith("ttyACM") || name.startsWith("ttyUSB"),
-			)
+			.filter((name) => name.startsWith("ttyACM") || name.startsWith("ttyUSB"))
 			.map((name) => join(devDir, name))
 			.sort();
 	} catch {
@@ -289,10 +290,8 @@ export function watchUsbSerialPorts(
 
 export function resolveArduinoProxyDir(): string {
 	const installed = "/usr/local/lib/gpio-companion/arduino-proxy";
-	const source = new URL(
-		"../../../native/arduino-proxy",
-		import.meta.url,
-	).pathname;
+	const source = new URL("../../../native/arduino-proxy", import.meta.url)
+		.pathname;
 	if (existsSync(join(installed, "arduino-proxy.ino"))) {
 		return installed;
 	}
@@ -308,6 +307,7 @@ export function createArduinoProxy(
 	let probing: Promise<ArduinoProxyStatus> | null = null;
 	let again = false;
 	let parser = createFirmataParser();
+	let sketchStatus: (() => SketchStatus | null) | null = null;
 	const listPorts =
 		options.listPorts ??
 		(async () =>
@@ -351,7 +351,11 @@ export function createArduinoProxy(
 		value?: number;
 		pin?: number;
 	}) {
-		if (event.type === "digital" && event.port !== undefined && event.value !== undefined) {
+		if (
+			event.type === "digital" &&
+			event.port !== undefined &&
+			event.value !== undefined
+		) {
 			const port = event.port;
 			const bits = event.value;
 			status = {
@@ -370,7 +374,11 @@ export function createArduinoProxy(
 			};
 			publish();
 		}
-		if (event.type === "analog" && event.pin !== undefined && event.value !== undefined) {
+		if (
+			event.type === "analog" &&
+			event.pin !== undefined &&
+			event.value !== undefined
+		) {
 			const analogChannel = event.pin;
 			const adc = event.value;
 			status = {
@@ -494,7 +502,10 @@ export function createArduinoProxy(
 			return status;
 		},
 		snapshot(hardware) {
-			return arduinoProxySnapshot(hardware, status);
+			return applySketchToProxySnapshot(
+				arduinoProxySnapshot(hardware, status),
+				sketchStatus?.() ?? null,
+			);
 		},
 		apply(hardware, command) {
 			const open = requireSerial();
@@ -550,7 +561,10 @@ export function createArduinoProxy(
 				pins: patchPins(status.pins, command),
 			};
 			publish();
-			return arduinoProxySnapshot(hardware, status);
+			return applySketchToProxySnapshot(
+				arduinoProxySnapshot(hardware, status),
+				sketchStatus?.() ?? null,
+			);
 		},
 		bus(command) {
 			const open = requireSerial();
@@ -576,6 +590,9 @@ export function createArduinoProxy(
 		},
 		hold(next) {
 			held = next;
+		},
+		setSketchStatus(next) {
+			sketchStatus = next;
 		},
 		release() {
 			serial?.close();
@@ -676,6 +693,7 @@ export function memoryArduinoProxy(
 	}
 	let open = Boolean(status.connected);
 	let held = false;
+	let sketchStatus: (() => SketchStatus | null) | null = null;
 	function requireOpen() {
 		if (!status.connected || !open) {
 			throw new ArduinoProxyError("arduino-proxy not connected");
@@ -686,12 +704,18 @@ export function memoryArduinoProxy(
 			return status;
 		},
 		snapshot(hardware) {
-			return arduinoProxySnapshot(hardware, status);
+			return applySketchToProxySnapshot(
+				arduinoProxySnapshot(hardware, status),
+				sketchStatus?.() ?? null,
+			);
 		},
 		apply(hardware, command) {
 			requireOpen();
 			status = { ...status, pins: patchPins(status.pins, command) };
-			return arduinoProxySnapshot(hardware, status);
+			return applySketchToProxySnapshot(
+				arduinoProxySnapshot(hardware, status),
+				sketchStatus?.() ?? null,
+			);
 		},
 		bus() {
 			requireOpen();
@@ -699,6 +723,9 @@ export function memoryArduinoProxy(
 		},
 		hold(next) {
 			held = next;
+		},
+		setSketchStatus(next) {
+			sketchStatus = next;
 		},
 		release() {
 			open = false;
@@ -729,6 +756,54 @@ export function memoryArduinoProxy(
 		async probe() {
 			return status;
 		},
+	};
+}
+
+function applySketchToProxySnapshot(
+	snapshot: GpioSnapshot,
+	sketch: SketchStatus | null,
+): GpioSnapshot {
+	if (!sketch) {
+		return snapshot;
+	}
+	const byPhysical = new Map(
+		sketch.pins.map((pin) => [pin.physical, pin] as const),
+	);
+	return {
+		...snapshot,
+		sketch: true,
+		pins: snapshot.pins.map((pin) => {
+			if (pin.type !== "gpio" || pin.reserved) {
+				return pin;
+			}
+			const sketchPin = byPhysical.get(pin.physical);
+			if (!sketchPin) {
+				return pin;
+			}
+			const next: GpioPinState = { ...pin, sketch: true };
+			delete next.dir;
+			delete next.value;
+			delete next.analog;
+			delete next.hz;
+			delete next.adc;
+			delete next.pwm;
+			if (typeof sketchPin.adc === "number") {
+				next.dir = "in";
+				next.adc = sketchPin.adc;
+			} else if (sketchPin.mode === "in") {
+				next.dir = "in";
+				next.value = sketchPin.value ?? 0;
+			} else if (typeof sketchPin.analog === "number") {
+				next.dir = "pwm";
+				next.analog = sketchPin.analog;
+				next.pwm = analogToPwmPercent(sketchPin.analog);
+				next.value = sketchPin.analog >= 128 ? 1 : 0;
+			} else {
+				next.dir = "out";
+				next.value = sketchPin.value ?? 0;
+			}
+			return next;
+		}),
 	};
 }
 

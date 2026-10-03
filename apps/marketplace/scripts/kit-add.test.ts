@@ -1,3 +1,5 @@
+import { readdirSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, test } from "bun:test";
 import {
 	buildInsertSql,
@@ -5,6 +7,8 @@ import {
 	generateProductId,
 	normalizeKitInput,
 } from "./kit-add";
+
+const APP_ROOT = join(import.meta.dir, "..");
 
 const valid = {
 	slug: "base-opi-3lts",
@@ -93,4 +97,26 @@ test("generated product ids match the commerce id format", () => {
 	const id = generateProductId();
 	expect(id).toMatch(/^prd_[0-9a-f]{32}$/);
 	expect(generateProductId()).not.toBe(id);
+});
+
+describe("kit definitions", () => {
+	const files = readdirSync(join(APP_ROOT, "kits")).filter((name) =>
+		name.endsWith(".json"),
+	);
+
+	test("kit definitions exist", () => {
+		expect(files.length).toBeGreaterThan(0);
+	});
+
+	for (const file of files) {
+		test(`${file} is a valid draft kit without invented price`, async () => {
+			const raw: unknown = await Bun.file(join(APP_ROOT, "kits", file)).json();
+			const kit = normalizeKitInput(raw);
+			expect(kit.priceCents).toBeNull();
+			expect(kit.nameEn).toBeTruthy();
+			expect(kit.nameFr).toBeTruthy();
+			expect(kit.descriptionEn).toBeTruthy();
+			expect(kit.descriptionFr).toBeTruthy();
+		});
+	}
 });

@@ -1,11 +1,14 @@
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { census, leftoverLabels } from "./census.ts";
 import { closeWs, deviceJson, openSignedWs, paths } from "./client.ts";
 import type { CompanionHandle } from "./start.ts";
 
 const PIN = 11;
 const CYCLES = 20;
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 export type LeakReport = {
 	warmupRssKb: number;
@@ -26,6 +29,7 @@ export async function runScenarios(
 	await gpioThenRun(handle, sketchDir);
 	await runLiveGpio(handle, sketchDir);
 	await flashJobs(handle, sketchDir);
+	await runProxyLiveGpio(handle);
 	await consoleUsb(handle);
 	await sockets(handle);
 	await removedT3Routes(handle);
@@ -264,6 +268,121 @@ async function flashJobs(handle: CompanionHandle, dir: string): Promise<void> {
 		const status = await deviceJson(client, paths.flash);
 		return !(status.body as { running?: boolean } | null)?.running;
 	}, "flash proxy finished");
+}
+
+async function runProxyLiveGpio(handle: CompanionHandle): Promise<void> {
+	const { client, pid, root, url } = handle;
+	const python = process.env.GPIO_EMU_REAL_PYTHON || "python3";
+	const sim = Bun.spawn([python, join(HERE, "firmata-sim.py"), root], {
+		stdout: "ignore",
+		stderr: "pipe",
+	});
+	try {
+		await waitUntil(() => existsSync(join(root, "ttyACM99")), "firmata sim link");
+		const flash = await deviceJson(client, paths.flashProxy, {
+			method: "POST",
+			body: JSON.stringify({ fqbn: "arduino:avr:uno" }),
+		});
+		if (flash.status !== 200) {
+			throw new Error(
+				`flash proxy failed ${flash.status} ${JSON.stringify(flash.body)}`,
+			);
+		}
+		await waitUntil(async () => {
+			const proxy = await deviceJson(client, "/v1/arduino-proxy");
+			return Boolean(
+				(proxy.body as { connected?: boolean } | null)?.connected,
+			);
+		}, "arduino-proxy connected to the firmata sim");
+		const dir = join(root, "arduino-proxy-blink");
+		await mkdir(dir, { recursive: true });
+		await writeFile(
+			join(dir, "sketch.c"),
+			"void setup(void) {}\nvoid loop(void) {}\n",
+		);
+		const start = await deviceJson(client, paths.run, {
+			method: "POST",
+			body: JSON.stringify({ dir }),
+		});
+		if (start.status !== 200) {
+			throw new Error(
+				`proxy run start failed ${start.status} ${JSON.stringify(start.body)}`,
+			);
+		}
+		await waitUntil(
+			() => leftoverLabels(census(pid, root)).includes("sketch"),
+			"proxy sketch hold",
+		);
+		await waitUntil(async () => {
+			const snapshot = await unsignedGpio(url, "arduino-proxy");
+			return Boolean((snapshot as { sketch?: boolean }).sketch);
+		}, "proxy snapshot sketch flag");
+		const snapshot = (await unsignedGpio(url, "arduino-proxy")) as {
+			sketch?: boolean;
+			pins?: Array<{
+				physical: number;
+				dir?: string;
+				value?: number;
+				analog?: number;
+				sketch?: boolean;
+			}>;
+		};
+		if (!snapshot.sketch) {
+			throw new Error("proxy snapshot missing sketch flag");
+		}
+		const pin11 = snapshot.pins?.find((pin) => pin.physical === PIN);
+		if (pin11?.sketch !== true || pin11.dir !== "out" || pin11.value !== 1) {
+			throw new Error(
+				`proxy sketch pin ${PIN} not merged ${JSON.stringify(pin11)}`,
+			);
+		}
+		const pin13 = snapshot.pins?.find((pin) => pin.physical === 13);
+		if (pin13?.sketch !== true || pin13.dir !== "pwm" || pin13.analog !== 100) {
+			throw new Error(
+				`proxy sketch pin 13 not merged ${JSON.stringify(pin13)}`,
+			);
+		}
+		const header = (await deviceJson(client, paths.gpio).then(
+			(response) => response.body,
+		)) as { sketch?: boolean };
+		if (header.sketch) {
+			throw new Error("header snapshot must stay live during a proxy sketch");
+		}
+		const blocked = await deviceJson(client, paths.gpio, {
+			method: "PUT",
+			body: JSON.stringify({
+				physical: 9,
+				dir: "out",
+				value: 1,
+				target: "arduino-proxy",
+			}),
+		});
+		if (blocked.status !== 409) {
+			throw new Error(
+				`expected 409 during proxy sketch got ${blocked.status} ${JSON.stringify(blocked.body)}`,
+			);
+		}
+		await deviceJson(client, paths.runStop, { method: "POST", body: "{}" });
+		await waitUntil(async () => {
+			const status = await deviceJson(client, paths.run);
+			return !(status.body as { running?: boolean } | null)?.running;
+		}, "proxy run stopped");
+		await waitUntil(async () => {
+			const after = (await unsignedGpio(url, "arduino-proxy")) as {
+				sketch?: boolean;
+			};
+			return !after.sketch;
+		}, "proxy sketch flag cleared");
+	} finally {
+		sim.kill("SIGTERM");
+		await sim.exited.catch(() => undefined);
+	}
+}
+
+async function unsignedGpio(url: string, target?: string): Promise<unknown> {
+	const query = target ? `?target=${target}` : "";
+	const response = await fetch(`${url}v1/gpio${query}`);
+	return response.json();
 }
 
 async function consoleUsb(handle: CompanionHandle): Promise<void> {

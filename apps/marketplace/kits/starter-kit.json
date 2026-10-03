@@ -1,0 +1,9 @@
+{
+	"slug": "starter-kit",
+	"sku": "002",
+	"nameEn": "gpio-companion starter kit - Orange Pi 3 LTS",
+	"nameFr": "Kit de démarrage gpio-companion - Orange Pi 3 LTS",
+	"descriptionEn": "Complete starter kit: an Orange Pi 3 LTS board with its Samsung Evo Plus MB-MC1T0S microSD card (the board gpio-companion boots on), a 5V 3A USB-C power supply with a power switch, a breadboard with jumper wires, LEDs with resistors (220 ohm to 10 kohm), tactile buttons, a piezo buzzer, an SG90 servo, an I2C sensor module, a printed Orange Pi 3 LTS GPIO pinout card, and an Arduino Uno R3 with its USB-B cable so the agent can flash Arduino firmware from day one.",
+	"descriptionFr": "Kit de démarrage complet : une carte Orange Pi 3 LTS avec sa carte microSD Samsung Evo Plus MB-MC1T0S (la carte sur laquelle gpio-companion démarre), une alimentation USB-C 5V 3A avec interrupteur, une plaque d'essai avec fils de connexion, des LED avec résistances (220 ohms à 10 kohms), des boutons tactiles, un buzzer piézo, un servo SG90, un module capteur I2C, une carte de brochage GPIO imprimée pour l'Orange Pi 3 LTS, et un Arduino Uno R3 avec son câble USB-B pour que l'agent puisse téléverser du firmware Arduino dès le premier jour.",
+	"priceCents": null
+}

@@ -8,6 +8,7 @@ import {
 	generateDeviceKeyPair,
 	signDeviceRequest,
 } from "gpio-companion";
+import { memoryArduinoProxy } from "./arduino-proxy.ts";
 import {
 	createGpioController,
 	isGpioPermissionDenied,
@@ -16,6 +17,7 @@ import {
 	parseGpioGetMany,
 	parseGpioinfo,
 	parseWiringOpReadall,
+	readSketchStatus,
 	resolveHeaderLines,
 } from "./gpio.ts";
 import { createGpioStream } from "./gpio-stream.ts";
@@ -353,6 +355,130 @@ describe("gpio stream commands", () => {
 		expect(JSON.parse(sent.at(-1) ?? "{}")).toEqual({
 			error: "pin 1 is power, not gpio",
 		});
+	});
+
+	test("blocks header writes only while a header sketch runs", async () => {
+		const gpio = createGpioController(memoryGpioBackend(GPIOINFO));
+		let target: "header" | "arduino-proxy" | null = null;
+		const sent: string[] = [];
+		const stream = createGpioStream({
+			gpio,
+			hardware: async () => "raspberrypi",
+			intervalMs: 60_000,
+			sketchTarget: () => target,
+		});
+		const ws = {
+			send(data: string) {
+				sent.push(data);
+			},
+			close() {},
+		};
+		stream.add(ws);
+		const start = Date.now();
+		while (Date.now() - start < 500 && sent.length === 0) {
+			await Bun.sleep(10);
+		}
+		sent.length = 0;
+		target = "header";
+		await stream.handle(
+			ws,
+			JSON.stringify({ physical: 11, dir: "out", value: 1 }),
+		);
+		expect(JSON.parse(sent.at(-1) ?? "{}")).toEqual({
+			error: "sketch is running — Live GPIO is read-only",
+		});
+		target = "arduino-proxy";
+		await stream.handle(
+			ws,
+			JSON.stringify({ physical: 11, dir: "out", value: 1 }),
+		);
+		const applied = JSON.parse(sent.at(-1) ?? "{}") as {
+			pins?: { physical: number; value?: number }[];
+			patch?: { physical: number; value?: number }[];
+		};
+		const pins = applied.pins ?? applied.patch;
+		expect(pins?.find((pin) => pin.physical === 11)?.value).toBe(1);
+	});
+
+	test("blocks proxy writes only while a proxy sketch runs", async () => {
+		const gpio = createGpioController(memoryGpioBackend(GPIOINFO));
+		const proxy = memoryArduinoProxy({ connected: true });
+		let target: "header" | "arduino-proxy" | null = null;
+		const sent: string[] = [];
+		const stream = createGpioStream({
+			gpio,
+			proxy,
+			hardware: async () => "raspberrypi",
+			intervalMs: 60_000,
+			sketchTarget: () => target,
+		});
+		const ws = {
+			send(data: string) {
+				sent.push(data);
+			},
+			close() {},
+		};
+		stream.add(ws);
+		const start = Date.now();
+		while (Date.now() - start < 500 && sent.length === 0) {
+			await Bun.sleep(10);
+		}
+		sent.length = 0;
+		target = "arduino-proxy";
+		await stream.handle(
+			ws,
+			JSON.stringify({
+				physical: 13,
+				dir: "out",
+				value: 1,
+				target: "arduino-proxy",
+			}),
+		);
+		expect(JSON.parse(sent.at(-1) ?? "{}")).toEqual({
+			error: "sketch is running — Live GPIO is read-only",
+		});
+		target = null;
+		sent.length = 0;
+		await stream.handle(
+			ws,
+			JSON.stringify({
+				physical: 13,
+				dir: "out",
+				value: 1,
+				target: "arduino-proxy",
+			}),
+		);
+		const applied = JSON.parse(sent.at(-1) ?? "{}") as {
+			pins?: { physical: number; value?: number }[];
+			patch?: { physical: number; value?: number }[];
+		};
+		const pins = applied.pins ?? applied.patch;
+		expect(pins?.find((pin) => pin.physical === 13)?.value).toBe(1);
+	});
+});
+
+describe("sketch status file", () => {
+	test("parses proxy-shaped pins without chip and line", async () => {
+		const dir = await mkdtemp(join(tmpdir(), "sketch-status-"));
+		const path = join(dir, "status.json");
+		const { writeFileSync } = await import("node:fs");
+		writeFileSync(
+			path,
+			JSON.stringify({
+				pid: process.pid,
+				pins: [
+					{ physical: 0, mode: "out", value: 1 },
+					{ physical: 11, mode: "out", analog: 200 },
+					{ physical: 14, mode: "in", adc: 512 },
+				],
+			}),
+		);
+		const status = readSketchStatus(path);
+		expect(status?.pins).toHaveLength(3);
+		expect(status?.pins[0]?.physical).toBe(0);
+		expect(status?.pins[1]?.analog).toBe(200);
+		expect(status?.pins[2]?.adc).toBe(512);
+		expect(status?.pins[2]?.mode).toBe("in");
 	});
 });
 

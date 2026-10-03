@@ -194,6 +194,75 @@ describe("run controller", () => {
 		});
 		expect(snapshot.pins.find((pin) => pin.physical === 13)?.value).toBe(1);
 	});
+
+	test("exposes the run target and status path per sketch kind", async () => {
+		const proxy = memoryArduinoProxy({
+			connected: true,
+			port: "/dev/ttyACM0",
+		});
+		const jobs: Array<{
+			proxy?: boolean;
+			statusPath?: string;
+			target: string | null;
+		}> = [];
+		let finish: () => void = () => undefined;
+		let hang = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		const run = createRunController({
+			hardware: "raspberrypi",
+			proxy,
+			hasSketch: () => true,
+			proxyRestoreMs: { delay: 0, retry: 0 },
+			async compileAndRun(job) {
+				jobs.push({
+					proxy: job.proxy,
+					statusPath: job.statusPath,
+					target: run.runTarget?.() ?? null,
+				});
+				await hang;
+				return {
+					ok: true,
+					log: "ok",
+					proc: { exited: Promise.resolve(0), kill() {} },
+				};
+			},
+		});
+		run.start({ dir: "/tmp/arduino-proxy-blink" });
+		let wait = Date.now();
+		while (jobs.length === 0 && Date.now() - wait < 1000) {
+			await Bun.sleep(10);
+		}
+		expect(jobs[0]?.proxy).toBe(true);
+		expect(jobs[0]?.statusPath).toBeTruthy();
+		expect(jobs[0]?.target).toBe("arduino-proxy");
+		expect(run.runTarget?.()).toBe("arduino-proxy");
+		expect(run.statusPath?.()).toBeTruthy();
+		finish();
+		wait = Date.now();
+		while (run.status().running && Date.now() - wait < 1000) {
+			await Bun.sleep(10);
+		}
+		expect(run.runTarget?.()).toBeNull();
+		expect(run.statusPath?.()).toBeNull();
+		hang = new Promise<void>((resolve) => {
+			finish = resolve;
+		});
+		run.start({ dir: "/tmp/blink" });
+		wait = Date.now();
+		while (jobs.length < 2 && Date.now() - wait < 1000) {
+			await Bun.sleep(10);
+		}
+		expect(jobs[1]?.proxy).toBe(false);
+		expect(jobs[1]?.target).toBe("header");
+		expect(run.runTarget?.()).toBe("header");
+		finish();
+		wait = Date.now();
+		while (run.status().running && Date.now() - wait < 1000) {
+			await Bun.sleep(10);
+		}
+		expect(run.runTarget?.()).toBeNull();
+	});
 });
 
 describe("formatPinmap", () => {
