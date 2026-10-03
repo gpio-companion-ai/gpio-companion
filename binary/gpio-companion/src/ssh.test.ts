@@ -105,23 +105,45 @@ type Fixture = {
 	mock: MockClient;
 };
 
-function openSession(): Fixture {
-	const ws = testSocket();
-	const mock = mockClient();
-	const controller = createSshController({
+function buildController(
+	mock: MockClient,
+	loadKey: () => Promise<string | null> | string | null,
+): SshController {
+	return createSshController({
 		createClient: () => mock.client,
 		username: "companion",
+		loadKey,
 	});
+}
+
+function tick(): Promise<void> {
+	return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+async function keySession(): Promise<Fixture> {
+	const ws = testSocket();
+	const mock = mockClient();
+	const controller = buildController(mock, () => "TEST-KEY");
 	controller.handle(ws, JSON.stringify({ op: "open" }));
+	await tick();
 	return { controller, ws, mock };
 }
 
-function submitPassword(
-	controller: SshController,
-	ws: TestSocket,
-	password: string,
-) {
+async function passwordSession(password: string): Promise<Fixture> {
+	const ws = testSocket();
+	const mock = mockClient();
+	const controller = buildController(mock, () => null);
+	controller.handle(ws, JSON.stringify({ op: "open" }));
+	await tick();
 	controller.handle(ws, JSON.stringify({ op: "input", data: `${password}\r` }));
+	await tick();
+	return { controller, ws, mock };
+}
+
+async function readyKeySession(): Promise<Fixture> {
+	const fixture = await keySession();
+	fixture.mock.emit("ready");
+	return fixture;
 }
 
 function promptText(ws: TestSocket): string {
@@ -132,34 +154,22 @@ function promptText(ws: TestSocket): string {
 		.join("");
 }
 
-function readySession(): Fixture {
-	const { controller, ws, mock } = openSession();
-	submitPassword(controller, ws, "secret");
-	mock.emit("ready");
-	return { controller, ws, mock };
-}
-
 describe("ssh controller", () => {
-	test("prompts for the board password and connects with it", () => {
-		const { controller, ws, mock } = openSession();
+	test("connects silently with the provisioned loopback key", async () => {
+		const { ws, mock } = await keySession();
 		expect(ws.frames[0]).toBe(JSON.stringify({ status: "auth" }));
-		expect(promptText(ws)).toContain("companion@127.0.0.1's password: ");
-		controller.handle(ws, JSON.stringify({ op: "input", data: "secret" }));
-		const echoed = promptText(ws);
-		expect(echoed).toContain("******");
-		expect(echoed).not.toContain("secret");
-		submitPassword(controller, ws, "");
 		expect(mock.config()).toMatchObject({
 			host: "127.0.0.1",
 			port: 22,
 			username: "companion",
-			password: "secret",
-			tryKeyboard: true,
+			privateKey: "TEST-KEY",
+			tryKeyboard: false,
 		});
+		expect(promptText(ws)).not.toContain("password:");
 	});
 
-	test("opens the shell after ready and pipes frames", () => {
-		const { controller, ws, mock } = readySession();
+	test("opens the shell after ready and pipes frames", async () => {
+		const { controller, ws, mock } = await readyKeySession();
 		const stream = mockStream();
 		const shellCall = mock.shellCalls[0];
 		if (!shellCall) {
@@ -188,37 +198,66 @@ describe("ssh controller", () => {
 		expect(mock.ended()).toBe(true);
 	});
 
-	test("rejects a second open while a session is active", () => {
-		const { controller, ws, mock } = openSession();
+	test("falls back to the password prompt when key auth is refused", async () => {
+		const { controller, ws, mock } = await keySession();
+		mock.emit("error", new Error("All authentication methods failed"));
+		expect(promptText(ws)).toContain("companion@127.0.0.1's password: ");
+		controller.handle(ws, JSON.stringify({ op: "input", data: "secret\r" }));
+		await tick();
+		expect(mock.config()).toMatchObject({
+			password: "secret",
+			tryKeyboard: true,
+		});
+		expect(mock.config()?.privateKey).toBeUndefined();
+	});
+
+	test("prompts for the password when no key can be provisioned", async () => {
+		const { ws, mock } = await passwordSession("secret");
+		expect(promptText(ws)).toContain("companion@127.0.0.1's password: ");
+		expect(promptText(ws)).toContain("******");
+		expect(mock.config()).toMatchObject({
+			password: "secret",
+			tryKeyboard: true,
+		});
+	});
+
+	test("rejects a second open while a session is active", async () => {
+		const { controller, ws, mock } = await keySession();
 		const second = testSocket();
 		controller.handle(second, JSON.stringify({ op: "open" }));
 		expect(frame(second)).toEqual({ error: "ssh session is already open" });
 		expect(mock.shellCalls).toHaveLength(0);
-		expect(mock.config()).toBe(null);
 	});
 
-	test("retries up to three times when authentication fails", () => {
-		const { controller, ws, mock } = openSession();
-		submitPassword(controller, ws, "wrong");
+	test("retries up to three times when password authentication fails", async () => {
+		const ws = testSocket();
+		const mock = mockClient();
+		const controller = buildController(mock, () => null);
+		controller.handle(ws, JSON.stringify({ op: "open" }));
+		await tick();
+		controller.handle(ws, JSON.stringify({ op: "input", data: "wrong\r" }));
+		await tick();
 		mock.emit("error", new Error("All authentication methods failed"));
 		expect(promptText(ws)).toContain("Permission denied, try again.");
-		expect(promptText(ws)).toContain("companion@127.0.0.1's password: ");
-		submitPassword(controller, ws, "wronger");
+		controller.handle(ws, JSON.stringify({ op: "input", data: "wronger\r" }));
+		await tick();
 		mock.emit("error", new Error("All authentication methods failed"));
 		expect(promptText(ws).match(/try again\./g)).toHaveLength(2);
-		submitPassword(controller, ws, "right");
+		controller.handle(ws, JSON.stringify({ op: "input", data: "right\r" }));
+		await tick();
 		mock.emit("error", new Error("All authentication methods failed"));
 		const last = ws.frames.at(-2) ?? "";
-		expect(JSON.parse(last)).toEqual({ error: "All authentication methods failed" });
+		expect(JSON.parse(last)).toEqual({
+			error: "All authentication methods failed",
+		});
 		expect(frame(ws)).toEqual({ status: "closed" });
 		const count = ws.frames.length;
 		controller.handle(ws, JSON.stringify({ op: "input", data: "ls" }));
 		expect(ws.frames).toHaveLength(count);
 	});
 
-	test("reports non-auth client errors and ends the session", () => {
-		const { controller, ws, mock } = openSession();
-		submitPassword(controller, ws, "secret");
+	test("reports non-auth client errors and ends the session", async () => {
+		const { ws, mock } = await passwordSession("secret");
 		mock.emit("error", new Error("connect ECONNREFUSED 127.0.0.1:22"));
 		expect(ws.frames.at(-2)).toBe(
 			JSON.stringify({ error: "connect ECONNREFUSED 127.0.0.1:22" }),
@@ -226,9 +265,8 @@ describe("ssh controller", () => {
 		expect(frame(ws)).toEqual({ status: "closed" });
 	});
 
-	test("keyboard-interactive prompts still render with echo control", () => {
-		const { controller, ws, mock } = openSession();
-		submitPassword(controller, ws, "");
+	test("keyboard-interactive prompts still render with echo control", async () => {
+		const { controller, ws, mock } = await passwordSession("");
 		mock.emit("keyboard-interactive", "ssh", "", "en-US", [{ prompt: "OTP:", echo: true }], () =>
 			undefined,
 		);
@@ -239,8 +277,8 @@ describe("ssh controller", () => {
 		expect(echoed).not.toContain("*");
 	});
 
-	test("shell open failure surfaces an error", () => {
-		const { controller, ws, mock } = readySession();
+	test("shell open failure surfaces an error", async () => {
+		const { ws, mock } = await readyKeySession();
 		const shellCall = mock.shellCalls[0];
 		if (!shellCall) {
 			throw new Error("shell was not requested");
@@ -250,21 +288,21 @@ describe("ssh controller", () => {
 		expect(frame(ws)).toEqual({ status: "closed" });
 	});
 
-	test("close command ends the session", () => {
-		const { controller, ws, mock } = readySession();
+	test("close command ends the session", async () => {
+		const { controller, ws, mock } = await readyKeySession();
 		controller.handle(ws, JSON.stringify({ op: "close" }));
 		expect(frame(ws)).toEqual({ status: "closed" });
 		expect(mock.ended()).toBe(true);
 	});
 
-	test("remove disconnects the owning socket", () => {
-		const { controller, ws, mock } = readySession();
+	test("remove disconnects the owning socket", async () => {
+		const { controller, ws, mock } = await readyKeySession();
 		controller.remove(ws);
 		expect(mock.ended()).toBe(true);
 	});
 
-	test("stray input from another socket is ignored silently", () => {
-		const { controller, ws, mock } = readySession();
+	test("stray input from another socket is ignored silently", async () => {
+		const { controller, ws, mock } = await readyKeySession();
 		const stream = mockStream();
 		const shellCall = mock.shellCalls[0];
 		if (!shellCall) {
@@ -280,8 +318,8 @@ describe("ssh controller", () => {
 		expect(mock.ended()).toBe(false);
 	});
 
-	test("rejects malformed commands", () => {
-		const { controller, ws } = openSession();
+	test("rejects malformed commands", async () => {
+		const { controller, ws } = await keySession();
 		ws.frames.length = 0;
 		controller.handle(ws, "not json");
 		const parsed = JSON.parse(ws.frames[0] ?? "{}") as { error?: string };

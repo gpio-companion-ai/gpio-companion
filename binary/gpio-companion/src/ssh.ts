@@ -1,9 +1,12 @@
+import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import {
 	parseSshWsCommand,
 	SSH_DEFAULT_COLS,
 	SSH_DEFAULT_ROWS,
 } from "gpio-companion";
-import { Client } from "ssh2";
+import { Client, utils } from "ssh2";
 
 export type SshSocket = {
 	send(data: string): void;
@@ -21,15 +24,19 @@ export type SshStreamLike = {
 
 export type SshPrompt = { prompt: string; echo: boolean };
 
+export type SshConnectAuth = {
+	privateKey?: string;
+	password?: string;
+};
+
 export type SshClientLike = {
 	connect(config: {
 		host: string;
 		port: number;
 		username: string;
-		password: string;
 		tryKeyboard: boolean;
 		readyTimeout: number;
-	}): void;
+	} & SshConnectAuth): void;
 	end(): void;
 	shell(
 		options: { cols: number; rows: number; term: string },
@@ -54,16 +61,52 @@ export type SshController = {
 	remove(ws: SshSocket): void;
 };
 
+export const SSH_KEY_NAME = "gpio-companion_ed25519";
+
+export function ensureLoopbackKey(): string | null {
+	try {
+		const dir = join(homedir(), ".ssh");
+		const keyPath = join(dir, SSH_KEY_NAME);
+		if (existsSync(keyPath)) {
+			return readFileSync(keyPath, "utf8");
+		}
+		const pair = utils.generateKeyPairSync("ed25519");
+		const privateKey = Buffer.from(pair.private).toString("utf8");
+		const publicKey = Buffer.from(pair.public).toString("utf8").trim();
+		mkdirSync(dir, { recursive: true, mode: 0o700 });
+		writeFileSync(keyPath, privateKey, { mode: 0o600 });
+		chmodSync(keyPath, 0o600);
+		const authPath = join(dir, "authorized_keys");
+		const line = `from="127.0.0.1,::1" ${publicKey} gpio-companion-dock`;
+		let existing = "";
+		try {
+			existing = readFileSync(authPath, "utf8");
+		} catch {
+			existing = "";
+		}
+		if (!existing.split("\n").some((entry) => entry.includes(SSH_KEY_NAME))) {
+			const next = `${existing.replace(/\n*$/, "")}\n${line}\n`;
+			writeFileSync(authPath, next, { mode: 0o600 });
+			chmodSync(authPath, 0o600);
+		}
+		return privateKey;
+	} catch {
+		return null;
+	}
+}
+
 export function createSshController(options?: {
 	createClient?: () => SshClientLike;
 	host?: string;
 	port?: number;
 	username?: string;
+	loadKey?: () => Promise<string | null> | string | null;
 }): SshController {
 	const createClient = options?.createClient ?? defaultClient;
 	const host = options?.host ?? "127.0.0.1";
 	const port = options?.port ?? 22;
 	const username = options?.username ?? runtimeUsername();
+	const loadKey = memoizeKey(options?.loadKey ?? ensureLoopbackKey);
 	let socket: SshSocket | null = null;
 	let client: SshClientLike | null = null;
 	let stream: SshStreamLike | null = null;
@@ -119,7 +162,8 @@ export function createSshController(options?: {
 		send(ws, { chunk: `\r\n${username}@${host}'s password: ` });
 		collecting = {
 			echo: false,
-			finish: (answers) => void openConnection(ws, answers[0] ?? ""),
+			finish: (answers) =>
+				void openConnection(ws, { password: answers[0] ?? "" }),
 		};
 		answer = "";
 	}
@@ -133,11 +177,29 @@ export function createSshController(options?: {
 		decoder = new TextDecoder();
 		attempts = 0;
 		send(ws, { status: "auth" });
-		promptPassword(ws);
+		void Promise.resolve()
+			.then(() => loadKey())
+			.then((key) => {
+				if (socket !== ws) {
+					return;
+				}
+				if (key) {
+					openConnection(ws, { privateKey: key });
+					return;
+				}
+				promptPassword(ws);
+			})
+			.catch(() => {
+				if (socket === ws) {
+					promptPassword(ws);
+				}
+			});
 	}
 
-	function openConnection(ws: SshSocket, password: string) {
-		attempts += 1;
+	function openConnection(ws: SshSocket, auth: SshConnectAuth) {
+		if (auth.password !== undefined) {
+			attempts += 1;
+		}
 		const conn = createClient();
 		client = conn;
 		conn.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
@@ -180,6 +242,21 @@ export function createSshController(options?: {
 		});
 		conn.on("error", (error) => {
 			if (
+				auth.privateKey &&
+				auth.password === undefined &&
+				/all authentication methods failed|publickey/i.test(error.message)
+			) {
+				const stale = client;
+				client = null;
+				try {
+					stale?.end();
+				} catch {
+					undefined;
+				}
+				promptPassword(ws);
+				return;
+			}
+			if (
 				attempts < 3 &&
 				/all authentication methods failed/i.test(error.message)
 			) {
@@ -200,9 +277,9 @@ export function createSshController(options?: {
 			host,
 			port,
 			username,
-			password,
-			tryKeyboard: true,
+			tryKeyboard: auth.password !== undefined,
 			readyTimeout: 10_000,
+			...auth,
 		});
 	}
 
@@ -304,4 +381,18 @@ function runtimeUsername(): string {
 
 function defaultClient(): SshClientLike {
 	return new Client() as unknown as SshClientLike;
+}
+
+function memoizeKey(
+	load: () => Promise<string | null> | string | null,
+): () => Promise<string | null> {
+	let value: Promise<string | null> | null = null;
+	return () => {
+		if (!value) {
+			value = Promise.resolve()
+				.then(() => load())
+				.catch(() => null);
+		}
+		return value;
+	};
 }
