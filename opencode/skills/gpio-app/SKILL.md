@@ -2,13 +2,13 @@
 name: gpio-app
 description: >-
   Serve a custom Bun web app from this board's project repo so the user can
-  use it on the dashboard, desktop, or mobile: write app/<name>/server.ts
-  (bind 127.0.0.1 on GPIO_APP_PORT), `gpio-companion app start --repo <repo>
-  --name <kebab> --entry app/<name>/server.ts`, then show it with
-  `gpio-companion ui app --id <name> --view split|modal|page`. One app at a
-  time. `app stop` when done. Use for custom panels, controls, and live views
-  the chat cannot express. Not for pin control itself — hardware still goes
-  through sketch run / flash / gpio CLI.
+  use it on the dashboard, desktop, or mobile: create app/<name>/ with a
+  package.json (name = kebab id) and a server.ts that binds 127.0.0.1 on
+  GPIO_APP_PORT; `gpio-companion app start --repo <repo> --dir <name>`, then
+  `gpio-companion app list` / `ui app --id <name> --view split|modal|page`.
+  One app at a time. Users can also start/stop it from the dashboard (Project
+  → Custom server, dock → actions). Not for pin control itself — hardware
+  still goes through sketch run / flash / gpio CLI.
 ---
 
 # gpio-app
@@ -18,15 +18,23 @@ gpio-companion app (web, desktop, or mobile). The app is proxied through the
 companion device API over a signed, short-lived frame URL — the browser never
 holds board credentials.
 
-## Server contract
+## App project layout
 
-Write the server in the project checkout:
+Create the app inside the project checkout:
 
 ```
-~/projects/<repo>/app/<name>/server.ts
+~/projects/<repo>/app/<name>/
+├── package.json   {"name": "<kebab-id>"}
+└── server.ts
 ```
+
+- `package.json` is required; its `name` is the app id users and the dashboard
+  see (kebab-case, ≤64 chars, not `start`/`stop`/`list`/`frame`).
+- Entry resolution: `package.json` `main` if it exists, else `server.ts`, else
+  `index.ts`.
 
 ```ts
+// ~/projects/<repo>/app/led-panel/server.ts
 const port = Number(process.env.GPIO_APP_PORT ?? 0);
 Bun.serve({
 	port,
@@ -59,22 +67,27 @@ Rules:
 - The app runs as this GPIO user. Reading project files is fine; do not touch
   `/etc`, pairing, or secrets. Hardware still goes through the board CLI /
   sketches — this channel is UI, not pin control.
-- Only `.ts`/`.js` entry files under the repo. `bun` is already installed.
+- Commit the app with the project (feature-branch rules apply).
 
 ## Start, show, stop
 
 You run board commands yourself. Never tell the user board commands.
 
 ```sh
-gpio-companion app start --repo blink-led --name led-panel --entry app/led-panel/server.ts
+gpio-companion app list
+gpio-companion app start --repo blink-led --dir led-panel
 ```
 
-- `--repo` is the GitHub repo name (the `~/projects/<repo>` checkout).
-- `--name` is kebab-case, ≤64 chars, not `start`/`stop`/`frame`.
-- Reply includes `port`. If start fails, read `gpio-companion app status` —
-  the log tail says why (missing file, wrong port, crashed).
+- `--dir` is the folder name under `app/` in that repo.
+- The reply includes the app `name` (from package.json) and `port`. If start
+  fails, read `gpio-companion app status` — the log tail says why (missing
+  package.json, no entry file, wrong port, crashed).
 - **One app at a time.** A second `app start` returns 409 until
   `gpio-companion app stop`.
+- The user can also start/stop the app from the dashboard without you:
+  **Project → Custom server** (pick the app, Start server, Open), and the
+  dock actions tab has **Stop custom server**. If the user started it, just
+  open it with `ui app`.
 
 Then open it for the user (skill `gpio-ui`; check `ui list` first — when no
 app is open, say so once and move on):

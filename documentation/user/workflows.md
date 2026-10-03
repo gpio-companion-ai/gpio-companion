@@ -122,17 +122,26 @@ You normally do not need to edit these paths manually, but they help explain wha
 ## Custom board apps
 
 When a project needs its own control panel or live view — sliders, charts, a
-wizard — the agent can build a small board app and serve it from the project.
-Ask for it in Open Code ("make a panel that…"), and the agent starts the app
-on the board and opens it for you.
+wizard — the agent can build a small board app inside the project (`app/`
+folder, one folder per app) and serve it from the board. Ask for it in Open
+Code ("make a panel that…"), and the agent starts the app and opens it for
+you.
 
-- **Split view** opens beside the chat in Open Code (where file previews
-  appear). **Dialog** opens it over the current page, and **page** opens it
-  as its own view (web `/devices/app`).
+You can also start and open board apps yourself:
+
+- Open a project on **Project** and expand **Custom server** (or the
+  equivalent board-tools section). The picker lists the project's apps by
+  their package name. Choose **Start server**, then **Open** to show it in
+  the preview pane beside the Open Code chat.
+- The dock actions tab has **Stop custom server** to stop it again.
+- **Split view** opens beside the chat in Open Code. **Dialog** opens it over
+  the current page, and **page** opens it as its own view (web
+  `/devices/app`).
 - The app runs on your board and is reached through a private, short-lived
-  link; the browser never holds your board credentials.
-- The link renews automatically. If an app stops, its views show an error
-  note — ask the agent to start it again.
+  link; the browser never holds your board credentials, and the link renews
+  automatically.
+- If an app stops, its views show an error note — start it again here or ask
+  the agent.
 - A board app is a custom surface for that project. Hardware control still
   goes through the usual sketches, flashing, and Live GPIO.
 

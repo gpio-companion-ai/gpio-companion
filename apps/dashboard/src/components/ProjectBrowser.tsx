@@ -49,6 +49,7 @@ import useMobile from "../hooks/useMobile.ts";
 import { useWorkbench } from "../hooks/useWorkbench.tsx";
 import { unwrapAction } from "../lib/action.ts";
 import type { GithubRepo, ProjectBundle } from "../lib/github.ts";
+import AppPanel from "./AppPanel.tsx";
 import BreadboardViewer from "./BreadboardViewer.tsx";
 import ModelViewer from "./ModelViewer.tsx";
 import PcbViewer from "./PcbViewer.tsx";
@@ -1140,6 +1141,9 @@ export default function ProjectBrowser({
 								}}
 							/>
 						</div>
+						{uuid && paired ? (
+							<AppPanel uuid={uuid} project={bundle.repo} />
+						) : null}
 					</section>
 				) : empty ? null : (
 					<Paper className="workbench-empty" elevation={0}>

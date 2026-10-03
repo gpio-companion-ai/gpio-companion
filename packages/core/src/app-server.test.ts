@@ -4,6 +4,7 @@ import {
 	APP_START_PATH,
 	APP_STOP_PATH,
 	APP_TOKEN_MIN_LENGTH,
+	appEntryCandidates,
 	appFrameBasePath,
 	appFrameUrl,
 	appFrameWsUrl,
@@ -17,7 +18,9 @@ import {
 	isValidAppToken,
 	newAppToken,
 	parseAppFramePath,
+	parseAppPackageName,
 	parseAppStartPut,
+	parseBoardAppList,
 } from "./app-server.ts";
 import { parseUiCommand, UiError } from "./ui.ts";
 
@@ -33,6 +36,7 @@ describe("app names and tokens", () => {
 		expect(isAppName("x".repeat(65))).toBe(false);
 		expect(isAppName("start")).toBe(false);
 		expect(isAppName("stop")).toBe(false);
+		expect(isAppName("list")).toBe(false);
 		expect(isAppName("frame")).toBe(false);
 	});
 
@@ -68,6 +72,7 @@ describe("app path predicates", () => {
 		expect(isAppManagePath("/v1/app")).toBe(true);
 		expect(isAppManagePath("/v1/app/start")).toBe(true);
 		expect(isAppManagePath("/v1/app/stop")).toBe(true);
+		expect(isAppManagePath("/v1/app/list")).toBe(true);
 		expect(isAppManagePath("/v1/app/led-panel/frame")).toBe(true);
 		expect(isAppManagePath("/v1/app/led-panel/abc")).toBe(false);
 		expect(isAppManagePath("/v1/arduino-proxy")).toBe(false);
@@ -137,33 +142,79 @@ describe("parseAppStartPut", () => {
 		expect(
 			parseAppStartPut({
 				repo: "blink-led",
-				name: "led-panel",
-				entry: "app/led-panel/server.ts",
+				dir: "led-panel",
 			}),
 		).toEqual({
 			repo: "blink-led",
-			name: "led-panel",
-			entry: "app/led-panel/server.ts",
+			dir: "led-panel",
 		});
 	});
 
-	test("rejects bad repo, name, entry", () => {
+	test("rejects bad repo and dir", () => {
 		expect(() => parseAppStartPut(null)).toThrow();
-		expect(() => parseAppStartPut({ name: "a", entry: "a.ts" })).toThrow();
+		expect(() => parseAppStartPut({ dir: "a" })).toThrow();
+		expect(() => parseAppStartPut({ repo: "a/b", dir: "a" })).toThrow();
+		expect(() => parseAppStartPut({ repo: "a", dir: "nested/dir" })).toThrow();
+		expect(() => parseAppStartPut({ repo: "a", dir: ".." })).toThrow();
+	});
+});
+
+describe("package and entry resolution", () => {
+	test("parseAppPackageName reads the kebab name", () => {
+		expect(parseAppPackageName({ name: "led-panel" })).toBe("led-panel");
+		expect(() => parseAppPackageName({ name: "Led Panel" })).toThrow();
+		expect(() => parseAppPackageName({ name: "list" })).toThrow();
+		expect(() => parseAppPackageName({})).toThrow();
+		expect(() => parseAppPackageName(null)).toThrow();
+	});
+
+	test("appEntryCandidates prefers main then server/index", () => {
+		expect(appEntryCandidates("src/main.ts")).toEqual([
+			"src/main.ts",
+			"server.ts",
+			"server.tsx",
+			"server.js",
+			"server.jsx",
+			"server.mjs",
+			"index.ts",
+			"index.tsx",
+			"index.js",
+			"index.jsx",
+			"index.mjs",
+		]);
+		expect(appEntryCandidates(undefined)[0]).toBe("server.ts");
+		expect(appEntryCandidates("/abs/main.ts")[0]).toBe("server.ts");
+		expect(appEntryCandidates("../up.ts")[0]).toBe("server.ts");
+		expect(appEntryCandidates("run.py")[0]).toBe("server.ts");
+	});
+
+	test("parseBoardAppList validates items", () => {
+		expect(
+			parseBoardAppList({
+				apps: [
+					{
+						project: "blink-led",
+						dir: "led-panel",
+						name: "led-panel",
+						entry: "server.ts",
+					},
+				],
+			}),
+		).toEqual({
+			apps: [
+				{
+					project: "blink-led",
+					dir: "led-panel",
+					name: "led-panel",
+					entry: "server.ts",
+				},
+			],
+		});
+		expect(() => parseBoardAppList({})).toThrow();
 		expect(() =>
-			parseAppStartPut({ repo: "a/b", name: "a", entry: "a.ts" }),
-		).toThrow();
-		expect(() =>
-			parseAppStartPut({ repo: "a", name: "Start", entry: "a.ts" }),
-		).toThrow();
-		expect(() =>
-			parseAppStartPut({ repo: "a", name: "a", entry: "/abs/a.ts" }),
-		).toThrow();
-		expect(() =>
-			parseAppStartPut({ repo: "a", name: "a", entry: "../a.ts" }),
-		).toThrow();
-		expect(() =>
-			parseAppStartPut({ repo: "a", name: "a", entry: "server.py" }),
+			parseBoardAppList({
+				apps: [{ project: "x", dir: "a", name: "A B", entry: "s.ts" }],
+			}),
 		).toThrow();
 	});
 });

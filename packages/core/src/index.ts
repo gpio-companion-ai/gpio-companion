@@ -69,6 +69,8 @@ export {
 } from "./ai-token.ts";
 export {
 	APP_ENTRY_MAX,
+	APP_LIST_MAX,
+	APP_LIST_PATH,
 	APP_LOG_MAX,
 	APP_MAX_TOKENS,
 	APP_NAME_MAX,
@@ -89,10 +91,13 @@ export {
 	type AppStartPut,
 	type AppStatus,
 	type AppView,
+	appEntryCandidates,
 	appFrameBasePath,
 	appFrameUrl,
 	appFrameWsUrl,
 	appNameFromMintPath,
+	type BoardApp,
+	type BoardAppList,
 	capAppLog,
 	isAppFrameMintPath,
 	isAppManagePath,
@@ -102,7 +107,9 @@ export {
 	isValidAppToken,
 	newAppToken,
 	parseAppFramePath,
+	parseAppPackageName,
 	parseAppStartPut,
+	parseBoardAppList,
 } from "./app-server.ts";
 export {
 	ARDUINO_PROXY_BOARDS,
@@ -924,6 +931,7 @@ export {
 	publicPairing,
 } from "./pairing.ts";
 export {
+	APP_DIR,
 	BREADBOARD_CIRCUIT_JSON,
 	BREADBOARD_PREVIEW_SVG,
 	FIRMWARE_SKETCH_DIR,

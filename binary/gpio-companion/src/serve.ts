@@ -3,6 +3,7 @@ import {
 	AGENT_PATH,
 	AGENT_STOP_PATH,
 	AgentError,
+	APP_LIST_PATH,
 	APP_PATH,
 	APP_START_PATH,
 	APP_STOP_PATH,
@@ -115,6 +116,7 @@ import {
 	type AppController,
 	appUpstreamWsUrl,
 	createAppController,
+	listBoardApps,
 } from "./app-server.ts";
 import {
 	type ArduinoProxyController,
@@ -988,7 +990,8 @@ export async function handleDeviceRequest(
 			isArduinoProxyPath(path) ||
 			path === APP_PATH ||
 			path === APP_START_PATH ||
-			path === APP_STOP_PATH) &&
+			path === APP_STOP_PATH ||
+			path === APP_LIST_PATH) &&
 		isLoopback(url) &&
 		!hasDeviceSignature(request.headers)
 	) {
@@ -1013,7 +1016,8 @@ export async function handleDeviceRequest(
 		if (
 			path === APP_PATH ||
 			path === APP_START_PATH ||
-			path === APP_STOP_PATH
+			path === APP_STOP_PATH ||
+			path === APP_LIST_PATH
 		) {
 			return await handleApp(method, path, bodyText, extras);
 		}
@@ -1890,6 +1894,11 @@ async function handleApp(
 	const app = extras?.app;
 	if (!app) {
 		return json({ error: "app is unavailable" }, 503);
+	}
+	if (method === "GET" && path === APP_LIST_PATH) {
+		return json({
+			apps: listBoardApps(extras?.projectsDir ?? projectsRoot()),
+		});
 	}
 	if (method === "GET" && path === APP_PATH) {
 		return json(app.status());

@@ -1004,6 +1004,57 @@ export function mintAppFrame(token: string, uuid: string, appId: string) {
 	});
 }
 
+export type BoardApp = {
+	project: string;
+	dir: string;
+	name: string;
+	entry: string;
+};
+
+export type AppStatus = {
+	running: boolean;
+	name: string | null;
+	repo: string | null;
+	port: number | null;
+	startedAt: number | null;
+	log: string;
+};
+
+export function loadBoardApps(token: string, uuid: string) {
+	return request<{ apps: BoardApp[] }>(
+		token,
+		`/api/mobile/app?uuid=${encodeURIComponent(uuid)}&apps=1`,
+	);
+}
+
+export function loadAppStatus(token: string, uuid: string) {
+	return request<AppStatus>(
+		token,
+		`/api/mobile/app?uuid=${encodeURIComponent(uuid)}`,
+	);
+}
+
+export function startApp(
+	token: string,
+	input: { uuid: string; repo: string; dir: string },
+) {
+	return request<{ started: boolean; name: string; port: number }>(
+		token,
+		"/api/mobile/app",
+		{
+			method: "POST",
+			body: JSON.stringify(input),
+		},
+	);
+}
+
+export function stopApp(token: string, uuid: string) {
+	return request<{ stopped: boolean }>(token, "/api/mobile/app", {
+		method: "POST",
+		body: JSON.stringify({ uuid, stop: true }),
+	});
+}
+
 export function startUsbConsole(
 	token: string,
 	input: { uuid: string; port: string; baud?: number },

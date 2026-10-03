@@ -1,6 +1,8 @@
-import { statSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
+	APP_DIR,
+	APP_LIST_MAX,
 	APP_MAX_TOKENS,
 	APP_PORT_MAX,
 	APP_PORT_MIN,
@@ -11,11 +13,14 @@ import {
 	type AppFramePath,
 	type AppStartPut,
 	type AppStatus,
+	appEntryCandidates,
 	appFrameBasePath,
+	type BoardApp,
 	capAppLog,
 	isAppName,
 	isAppTokenFresh,
 	newAppToken,
+	parseAppPackageName,
 	parseAppStartPut,
 } from "gpio-companion";
 import { killTree } from "./gpio.ts";
@@ -163,8 +168,9 @@ export function createAppController(options: AppOptions = {}): AppController {
 					409,
 				);
 			}
-			const dir = resolveRepoDir(put.repo, options.projectsDir);
-			resolveEntryFile(dir, put.entry);
+			const repoDir = resolveRepoDir(put.repo, options.projectsDir);
+			const appDir = resolveAppDir(put.repo, put.dir, options.projectsDir);
+			const manifest = readAppManifest(appDir);
 			const port = options.portPicker
 				? await options.portPicker()
 				: await allocatePort(fetcher);
@@ -175,14 +181,19 @@ export function createAppController(options: AppOptions = {}): AppController {
 			log = "";
 			const startedAt = Date.now();
 			current = {
-				name: put.name,
+				name: manifest.name,
 				repo: put.repo,
 				port,
 				startedAt,
 				proc: null,
 			};
 			const bin = options.bunBin ?? "bun";
-			const proc = spawn({ dir, entry: put.entry, port, bin });
+			const proc = spawn({
+				dir: repoDir,
+				entry: `${APP_DIR}/${put.dir}/${manifest.entry}`,
+				port,
+				bin,
+			});
 			current.proc = proc;
 			void readLive(proc.stdout, append);
 			void readLive(proc.stderr, append);
@@ -206,7 +217,7 @@ export function createAppController(options: AppOptions = {}): AppController {
 				current = null;
 				clearTokens();
 			});
-			return { started: true, name: put.name, port };
+			return { started: true, name: manifest.name, port };
 		},
 		stop() {
 			void stopCurrent();
@@ -398,22 +409,100 @@ function resolveRepoDir(repo: string, projectsDir?: string): string {
 	return dir;
 }
 
-function resolveEntryFile(dir: string, entry: string): string {
-	const path = join(dir, entry);
-	if (!path.startsWith(dir) || path.includes("..")) {
-		throw new AppError("entry is invalid");
+export function listBoardApps(destRoot: string): BoardApp[] {
+	if (!destRoot.startsWith("/") || destRoot.includes("..")) {
+		return [];
+	}
+	let projects: string[] = [];
+	try {
+		projects = readdirSync(destRoot);
+	} catch {
+		return [];
+	}
+	const apps: BoardApp[] = [];
+	for (const project of projects) {
+		if (project.startsWith(".") || project === "node_modules") {
+			continue;
+		}
+		const appRoot = join(destRoot, project, APP_DIR);
+		if (!isDir(appRoot)) {
+			continue;
+		}
+		for (const dir of readdirSync(appRoot)) {
+			if (apps.length >= APP_LIST_MAX) {
+				return apps;
+			}
+			if (dir.startsWith(".") || dir === "node_modules") {
+				continue;
+			}
+			const appDir = join(appRoot, dir);
+			if (!isDir(appDir)) {
+				continue;
+			}
+			try {
+				const manifest = readAppManifest(appDir);
+				if (
+					!apps.some((item) => item.project === project && item.dir === dir)
+				) {
+					apps.push({
+						project,
+						dir,
+						name: manifest.name,
+						entry: manifest.entry,
+					});
+				}
+			} catch {
+				// no valid package.json — not a board app
+			}
+		}
+	}
+	return apps;
+}
+
+function readAppManifest(appDir: string): { name: string; entry: string } {
+	const manifestPath = join(appDir, "package.json");
+	let pkg: unknown;
+	try {
+		pkg = JSON.parse(readFileSync(manifestPath, "utf8") as unknown as string);
+	} catch {
+		throw new AppError("app package.json is missing or invalid");
+	}
+	const name = parseAppPackageName(pkg);
+	const main = (pkg as { main?: unknown }).main;
+	const entry = appEntryCandidates(main).find((candidate) =>
+		statIsFile(join(appDir, candidate)),
+	);
+	if (!entry) {
+		throw new AppError("app needs package.json main, server.ts, or index.ts");
+	}
+	return { name, entry };
+}
+
+function resolveAppDir(
+	repo: string,
+	dir: string,
+	projectsDir?: string,
+): string {
+	const root = projectsDir ?? projectsRoot();
+	const repoDir = join(root, repo);
+	if (!repoDir.startsWith(root) || repoDir.includes("..")) {
+		throw new AppError("repo is invalid");
+	}
+	const appDir = join(repoDir, APP_DIR, dir);
+	if (!appDir.startsWith(repoDir) || appDir.includes("..")) {
+		throw new AppError("dir is invalid");
 	}
 	try {
-		if (!statSync(path).isFile()) {
-			throw new AppError("entry was not found");
+		if (!statSync(appDir).isDirectory()) {
+			throw new AppError("app was not found");
 		}
 	} catch (caught) {
 		if (caught instanceof AppError) {
 			throw caught;
 		}
-		throw new AppError("entry was not found");
+		throw new AppError("app was not found");
 	}
-	return path;
+	return appDir;
 }
 
 async function readLive(
@@ -436,4 +525,20 @@ async function readLive(
 
 function logTail(log: string): string {
 	return log.slice(-500);
+}
+
+function isDir(path: string): boolean {
+	try {
+		return statSync(path).isDirectory();
+	} catch {
+		return false;
+	}
+}
+
+function statIsFile(path: string): boolean {
+	try {
+		return statSync(path).isFile();
+	} catch {
+		return false;
+	}
 }

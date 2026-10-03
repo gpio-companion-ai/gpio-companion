@@ -1107,6 +1107,51 @@ export function stopRun(uuid: string) {
 	});
 }
 
+export type BoardApp = {
+	project: string;
+	dir: string;
+	name: string;
+	entry: string;
+};
+
+export type AppStatus = {
+	running: boolean;
+	name: string | null;
+	repo: string | null;
+	port: number | null;
+	startedAt: number | null;
+	log: string;
+};
+
+export function loadBoardApps(uuid: string) {
+	return apiRequest<{ apps: BoardApp[] }>(
+		"GET",
+		`/api/mobile/app?uuid=${encodeURIComponent(uuid)}&apps=1`,
+	);
+}
+
+export function loadAppStatus(uuid: string) {
+	return apiRequest<AppStatus>(
+		"GET",
+		`/api/mobile/app?uuid=${encodeURIComponent(uuid)}`,
+	);
+}
+
+export function startApp(input: { uuid: string; repo: string; dir: string }) {
+	return apiRequest<{ started: boolean; name: string; port: number }>(
+		"POST",
+		"/api/mobile/app",
+		input,
+	);
+}
+
+export function stopApp(uuid: string) {
+	return apiRequest<{ stopped: boolean }>("POST", "/api/mobile/app", {
+		uuid,
+		stop: true,
+	});
+}
+
 export type CircuitVerifyState = {
 	running: boolean;
 	results: Array<{

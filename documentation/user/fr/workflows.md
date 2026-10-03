@@ -121,18 +121,25 @@ Vous n’avez normalement pas besoin de modifier ces chemins à la main, mais il
 
 Quand un projet demande son propre panneau de contrôle ou sa propre vue en
 direct — curseurs, graphiques, assistant — l’agent peut construire une petite
-appli de carte et la servir depuis le projet. Demandez-le dans Open Code
-(« fais un panneau qui… ») : l’agent démarre l’appli sur la carte et vous
-l’ouvre.
+appli de carte dans le projet (dossier `app/`, un dossier par appli) et la
+servir depuis la carte. Demandez-le dans Open Code (« fais un panneau qui… ») :
+l’agent démarre l’appli et vous l’ouvre.
 
-- La **vue fractionnée** s’ouvre à côté du chat dans Open Code (là où les
-  aperçus de fichiers apparaissent). La **boîte de dialogue** s’ouvre
-  par-dessus la page actuelle, et la **page** l’ouvre dans sa propre vue
-  (`/devices/app` sur le web).
+Vous pouvez aussi démarrer et ouvrir les applis de carte vous-même :
+
+- Ouvrez un projet dans **Projet** et dépliez **Serveur personnalisé** (ou la
+  section d’outils de la carte équivalente). Le sélecteur liste les applis du
+  projet par leur nom de package. Choisissez **Démarrer le serveur**, puis
+  **Ouvrir** pour l’afficher dans le volet d’aperçu à côté du chat Open Code.
+- L’onglet Actions du dock propose **Arrêter le serveur personnalisé**.
+- La **vue fractionnée** s’ouvre à côté du chat dans Open Code. La **boîte de
+  dialogue** s’ouvre par-dessus la page actuelle, et la **page** l’ouvre dans
+  sa propre vue (`/devices/app` sur le web).
 - L’appli tourne sur votre carte et est joignable par un lien privé à durée
-  limitée ; le navigateur ne conserve jamais vos identifiants de carte.
-- Le lien se renouvelle automatiquement. Si une appli s’arrête, ses vues
-  affichent une note d’erreur — demandez à l’agent de la relancer.
+  limitée ; le navigateur ne conserve jamais vos identifiants de carte, et le
+  lien se renouvelle automatiquement.
+- Si une appli s’arrête, ses vues affichent une note d’erreur — redémarrez-la
+  ici ou demandez à l’agent.
 - Une appli de carte est une surface personnalisée pour ce projet. Le
   contrôle du matériel passe toujours par les croquis, la gravure et le GPIO
   en direct habituels.

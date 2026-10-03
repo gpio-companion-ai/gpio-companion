@@ -197,45 +197,38 @@ describe("gpio-companion board CLI", () => {
 		});
 	});
 
-	test("app start posts repo, name, entry", async () => {
+	test("app start posts repo and dir", async () => {
 		const h = harness({
 			body: { started: true, name: "led-panel", port: 4600 },
 		});
 		expect(
-			await run(
-				[
-					"app",
-					"start",
-					"--repo",
-					"demo",
-					"--name",
-					"led-panel",
-					"--entry",
-					"app/led-panel/server.ts",
-				],
-				h.io,
-			),
+			await run(["app", "start", "--repo", "demo", "--dir", "led-panel"], h.io),
 		).toBe(0);
 		expect(h.calls[0]?.url).toEndWith("/v1/app/start");
 		const body = JSON.parse(h.calls[0]?.init.body as string) as Record<
 			string,
 			unknown
 		>;
-		expect(body).toMatchObject({
-			repo: "demo",
-			name: "led-panel",
-			entry: "app/led-panel/server.ts",
-		});
+		expect(body).toMatchObject({ repo: "demo", dir: "led-panel" });
 		expect(h.out.join("\n")).toContain("port=4600");
 	});
 
-	test("app status and stop hit loopback", async () => {
+	test("app status / list / stop hit loopback", async () => {
 		let h = harness({
 			body: { running: true, name: "led-panel", port: 4600, log: "" },
 		});
 		expect(await run(["app", "status"], h.io)).toBe(0);
 		expect(h.calls[0]?.url).toEndWith("/v1/app");
 		expect(h.out.join("\n")).toContain("running name=led-panel");
+
+		h = harness({
+			body: {
+				apps: [{ name: "led-panel", project: "demo", dir: "led-panel" }],
+			},
+		});
+		expect(await run(["app", "list"], h.io)).toBe(0);
+		expect(h.calls[0]?.url).toEndWith("/v1/app/list");
+		expect(h.out.join("\n")).toContain("led-panel (demo/app/led-panel)");
 
 		h = harness({ body: { stopped: true } });
 		expect(await run(["app", "stop"], h.io)).toBe(0);

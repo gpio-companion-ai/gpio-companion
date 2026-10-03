@@ -1,5 +1,6 @@
 export const PROJECT_FILE_DIRS = ["pcb", "breadboard", "technical"] as const;
 export const HOST_SKETCH_DIR = "host";
+export const APP_DIR = "app";
 export const FIRMWARE_SKETCH_DIR = "firmware";
 export const SKETCH_LIST_MAX = 50;
 

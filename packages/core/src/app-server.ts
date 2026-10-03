@@ -1,6 +1,7 @@
 export const APP_PATH = "/v1/app";
 export const APP_START_PATH = "/v1/app/start";
 export const APP_STOP_PATH = "/v1/app/stop";
+export const APP_LIST_PATH = "/v1/app/list";
 export const APP_LOG_MAX = 16 * 1024;
 export const APP_NAME_MAX = 64;
 export const APP_TITLE_MAX = 80;
@@ -12,6 +13,7 @@ export const APP_TOKEN_MIN_LENGTH = 32;
 export const APP_TOKEN_TTL_MS = 10 * 60_000;
 export const APP_MAX_TOKENS = 4;
 export const APP_READY_TIMEOUT_MS = 10_000;
+export const APP_LIST_MAX = 50;
 
 export const APP_VIEWS = ["split", "modal", "page"] as const;
 
@@ -19,8 +21,18 @@ export type AppView = (typeof APP_VIEWS)[number];
 
 export type AppStartPut = {
 	repo: string;
+	dir: string;
+};
+
+export type BoardApp = {
+	project: string;
+	dir: string;
 	name: string;
 	entry: string;
+};
+
+export type BoardAppList = {
+	apps: BoardApp[];
 };
 
 export type AppStatus = {
@@ -53,10 +65,11 @@ export class AppError extends Error {
 	}
 }
 
-const APP_RESERVED_NAMES = new Set(["start", "stop", "frame"]);
+const APP_RESERVED_NAMES = new Set(["start", "stop", "list", "frame"]);
 const APP_NAME_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 const APP_TOKEN_PATTERN = /^[A-Za-z0-9_-]+$/;
 const APP_ENTRY_EXT = [".ts", ".tsx", ".js", ".jsx", ".mjs"];
+const APP_ENTRY_FALLBACKS = ["server", "index"];
 
 export function isAppName(value: string): boolean {
 	return (
@@ -72,7 +85,12 @@ export function isValidAppToken(value: string): boolean {
 }
 
 export function isAppManagePath(path: string): boolean {
-	if (path === APP_PATH || path === APP_START_PATH || path === APP_STOP_PATH) {
+	if (
+		path === APP_PATH ||
+		path === APP_START_PATH ||
+		path === APP_STOP_PATH ||
+		path === APP_LIST_PATH
+	) {
 		return true;
 	}
 	return isAppFrameMintPath(path);
@@ -154,9 +172,52 @@ export function parseAppStartPut(input: unknown): AppStartPut {
 	const record = input as Record<string, unknown>;
 	return {
 		repo: requiredRepo(record.repo),
-		name: requiredName(record.name),
-		entry: requiredEntry(record.entry),
+		dir: requiredAppDir(record.dir),
 	};
+}
+
+export function parseBoardAppList(input: unknown): BoardAppList {
+	if (input === null || typeof input !== "object" || Array.isArray(input)) {
+		throw new Error("apps must be an object");
+	}
+	const apps = (input as { apps?: unknown }).apps;
+	if (!Array.isArray(apps)) {
+		throw new Error("apps is required");
+	}
+	return { apps: apps.map((item, index) => parseBoardAppItem(item, index)) };
+}
+
+export function parseAppPackageName(packageJson: unknown): string {
+	if (packageJson === null || typeof packageJson !== "object") {
+		throw new AppError("app package.json is invalid");
+	}
+	const name = (packageJson as { name?: unknown }).name;
+	if (typeof name !== "string" || !isAppName(name.trim())) {
+		throw new AppError(
+			"app package.json name must be kebab-case (max 64, no start/stop/list/frame)",
+		);
+	}
+	return name.trim();
+}
+
+export function appEntryCandidates(main: unknown): string[] {
+	const entry = typeof main === "string" ? main.trim() : "";
+	const out: string[] = [];
+	if (entry) {
+		const candidate = requiredEntryValue(entry);
+		if (candidate && !out.includes(candidate)) {
+			out.push(candidate);
+		}
+	}
+	for (const base of APP_ENTRY_FALLBACKS) {
+		for (const ext of APP_ENTRY_EXT) {
+			const candidate = `${base}${ext}`;
+			if (!out.includes(candidate)) {
+				out.push(candidate);
+			}
+		}
+	}
+	return out;
 }
 
 export function capAppLog(log: string): string {
@@ -198,32 +259,62 @@ function requiredRepo(value: unknown): string {
 	return repo;
 }
 
-function requiredName(value: unknown): string {
+function requiredAppDir(value: unknown): string {
 	if (typeof value !== "string" || !value.trim()) {
-		throw new AppError("name is required");
+		throw new AppError("dir is required");
 	}
-	const name = value.trim();
-	if (!isAppName(name)) {
-		throw new AppError("name must be kebab-case (max 64, no start/stop/frame)");
+	const dir = value.trim();
+	if (
+		dir.startsWith("/") ||
+		dir.includes("/") ||
+		dir.includes("\\") ||
+		dir.includes("..") ||
+		dir.startsWith(".")
+	) {
+		throw new AppError("dir must be the app/ folder name");
 	}
-	return name;
+	return dir;
 }
 
-function requiredEntry(value: unknown): string {
-	if (typeof value !== "string" || !value.trim()) {
-		throw new AppError("entry is required");
-	}
-	const entry = value.trim();
+function requiredEntryValue(entry: string): string | null {
 	if (
+		!entry ||
 		entry.startsWith("/") ||
 		entry.includes("..") ||
 		entry.includes("\\") ||
 		entry.length > APP_ENTRY_MAX ||
 		!APP_ENTRY_EXT.some((ext) => entry.endsWith(ext))
 	) {
-		throw new AppError("entry must be a repo-relative .ts/.js file");
+		return null;
 	}
 	return entry;
+}
+
+function parseBoardAppItem(input: unknown, index: number): BoardApp {
+	if (input === null || typeof input !== "object" || Array.isArray(input)) {
+		throw new Error(`app ${index} must be an object`);
+	}
+	const record = input as Record<string, unknown>;
+	const project =
+		typeof record.project === "string" && record.project.trim()
+			? record.project.trim()
+			: "";
+	if (!project || project.includes("/") || project.includes("..")) {
+		throw new Error("project is required");
+	}
+	const dir = requiredAppDir(record.dir);
+	const name = typeof record.name === "string" ? record.name.trim() : "";
+	if (!isAppName(name)) {
+		throw new Error("name is invalid");
+	}
+	const entry =
+		typeof record.entry === "string"
+			? requiredEntryValue(record.entry.trim())
+			: null;
+	if (!entry) {
+		throw new Error("entry is invalid");
+	}
+	return { project, dir, name, entry };
 }
 
 function normalizeSuffix(suffix: string): string {

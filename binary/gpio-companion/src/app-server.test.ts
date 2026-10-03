@@ -14,6 +14,7 @@ import {
 	appUpstreamWsUrl,
 	createAppController,
 	type FetchLike,
+	listBoardApps,
 } from "./app-server.ts";
 import { filePairingStore } from "./pairing.ts";
 import { fileSecretsStore } from "./secrets.ts";
@@ -24,6 +25,10 @@ const ROOT = join(tmpdir(), "gpio-companion-app-test");
 const REPO = join(ROOT, "demo-repo");
 
 mkdirSync(join(REPO, "app", "panel"), { recursive: true });
+writeFileSync(
+	join(REPO, "app", "panel", "package.json"),
+	JSON.stringify({ name: "led-panel" }),
+);
 writeFileSync(join(REPO, "app", "panel", "server.ts"), "export {};\n");
 
 afterAll(() => {
@@ -71,11 +76,7 @@ function harness(options?: {
 
 async function startedApp(): Promise<AppController> {
 	const app = harness();
-	await app.start({
-		repo: "demo-repo",
-		name: "led-panel",
-		entry: "app/panel/server.ts",
-	});
+	await app.start({ repo: "demo-repo", dir: "panel" });
 	return app;
 }
 
@@ -95,11 +96,7 @@ describe("app controller start", () => {
 	test("rejects a second app while one runs", async () => {
 		const app = await startedApp();
 		try {
-			await app.start({
-				repo: "demo-repo",
-				name: "other",
-				entry: "app/panel/server.ts",
-			});
+			await app.start({ repo: "demo-repo", dir: "panel" });
 			expect.unreachable();
 		} catch (caught) {
 			expect(caught).toBeInstanceOf(AppError);
@@ -111,16 +108,12 @@ describe("app controller start", () => {
 
 	test("rejects unknown repo and entry", async () => {
 		const app = harness();
-		await expect(
-			app.start({ repo: "missing", name: "a", entry: "app/panel/server.ts" }),
-		).rejects.toThrow("repo was not found");
-		await expect(
-			app.start({
-				repo: "demo-repo",
-				name: "a",
-				entry: "app/panel/missing.ts",
-			}),
-		).rejects.toThrow("entry was not found");
+		await expect(app.start({ repo: "missing", dir: "panel" })).rejects.toThrow(
+			"repo was not found",
+		);
+		await expect(app.start({ repo: "demo-repo", dir: "nope" })).rejects.toThrow(
+			"app was not found",
+		);
 	});
 
 	test("fails when the app never listens", async () => {
@@ -133,11 +126,7 @@ describe("app controller start", () => {
 			fetchImpl: refuser(),
 		});
 		await expect(
-			controller.start({
-				repo: "demo-repo",
-				name: "slow",
-				entry: "app/panel/server.ts",
-			}),
+			controller.start({ repo: "demo-repo", dir: "panel" }),
 		).rejects.toThrow("did not listen");
 		expect(controller.status().running).toBe(false);
 	});
@@ -151,11 +140,7 @@ describe("app controller start", () => {
 			fetchImpl: busy,
 		});
 		await expect(
-			app.start({
-				repo: "demo-repo",
-				name: "a",
-				entry: "app/panel/server.ts",
-			}),
+			app.start({ repo: "demo-repo", dir: "panel" }),
 		).rejects.toThrow("no free app port");
 	});
 });
@@ -186,11 +171,7 @@ describe("app controller tokens and proxy", () => {
 				});
 			},
 		});
-		await app.start({
-			repo: "demo-repo",
-			name: "led-panel",
-			entry: "app/panel/server.ts",
-		});
+		await app.start({ repo: "demo-repo", dir: "panel" });
 		const grant = app.mint("led-panel");
 		expect(grant.name).toBe("led-panel");
 		expect(grant.path).toStartWith(`/v1/app/led-panel/${grant.token}/`);
@@ -238,11 +219,7 @@ describe("app controller tokens and proxy", () => {
 			prober: async () => true,
 			fetchImpl: refuser(),
 		});
-		await app.start({
-			repo: "demo-repo",
-			name: "led-panel",
-			entry: "app/panel/server.ts",
-		});
+		await app.start({ repo: "demo-repo", dir: "panel" });
 		const grant = app.mint("led-panel");
 		const frame = parseAppFramePath(`/v1/app/led-panel/${grant.token}/`);
 		const response = await app.proxy(
@@ -261,6 +238,45 @@ describe("app ws url", () => {
 			"ws://127.0.0.1:4600/sock?t=1",
 		);
 		expect(appUpstreamWsUrl(4601, "sock")).toBe("ws://127.0.0.1:4601/sock");
+	});
+});
+
+describe("listBoardApps", () => {
+	test("lists apps with package.json across projects", () => {
+		mkdirSync(join(ROOT, "other-repo", "app", "dash"), { recursive: true });
+		writeFileSync(
+			join(ROOT, "other-repo", "app", "dash", "package.json"),
+			JSON.stringify({ name: "dash-ui", main: "src/main.ts" }),
+		);
+		mkdirSync(join(ROOT, "other-repo", "app", "dash", "src"));
+		writeFileSync(
+			join(ROOT, "other-repo", "app", "dash", "src", "main.ts"),
+			"export {};\n",
+		);
+		mkdirSync(join(ROOT, "demo-repo", "app", "broken"));
+		writeFileSync(
+			join(ROOT, "demo-repo", "app", "broken", "package.json"),
+			JSON.stringify({ name: "Not Kebab" }),
+		);
+		const apps = listBoardApps(ROOT);
+		expect(apps).toContainEqual({
+			project: "demo-repo",
+			dir: "panel",
+			name: "led-panel",
+			entry: "server.ts",
+		});
+		expect(apps).toContainEqual({
+			project: "other-repo",
+			dir: "dash",
+			name: "dash-ui",
+			entry: "src/main.ts",
+		});
+		expect(apps.some((item) => item.dir === "broken")).toBe(false);
+	});
+
+	test("returns empty for a bad root", () => {
+		expect(listBoardApps("relative")).toEqual([]);
+		expect(listBoardApps("/nope/../..")).toEqual([]);
 	});
 });
 
@@ -328,14 +344,24 @@ afterAll(() => {
 
 describe("app http api", () => {
 	test("loopback unsigned start, status, stop", async () => {
+		const listed = await fetch(`${api.url}v1/app/list`);
+		expect(listed.status).toBe(200);
+		const listBody = (await listed.json()) as {
+			apps: Array<{ project: string; dir: string; name: string }>;
+		};
+		expect(
+			listBody.apps.some(
+				(item) =>
+					item.project === "demo-repo" &&
+					item.dir === "panel" &&
+					item.name === "led-panel",
+			),
+		).toBe(true);
+
 		const start = await fetch(`${api.url}v1/app/start`, {
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({
-				repo: "demo-repo",
-				name: "led-panel",
-				entry: "app/panel/server.ts",
-			}),
+			body: JSON.stringify({ repo: "demo-repo", dir: "panel" }),
 		});
 		expect(start.status).toBe(200);
 		const body = (await start.json()) as { started: boolean; port: number };
@@ -357,11 +383,7 @@ describe("app http api", () => {
 	});
 
 	test("loopback unsigned mint is refused", async () => {
-		await apiApp.start({
-			repo: "demo-repo",
-			name: "led-panel",
-			entry: "app/panel/server.ts",
-		});
+		await apiApp.start({ repo: "demo-repo", dir: "panel" });
 		const mint = await fetch(`${api.url}v1/app/led-panel/frame`, {
 			method: "POST",
 		});
@@ -437,11 +459,7 @@ describe("app http api", () => {
 
 describe("app ws bridge", () => {
 	test("bridges browser ws to the app upstream", async () => {
-		await apiApp.start({
-			repo: "demo-repo",
-			name: "led-panel",
-			entry: "app/panel/server.ts",
-		});
+		await apiApp.start({ repo: "demo-repo", dir: "panel" });
 		const grant = apiApp.mint("led-panel");
 		const wsUrl = `${String(api.url).replace("http://", "ws://")}v1/app/led-panel/${grant.token}/sock`;
 		const socket = new WebSocket(wsUrl);

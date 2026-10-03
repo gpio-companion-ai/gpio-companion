@@ -25,6 +25,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+	type AppStatus,
 	type ArduinoProxyStatus,
 	type BoardSketch,
 	type BoardView,
@@ -33,6 +34,7 @@ import {
 	type FlashStatus,
 	type GpioSnapshot,
 	listDeviceStatus,
+	loadAppStatus,
 	loadArduinoProxy,
 	loadFlash,
 	loadFlashPorts,
@@ -41,6 +43,7 @@ import {
 	type RunStatus,
 	startFlash,
 	startFlashProxy,
+	stopApp,
 	stopRun,
 } from "../lib/api.ts";
 import { useUserBoards } from "../lib/api-cache.tsx";
@@ -1232,9 +1235,12 @@ function DockActions({ uuid, token }: { uuid: string; token: string | null }) {
 	const [stopping, setStopping] = useState(false);
 	const [error, setError] = useState("");
 	const [running, setRunning] = useState<boolean | null>(null);
+	const [appStatus, setAppStatus] = useState<AppStatus | null>(null);
+	const [appStopping, setAppStopping] = useState(false);
 
 	useEffect(() => {
 		setRunning(null);
+		setAppStatus(null);
 		if (!token || !uuid.trim()) {
 			return;
 		}
@@ -1248,6 +1254,17 @@ function DockActions({ uuid, token }: { uuid: string; token: string | null }) {
 			.catch(() => {
 				if (!cancelled) {
 					setRunning(null);
+				}
+			});
+		void loadAppStatus(token, uuid)
+			.then((result) => {
+				if (!cancelled) {
+					setAppStatus(result);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setAppStatus(null);
 				}
 			});
 		return () => {
@@ -1281,7 +1298,31 @@ function DockActions({ uuid, token }: { uuid: string; token: string | null }) {
 		}
 	}
 
+	async function stopCustomServer() {
+		if (!token || !uuid || appStopping) {
+			return;
+		}
+		setError("");
+		setAppStopping(true);
+		try {
+			await stopApp(token, uuid);
+			setAppStatus(await loadAppStatus(token, uuid));
+		} catch (caught) {
+			setError(
+				translateError(
+					tCore,
+					caught instanceof Error
+						? caught.message
+						: "failed to stop custom server",
+				),
+			);
+		} finally {
+			setAppStopping(false);
+		}
+	}
+
 	const runRunning = running === true;
+	const appRunning = appStatus?.running === true;
 	return (
 		<View style={{ gap: 8 }}>
 			{runRunning ? (
@@ -1289,6 +1330,11 @@ function DockActions({ uuid, token }: { uuid: string; token: string | null }) {
 					{tCore("deck.dock.runRunning")}
 				</Text>
 			) : null}
+			<Text style={{ color: colors.muted, fontSize: 11 }}>
+				{appRunning
+					? tCore("deck.dock.appRunning", { name: appStatus?.name ?? "" })
+					: tCore("deck.dock.appIdle")}
+			</Text>
 			{error ? <ErrorText>{error}</ErrorText> : null}
 			<TextButton
 				label={
@@ -1297,6 +1343,14 @@ function DockActions({ uuid, token }: { uuid: string; token: string | null }) {
 				danger={runRunning}
 				disabled={stopping || !runRunning}
 				onPress={() => void stopSketch()}
+			/>
+			<TextButton
+				label={
+					appStopping ? tCore("deck.dock.stopping") : tCore("deck.dock.stopApp")
+				}
+				danger={appRunning}
+				disabled={appStopping || !appRunning}
+				onPress={() => void stopCustomServer()}
 			/>
 		</View>
 	);

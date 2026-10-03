@@ -1,3 +1,4 @@
+import { GET as loadApp, POST as stopApp } from "@api/app";
 import { GET as loadRun } from "@api/run";
 import { POST as stopRun } from "@api/run/stop";
 import FlashPanel from "@components/FlashPanel";
@@ -9,7 +10,7 @@ import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
-import type { RunStatus } from "gpio-companion";
+import type { AppStatus, RunStatus } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
@@ -200,9 +201,12 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 	const [stopping, setStopping] = useState(false);
 	const [error, setError] = useState("");
 	const [running, setRunning] = useState<boolean | null>(null);
+	const [appStatus, setAppStatus] = useState<AppStatus | null>(null);
+	const [appStopping, setAppStopping] = useState(false);
 
 	useEffect(() => {
 		setRunning(null);
+		setAppStatus(null);
 		let cancelled = false;
 		loadRun(uuid)
 			.then((result) => {
@@ -214,6 +218,17 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 			.catch(() => {
 				if (!cancelled) {
 					setRunning(null);
+				}
+			});
+		loadApp(uuid)
+			.then((result) => {
+				if (!cancelled) {
+					setAppStatus(unwrapAction(result));
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setAppStatus(null);
 				}
 			});
 		return () => {
@@ -246,7 +261,29 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 		}
 	}
 
+	async function stopCustomServer() {
+		if (!uuid || appStopping) {
+			return;
+		}
+		setError("");
+		setAppStopping(true);
+		try {
+			unwrapAction(await stopApp({ uuid, stop: true }));
+			setAppStatus(unwrapAction(await loadApp(uuid)));
+		} catch (err) {
+			setError(
+				translateError(
+					t,
+					err instanceof Error ? err.message : "failed to stop custom server",
+				),
+			);
+		} finally {
+			setAppStopping(false);
+		}
+	}
+
 	const runRunning = running === true;
+	const appRunning = appStatus?.running === true;
 
 	return (
 		<Stack spacing={1}>
@@ -256,6 +293,11 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 					: online
 						? t("deck.dock.runIdle")
 						: null}
+			</Typography>
+			<Typography variant="body2" color="secondary">
+				{appRunning
+					? t("deck.dock.appRunning", { name: appStatus?.name ?? "" })
+					: t("deck.dock.appIdle")}
 			</Typography>
 			{error ? <Alert severity="error">{error}</Alert> : null}
 			<Stack direction="row" spacing={1} className="flex-wrap">
@@ -267,6 +309,15 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 					onClick={() => void stopSketch()}
 				>
 					{stopping ? t("deck.dock.stopping") : t("deck.dock.stopSketch")}
+				</Button>
+				<Button
+					type="button"
+					variant="outlined"
+					color={appRunning ? "error" : "primary"}
+					disabled={appStopping || !appRunning}
+					onClick={() => void stopCustomServer()}
+				>
+					{appStopping ? t("deck.dock.stopping") : t("deck.dock.stopApp")}
 				</Button>
 			</Stack>
 		</Stack>

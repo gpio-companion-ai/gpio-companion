@@ -13,6 +13,7 @@ import {
 	useState,
 } from "react";
 import { Linking, Modal, Pressable, Text, View } from "react-native";
+import AppPanel from "../components/AppPanel.tsx";
 import BreadboardWebView from "../components/BreadboardWebView.tsx";
 import FlashPanel from "../components/FlashPanel.tsx";
 import GpioPanel from "../components/GpioPanel.tsx";
@@ -150,7 +151,7 @@ function BoardSketchGroup({
 	);
 }
 
-type BoardTool = "gpio" | "flash" | "run" | "verify";
+type BoardTool = "gpio" | "flash" | "run" | "verify" | "app";
 
 function ToolSection({
 	title,
@@ -284,7 +285,11 @@ export default function Project() {
 		return listProjects(token);
 	});
 	const { boards, paired, refetch } = useUserBoards();
-	const { uuid: selectedUuid, setUuid: selectBoard } = useBoardSelection();
+	const {
+		uuid: selectedUuid,
+		setUuid: selectBoard,
+		openCode,
+	} = useBoardSelection();
 	const { flashSketch } = useBoardSelection();
 	const { setTab } = useDeviceHub();
 	const router = useRouter();
@@ -1325,6 +1330,19 @@ export default function Project() {
 								uuid={activeUuid}
 								project={bundle.repo}
 								onResults={setVerifyResults}
+							/>
+						</ToolSection>
+						<ToolSection
+							title={t("project.customServer")}
+							hint={t("project.appHint")}
+							open={openTool === "app"}
+							onToggle={() => toggleTool("app")}
+						>
+							<AppPanel
+								token={token}
+								uuid={activeUuid}
+								project={bundle.repo}
+								onOpenCode={openCode}
 							/>
 						</ToolSection>
 					</View>

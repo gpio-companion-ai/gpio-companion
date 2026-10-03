@@ -66,6 +66,7 @@ import { useBoardSelection } from "../hooks/useBoardSelection";
 import { useDashboardMode } from "../hooks/useDashboardMode";
 import { useDeviceHub } from "../hooks/useDeviceHub";
 import { useT } from "../locale";
+import AppPanel from "./AppPanel";
 import BreadboardViewer from "./BreadboardViewer";
 import DebugLog from "./DebugLog";
 import FlashPanel from "./FlashPanel";
@@ -78,7 +79,7 @@ import VerifyPanel from "./VerifyPanel";
 
 const LAST_REPO_KEY = "gpio-companion-selected-project";
 
-type BoardTool = "gpio" | "flash" | "run" | "verify";
+type BoardTool = "gpio" | "flash" | "run" | "verify" | "app";
 
 function ToolSection({
 	title,
@@ -1374,6 +1375,18 @@ export default function Project({
 								uuid={activeUuid}
 								project={bundle.repo}
 								onResults={setVerifyResults}
+							/>
+						</ToolSection>
+						<ToolSection
+							title={t("project.customServer")}
+							hint={t("project.appHint")}
+							open={openTool === "app"}
+							onToggle={() => toggleTool("app")}
+						>
+							<AppPanel
+								uuid={activeUuid}
+								project={bundle.repo}
+								onOpenCode={openCode}
 							/>
 						</ToolSection>
 					</Stack>

@@ -225,6 +225,18 @@ function summarize(path: string, method: string, data: unknown): string {
 		}
 		return s?.name ? `idle last=${s.name}\n${logTail(d)}` : "idle";
 	}
+	if (path === "/v1/app/list") {
+		const apps =
+			(
+				d as {
+					apps?: Array<{ name?: string; project?: string; dir?: string }>;
+				} | null
+			)?.apps ?? [];
+		if (!apps.length) return "no apps";
+		return apps
+			.map((a) => `${a.name ?? ""} (${a.project ?? ""}/app/${a.dir ?? ""})`)
+			.join("\n");
+	}
 	if (path === "/v1/app/start") {
 		const s = d as { name?: string; port?: number } | null;
 		return `app started name=${s?.name ?? ""} port=${s?.port ?? ""}`;
@@ -579,23 +591,18 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
 			const subArgs = stripGlobal(subRest);
 			if (!sub || sub === "status")
 				return call(io, "GET", "/v1/app", undefined, jsonArgs);
+			if (sub === "list")
+				return call(io, "GET", "/v1/app/list", undefined, jsonArgs);
 			if (sub === "start") {
 				const repo = flag(subArgs, "--repo");
-				const name = flag(subArgs, "--name", "--id");
-				const entry = flag(subArgs, "--entry");
-				if (!repo || !name || !entry) {
+				const dir = flag(subArgs, "--dir", "--name");
+				if (!repo || !dir) {
 					io.stderr(
-						"usage: gpio-companion app start --repo <repo> --name <kebab> --entry app/<name>/server.ts",
+						"usage: gpio-companion app start --repo <repo> --dir <app-folder>",
 					);
 					return 1;
 				}
-				return call(
-					io,
-					"POST",
-					"/v1/app/start",
-					{ repo, name, entry },
-					jsonArgs,
-				);
+				return call(io, "POST", "/v1/app/start", { repo, dir }, jsonArgs);
 			}
 			if (sub === "stop") return call(io, "POST", "/v1/app/stop", {}, jsonArgs);
 			io.stderr(`unknown app command: ${sub ?? ""}\n${helpText()}`);
@@ -652,8 +659,8 @@ function helpText(): string {
 		"  ui modal --id <id> --title <t> --body <b> --button <l> [--button <l>]",
 		"  ui reply --id <modal-id>",
 		"  ui app --id <name> [--view split|modal|page] [--title <t>]",
-		"  app start --repo <repo> --name <kebab> --entry app/<name>/server.ts",
-		"  app status | app stop",
+		"  app start --repo <repo> --dir <app-folder>",
+		"  app status | app list | app stop",
 		"  status | health",
 		"Local loopback only (default http://127.0.0.1:4150, or GPIO_COMPANION_URL).",
 	].join("\n");

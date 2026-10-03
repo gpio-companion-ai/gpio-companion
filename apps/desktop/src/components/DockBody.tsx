@@ -3,7 +3,14 @@ import Button from "@shpaw415/mui-lite/Button";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { loadRun, stopRun, type RunStatus } from "../api";
+import {
+	type AppStatus,
+	loadAppStatus,
+	loadRun,
+	type RunStatus,
+	stopApp,
+	stopRun,
+} from "../api";
 import { useBoardSelection } from "../hooks/useBoardSelection";
 import type { ConsoleTunnelStatus } from "../hooks/useConsoleTunnel";
 import { useDashboardMode } from "../hooks/useDashboardMode";
@@ -104,9 +111,12 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 	const [stopping, setStopping] = useState(false);
 	const [error, setError] = useState("");
 	const [running, setRunning] = useState<boolean | null>(null);
+	const [appStatus, setAppStatus] = useState<AppStatus | null>(null);
+	const [appStopping, setAppStopping] = useState(false);
 
 	useEffect(() => {
 		setRunning(null);
+		setAppStatus(null);
 		let cancelled = false;
 		loadRun(uuid)
 			.then((result) => {
@@ -117,6 +127,17 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 			.catch(() => {
 				if (!cancelled) {
 					setRunning(null);
+				}
+			});
+		loadAppStatus(uuid)
+			.then((result) => {
+				if (!cancelled) {
+					setAppStatus(result);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setAppStatus(null);
 				}
 			});
 		return () => {
@@ -147,7 +168,28 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 		}
 	}
 
+	async function stopCustomServer() {
+		if (!uuid || appStopping) {
+			return;
+		}
+		setError("");
+		setAppStopping(true);
+		try {
+			await stopApp(uuid);
+			setAppStatus(await loadAppStatus(uuid));
+		} catch (caught) {
+			setError(
+				caught instanceof Error
+					? caught.message
+					: "failed to stop custom server",
+			);
+		} finally {
+			setAppStopping(false);
+		}
+	}
+
 	const runRunning = running === true;
+	const appRunning = appStatus?.running === true;
 
 	return (
 		<Stack spacing={1}>
@@ -157,6 +199,11 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 					: online
 						? t("deck.dock.runIdle")
 						: null}
+			</Typography>
+			<Typography variant="body2" color="secondary">
+				{appRunning
+					? t("deck.dock.appRunning", { name: appStatus?.name ?? "" })
+					: t("deck.dock.appIdle")}
 			</Typography>
 			{error ? <Alert severity="error">{error}</Alert> : null}
 			<Stack direction="row" spacing={1} className="flex-wrap">
@@ -169,6 +216,16 @@ function DockActions({ uuid, online }: { uuid: string; online: boolean }) {
 					onClick={() => void stopSketch()}
 				>
 					{stopping ? t("deck.dock.stopping") : t("deck.dock.stopSketch")}
+				</Button>
+				<Button
+					type="button"
+					variant="outlined"
+					size="small"
+					color={appRunning ? "error" : "primary"}
+					disabled={appStopping || !appRunning}
+					onClick={() => void stopCustomServer()}
+				>
+					{appStopping ? t("deck.dock.stopping") : t("deck.dock.stopApp")}
 				</Button>
 			</Stack>
 		</Stack>
