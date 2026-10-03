@@ -26,6 +26,7 @@ export type SshClientLike = {
 		host: string;
 		port: number;
 		username: string;
+		password: string;
 		tryKeyboard: boolean;
 		readyTimeout: number;
 	}): void;
@@ -67,6 +68,7 @@ export function createSshController(options?: {
 	let client: SshClientLike | null = null;
 	let stream: SshStreamLike | null = null;
 	let decoder: TextDecoder | null = null;
+	let attempts = 0;
 	let collecting: {
 		echo: boolean;
 		finish: (answers: string[]) => void;
@@ -84,6 +86,7 @@ export function createSshController(options?: {
 	function endSession() {
 		collecting = null;
 		answer = "";
+		attempts = 0;
 		const activeStream = stream;
 		stream = null;
 		const activeClient = client;
@@ -112,14 +115,29 @@ export function createSshController(options?: {
 		endSession();
 	}
 
+	function promptPassword(ws: SshSocket) {
+		send(ws, { chunk: `\r\n${username}@${host}'s password: ` });
+		collecting = {
+			echo: false,
+			finish: (answers) => void openConnection(ws, answers[0] ?? ""),
+		};
+		answer = "";
+	}
+
 	function start(ws: SshSocket) {
-		if (client) {
+		if (socket) {
 			send(ws, { error: "ssh session is already open" });
 			return;
 		}
 		socket = ws;
 		decoder = new TextDecoder();
+		attempts = 0;
 		send(ws, { status: "auth" });
+		promptPassword(ws);
+	}
+
+	function openConnection(ws: SshSocket, password: string) {
+		attempts += 1;
 		const conn = createClient();
 		client = conn;
 		conn.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
@@ -161,12 +179,28 @@ export function createSshController(options?: {
 			);
 		});
 		conn.on("error", (error) => {
+			if (
+				attempts < 3 &&
+				/all authentication methods failed/i.test(error.message)
+			) {
+				const stale = client;
+				client = null;
+				try {
+					stale?.end();
+				} catch {
+					undefined;
+				}
+				send(ws, { chunk: "\r\nPermission denied, try again." });
+				promptPassword(ws);
+				return;
+			}
 			fail(ws, error.message || "ssh failed");
 		});
 		conn.connect({
 			host,
 			port,
 			username,
+			password,
 			tryKeyboard: true,
 			readyTimeout: 10_000,
 		});
@@ -223,7 +257,6 @@ export function createSshController(options?: {
 				return;
 			}
 			if (socket !== ws) {
-				send(ws, { error: "ssh session is not open" });
 				return;
 			}
 			if (command.op === "input") {
@@ -258,7 +291,12 @@ function runtimeUsername(): string {
 		if (info !== undefined && info === 0) {
 			return "root";
 		}
-		return process.env.USER || process.env.LOGNAME || "root";
+		return (
+			process.env.GPIO_USER ||
+			process.env.USER ||
+			process.env.LOGNAME ||
+			"root"
+		);
 	} catch {
 		return "root";
 	}
