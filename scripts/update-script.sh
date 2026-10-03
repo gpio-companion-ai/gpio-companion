@@ -115,6 +115,31 @@ server_needs_build() {
 	return 1
 }
 
+rollback_gpio_companion_bin() {
+	local backup="$BIN_DIR/gpio-companion.bak-previous"
+	echo "gpio-companion update: gpio-companion.service not active after install; rolling back binary" >&2
+	if ! gpio_companion_bin_healthy "$backup"; then
+		echo "gpio-companion update: no healthy backup binary at $backup; manual recovery required" >&2
+		return 1
+	fi
+	local staged="$BIN_DIR/.gpio-companion.rollback.$$"
+	if ! cp -p "$backup" "$staged"; then
+		rm -f "$staged"
+		return 1
+	fi
+	if ! mv -f "$staged" "$BIN_DIR/gpio-companion"; then
+		rm -f "$staged"
+		return 1
+	fi
+	rm -f "$BIN_REV_FILE"
+	if systemctl restart gpio-companion.service && wait_gpio_companion_active 20; then
+		echo "gpio-companion update: rolled back to previous binary; next update will rebuild"
+		return 0
+	fi
+	echo "gpio-companion update: rollback restart failed" >&2
+	return 1
+}
+
 install_ble_gatt_script
 adapter_script_before=""
 adapter_unit_before=""
@@ -170,7 +195,11 @@ if server_needs_build; then
 		systemctl try-restart bluetooth.service || true
 		systemctl restart gpio-companion-ble-adapter.service || true
 	fi
-	systemctl restart gpio-companion.service
+	if systemctl restart gpio-companion.service && wait_gpio_companion_active 20; then
+		echo "gpio-companion update: service active on new binary"
+	else
+		rollback_gpio_companion_bin || echo "gpio-companion update: rollback failed; board needs manual recovery" >&2
+	fi
 elif [[ "$unit_changed" -eq 1 || "$adapter_changed" -eq 1 ]]; then
 	echo "gpio-companion update: gpio-companion.service user/unit changed, restarting"
 	systemctl daemon-reload

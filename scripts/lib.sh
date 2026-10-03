@@ -1575,9 +1575,75 @@ PY
 	fi
 }
 
+gpio_companion_bin_healthy() {
+	local bin="$1"
+	if [[ -x "$bin" ]] && "$bin" --version >/dev/null 2>&1; then
+		return 0
+	fi
+	return 1
+}
+
+gpio_build_mem_available() {
+	local min_kb="${GPIO_COMPANION_BUILD_MIN_MEM_KB:-921600}"
+	local avail_kb="0"
+	avail_kb="$(awk '/^MemAvailable:/{print $2; exit}' /proc/meminfo 2>/dev/null || echo 0)"
+	if [[ "${avail_kb:-0}" -ge "$min_kb" ]]; then
+		return 0
+	fi
+	return 1
+}
+
+swap_gpio_companion_bin() {
+	local src="$1"
+	local staged="$BIN_DIR/.gpio-companion.new.$$"
+	local backup="$BIN_DIR/gpio-companion.bak-previous"
+	local backup_staged="$BIN_DIR/.gpio-companion.bak.$$"
+	rm -f "$staged" "$backup_staged"
+	if ! install -m 0755 "$src" "$staged"; then
+		rm -f "$staged"
+		die "gpio-companion update: staging new binary failed"
+	fi
+	if ! "$staged" --version >/dev/null 2>&1; then
+		rm -f "$staged"
+		die "gpio-companion update: new binary failed --version smoke test; refusing to install"
+	fi
+	if gpio_companion_bin_healthy "$BIN_DIR/gpio-companion"; then
+		if ! cp -p "$BIN_DIR/gpio-companion" "$backup_staged"; then
+			rm -f "$staged" "$backup_staged"
+			die "gpio-companion update: could not back up the current binary"
+		fi
+		mv -f "$backup_staged" "$backup"
+	fi
+	if ! mv -f "$staged" "$BIN_DIR/gpio-companion"; then
+		rm -f "$staged"
+		die "gpio-companion update: atomic binary swap failed"
+	fi
+	echo "gpio-companion update: installed $(stat -c %s "$BIN_DIR/gpio-companion") bytes (backup: $backup)"
+}
+
+wait_gpio_companion_active() {
+	local tries="${1:-20}"
+	local i
+	for ((i = 0; i < tries; i++)); do
+		if [[ "$(systemctl is-active gpio-companion.service 2>/dev/null || true)" == "active" ]]; then
+			return 0
+		fi
+		sleep 1
+	done
+	return 1
+}
+
 install_gpio_companion_bin() {
 	local src=""
+	local can_build=0
 	if command -v bun >/dev/null 2>&1; then
+		if gpio_build_mem_available; then
+			can_build=1
+		else
+			echo "gpio-companion update: low MemAvailable, skipping on-device compile (GPIO_COMPANION_BUILD_MIN_MEM_KB to override)" >&2
+		fi
+	fi
+	if [[ "$can_build" -eq 1 ]]; then
 		echo "gpio-companion update: compiling serve binary"
 		(cd "$REPO_ROOT" && bun install)
 		(cd "$REPO_ROOT/binary/gpio-companion" && bun run compile)
@@ -1592,7 +1658,7 @@ install_gpio_companion_bin() {
 	if [[ ! -x "$src" ]]; then
 		die "gpio-companion binary was not built"
 	fi
-	install -m 0755 "$src" "$BIN_DIR/gpio-companion"
+	swap_gpio_companion_bin "$src"
 	install_ble_gatt_script
 	install_gpio_pwm
 	install_gpio_host
