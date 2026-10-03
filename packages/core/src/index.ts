@@ -590,6 +590,7 @@ export {
 	FLASH_PORTS_PATH,
 	FLASH_PROXY_PATH,
 	FLASH_SKETCHES_PATH,
+	FLASH_STOP_PATH,
 	FlashError,
 	type FlashPort,
 	type FlashPut,

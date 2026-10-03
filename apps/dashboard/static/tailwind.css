@@ -3841,6 +3841,7 @@ button.oc-chip,
 	}
 
 	.oc-selects .oc-chips {
+		position: relative;
 		display: none;
 		width: 100%;
 		margin: 8px 0 0;
@@ -3848,6 +3849,23 @@ button.oc-chip,
 
 	.oc-selects.is-open .oc-chips {
 		display: flex;
+	}
+
+	.oc-selects .oc-model.is-open {
+		position: static;
+	}
+
+	.oc-selects .oc-model-menu {
+		right: 0;
+		left: 0;
+		width: auto;
+	}
+
+	.oc-selects .oc-model-menu button > span:first-child {
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
 	}
 
 	.oc-sessions-head {

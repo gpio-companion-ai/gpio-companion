@@ -33,6 +33,7 @@ import {
 	FLASH_PORTS_PATH,
 	FLASH_PROXY_PATH,
 	FLASH_SKETCHES_PATH,
+	FLASH_STOP_PATH,
 	FlashError,
 	GPIO_PATH,
 	GpioError,
@@ -1784,6 +1785,9 @@ async function handleFlash(
 	}
 	if (method === "POST" && path === FLASH_PATH) {
 		return json(flash.start(parseJson(bodyText)));
+	}
+	if (method === "POST" && path === FLASH_STOP_PATH) {
+		return json(flash.stop());
 	}
 	if (method === "POST" && path === FLASH_PROXY_PATH) {
 		const put = bodyText.trim() ? parseFlashProxyPut(parseJson(bodyText)) : {};

@@ -122,6 +122,7 @@ export async function startCompanion(): Promise<CompanionHandle> {
 			GPIO_COMPANION_NONCES: join(root, "nonces.json"),
 			GPIO_COMPANION_TUNNEL_ENV: join(root, "cloudflared.env"),
 			GPIO_COMPANION_PWM: join(STUBS, "gpio-pwm"),
+			GPIO_COMPANION_FLASH_MAX_MS: "4000",
 			GPIO_COMPANION_BLE: "1",
 			GPIO_COMPANION_BLE_SCRIPT: join(root, "ble-gatt-server.py"),
 			GPIO_COMPANION_HUB: "0",

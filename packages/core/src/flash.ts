@@ -2,6 +2,7 @@ export const FLASH_PATH = "/v1/flash";
 export const FLASH_PORTS_PATH = "/v1/flash/ports";
 export const FLASH_SKETCHES_PATH = "/v1/flash/sketches";
 export const FLASH_PROXY_PATH = "/v1/flash/proxy";
+export const FLASH_STOP_PATH = "/v1/flash/stop";
 export const FLASH_LOG_MAX = 16 * 1024;
 
 export type FlashPort = {
@@ -106,7 +107,8 @@ export function isFlashPath(path: string): boolean {
 		path === FLASH_PATH ||
 		path === FLASH_PORTS_PATH ||
 		path === FLASH_SKETCHES_PATH ||
-		path === FLASH_PROXY_PATH
+		path === FLASH_PROXY_PATH ||
+		path === FLASH_STOP_PATH
 	);
 }
 
@@ -228,9 +230,7 @@ const MEGA_USB_IDS = new Set([
 	"2a03:0042",
 ]);
 
-function listedBoards(
-	value: unknown,
-): Array<{ fqbn: string; name: string }> {
+function listedBoards(value: unknown): Array<{ fqbn: string; name: string }> {
 	if (!Array.isArray(value)) {
 		return [];
 	}

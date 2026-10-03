@@ -131,6 +131,14 @@ describe("gpio-companion board CLI", () => {
 		expect(h.calls[0]?.url).toEndWith("/v1/flash/proxy");
 	});
 
+	test("flash stop posts stop", async () => {
+		const h = harness({ body: { stopped: true } });
+		expect(await run(["flash", "stop"], h.io)).toBe(0);
+		expect(h.calls[0]?.url).toEndWith("/v1/flash/stop");
+		expect(h.calls[0]?.init.method).toBe("POST");
+		expect(h.out.join("\n")).toContain("flash stopped");
+	});
+
 	test("verify start posts repo", async () => {
 		const h = harness({ body: { started: true } });
 		expect(await run(["verify", "start", "--repo", "demo"], h.io)).toBe(0);

@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, unlink, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { census, leftoverLabels } from "./census.ts";
@@ -278,7 +278,10 @@ async function runProxyLiveGpio(handle: CompanionHandle): Promise<void> {
 		stderr: "pipe",
 	});
 	try {
-		await waitUntil(() => existsSync(join(root, "ttyACM99")), "firmata sim link");
+		await waitUntil(
+			() => existsSync(join(root, "ttyACM99")),
+			"firmata sim link",
+		);
 		const flash = await deviceJson(client, paths.flashProxy, {
 			method: "POST",
 			body: JSON.stringify({ fqbn: "arduino:avr:uno" }),
@@ -290,9 +293,7 @@ async function runProxyLiveGpio(handle: CompanionHandle): Promise<void> {
 		}
 		await waitUntil(async () => {
 			const proxy = await deviceJson(client, "/v1/arduino-proxy");
-			return Boolean(
-				(proxy.body as { connected?: boolean } | null)?.connected,
-			);
+			return Boolean((proxy.body as { connected?: boolean } | null)?.connected);
 		}, "arduino-proxy connected to the firmata sim");
 		const dir = join(root, "arduino-proxy-blink");
 		await mkdir(dir, { recursive: true });
@@ -492,6 +493,45 @@ async function hangFlash(handle: CompanionHandle, dir: string): Promise<void> {
 		() => leftoverLabels(census(pid, root)).includes("arduino-cli"),
 		"arduino-cli hang",
 	);
+	await waitUntil(async () => {
+		const status = await deviceJson(client, paths.flash);
+		const body = status.body as {
+			running?: boolean;
+			last?: { ok?: boolean; log?: string } | null;
+		} | null;
+		return Boolean(
+			body && body.running === false && body.last && body.last.ok === false,
+		);
+	}, "flash watchdog recovery");
+	const recovered = await deviceJson(client, paths.flash);
+	const body = recovered.body as { last?: { log?: string } | null } | null;
+	if (!/timed out/.test(body?.last?.log ?? "")) {
+		throw new Error(
+			`watchdog log missing timeout: ${body?.last?.log ?? "none"}`,
+		);
+	}
+	await waitUntil(
+		() => !leftoverLabels(census(pid, root)).includes("arduino-cli"),
+		"arduino-cli cleaned up after watchdog",
+	);
+	await unlink(join(root, "hang-flash"));
+	const retry = await deviceJson(client, paths.flash, {
+		method: "POST",
+		body: JSON.stringify({
+			fqbn: "arduino:avr:uno",
+			dir,
+			port: "/dev/ttyACM99",
+		}),
+	});
+	if (retry.status !== 200) {
+		throw new Error(`flash after recovery failed ${retry.status}`);
+	}
+	await waitUntil(async () => {
+		const status = await deviceJson(client, paths.flash);
+		return Boolean(
+			(status.body as { running?: boolean } | null)?.running === false,
+		);
+	}, "flash ok after recovery");
 }
 
 async function writeSketch(root: string): Promise<string> {

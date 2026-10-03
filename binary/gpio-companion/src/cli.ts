@@ -149,6 +149,7 @@ function summarize(path: string, method: string, data: unknown): string {
 			.join("\n");
 	}
 	if (path === "/v1/flash" && method === "POST") return "flash started";
+	if (path === "/v1/flash/stop") return "flash stopped";
 	if (path === "/v1/flash/proxy") return "proxy flash started";
 	if (path === "/v1/flash" && method === "GET") {
 		const running = (d as { running?: boolean } | null)?.running;
@@ -311,6 +312,8 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
 			}
 			if (sub === "status")
 				return call(io, "GET", "/v1/flash", undefined, jsonArgs);
+			if (sub === "stop")
+				return call(io, "POST", "/v1/flash/stop", {}, jsonArgs);
 			if (sub === "ports")
 				return call(io, "GET", "/v1/flash/ports", undefined, jsonArgs);
 			if (sub === "list" || sub === "sketches")
@@ -645,7 +648,7 @@ function helpText(): string {
 		"  sketch stop",
 		"  sketch list",
 		"  flash start --fqbn <fqbn> --path <dir> [--port <port>]",
-		"  flash status | flash ports | flash list",
+		"  flash status | flash stop | flash ports | flash list",
 		"  flash proxy [--fqbn <fqbn>] [--port <port>]",
 		"  gpio get",
 		"  gpio set --physical <1-40> --dir in|out|pwm [--value 0|1] [--analog 0-255]",
