@@ -2,8 +2,8 @@ import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
-import { FitAddon } from "@xterm/addon-fit";
-import { Terminal } from "@xterm/xterm";
+import type { FitAddon } from "@xterm/addon-fit";
+import type { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { useT } from "../../hooks/useLocale.tsx";
 import { useSshTunnel } from "../../hooks/useSshTunnel.ts";
@@ -26,35 +26,50 @@ export default function SshPanel({ uuid }: { uuid: string }) {
 		if (!node) {
 			return;
 		}
-		const term = new Terminal({
-			cursorBlink: true,
-			fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-			fontSize: 12,
-			scrollback: 2000,
-			theme: {
-				background: "rgba(0, 0, 0, 0)",
-				foreground: "#d7dce3",
-			},
-		});
-		const fit = new FitAddon();
-		term.loadAddon(fit);
-		term.open(node);
-		fit.fit();
-		term.onData((data) => sendRef.current(data));
-		const observer = new ResizeObserver(() => {
-			try {
-				fit.fit();
-				resizeRef.current(term.cols, term.rows);
-			} catch {
-				undefined;
+		let observer: ResizeObserver | null = null;
+		let term: Terminal | null = null;
+		let disposed = false;
+		void (async () => {
+			const [{ Terminal: XTerm }, { FitAddon: Fit }] = await Promise.all([
+				import("@xterm/xterm"),
+				import("@xterm/addon-fit"),
+			]);
+			if (disposed) {
+				return;
 			}
-		});
-		observer.observe(node);
-		termRef.current = term;
-		fitRef.current = fit;
+			const created = new XTerm({
+				cursorBlink: true,
+				fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
+				fontSize: 12,
+				scrollback: 2000,
+				theme: {
+					background: "rgba(0, 0, 0, 0)",
+					foreground: "#d7dce3",
+				},
+			});
+			const fit = new Fit();
+			created.loadAddon(fit);
+			created.open(node);
+			fit.fit();
+			created.onData((data) => sendRef.current(data));
+			const ro = new ResizeObserver(() => {
+				try {
+					fit.fit();
+					resizeRef.current(created.cols, created.rows);
+				} catch {
+					undefined;
+				}
+			});
+			ro.observe(node);
+			observer = ro;
+			term = created;
+			termRef.current = created;
+			fitRef.current = fit;
+		})();
 		return () => {
-			observer.disconnect();
-			term.dispose();
+			disposed = true;
+			observer?.disconnect();
+			term?.dispose();
 			termRef.current = null;
 			fitRef.current = null;
 		};
