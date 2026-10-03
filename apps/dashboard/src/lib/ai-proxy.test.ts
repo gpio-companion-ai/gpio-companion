@@ -4,8 +4,10 @@ import {
 	buildAiInput,
 	estimateUsage,
 	extractUsage,
+	normalizeSseLine,
 	parseSseUsage,
 	resolveModel,
+	toChatChunk,
 	toChatCompletion,
 } from "./ai-proxy.ts";
 
@@ -111,5 +113,64 @@ describe("ai proxy", () => {
 				false,
 			).reasoning_effort,
 		).toBeUndefined();
+	});
+
+	test("normalizes workers ai native final usage chunk", () => {
+		const line = normalizeSseLine(
+			'data: {"response":"","usage":{"prompt_tokens":1893,"completion_tokens":12,"total_tokens":1905,"prompt_tokens_details":{"cached_tokens":0},"neurons":26.359089493751526}}',
+			"@cf/zai-org/glm-5.3-flash",
+		);
+		expect(line.startsWith("data: ")).toBe(true);
+		const chunk = JSON.parse(line.slice(6)) as {
+			choices: unknown[];
+			usage: { prompt_tokens: number; completion_tokens: number };
+			object: string;
+		};
+		expect(chunk.object).toBe("chat.completion.chunk");
+		expect(Array.isArray(chunk.choices)).toBe(true);
+		expect(chunk.usage.prompt_tokens).toBe(1893);
+		expect(chunk.usage.completion_tokens).toBe(12);
+	});
+
+	test("passes openai-shaped chunks through untouched", () => {
+		const payload =
+			'{"choices":[{"delta":{"content":"hi"},"finish_reason":null,"index":0}],"id":"abc","object":"chat.completion.chunk"}';
+		expect(normalizeSseLine(`data: ${payload}`, "m")).toBe(`data: ${payload}`);
+	});
+
+	test("converts native delta chunks to content deltas", () => {
+		const line = normalizeSseLine(
+			'data: {"response":"hello"}',
+			"@cf/zai-org/glm-5.3",
+		);
+		const chunk = JSON.parse(line.slice(6)) as {
+			choices: Array<{ delta: { content: string }; finish_reason: null }>;
+		};
+		expect(chunk.choices[0]?.delta.content).toBe("hello");
+		expect(chunk.choices[0]?.finish_reason).toBeNull();
+	});
+
+	test("keeps done and non-data lines unchanged", () => {
+		expect(normalizeSseLine("data: [DONE]", "m")).toBe("data: [DONE]");
+		expect(normalizeSseLine("", "m")).toBe("");
+		expect(normalizeSseLine(": keepalive", "m")).toBe(": keepalive");
+		expect(normalizeSseLine("data: not-json", "m")).toBe("data: not-json");
+	});
+
+	test("billing usage survives normalization", () => {
+		const normalized = normalizeSseLine(
+			'data: {"response":"","usage":{"prompt_tokens":14,"completion_tokens":16,"total_tokens":30,"neurons":0.9}}',
+			"m",
+		);
+		expect(parseSseUsage(`${normalized}\n`, null)).toEqual({
+			prompt_tokens: 14,
+			completion_tokens: 16,
+			cached_tokens: 0,
+		});
+	});
+
+	test("toChatChunk leaves error payloads alone", () => {
+		const payload = { error: { message: "boom" } };
+		expect(toChatChunk("m", payload)).toBe(payload);
 	});
 });

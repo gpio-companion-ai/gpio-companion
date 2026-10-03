@@ -11,15 +11,16 @@ import {
 	type ChatBody,
 	estimateUsage,
 	extractUsage,
+	normalizeSseLine,
 	parseSseUsage,
 	resolveModel,
 	toChatCompletion,
 } from "../../../../../lib/ai-proxy.ts";
+import { recordAiUsage } from "../../../../../lib/ai-usage.ts";
 import {
 	consumeMicrodollars,
 	creditsBalance,
 } from "../../../../../lib/credits.ts";
-import { recordAiUsage } from "../../../../../lib/ai-usage.ts";
 
 type PagesEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
@@ -130,7 +131,8 @@ function sseResponse(
 	upstream: ReadableStream<unknown>,
 ): Response {
 	const decoder = new TextDecoder();
-	let buffer = "";
+	const encoder = new TextEncoder();
+	let pending = "";
 	let usage: TokenUsage | null = null;
 	const billed = upstream.pipeThrough(
 		new TransformStream<unknown, Uint8Array>({
@@ -139,16 +141,26 @@ function sseResponse(
 					chunk instanceof Uint8Array
 						? chunk
 						: typeof chunk === "string"
-							? new TextEncoder().encode(chunk)
-							: new TextEncoder().encode(String(chunk ?? ""));
-				buffer += decoder.decode(bytes, { stream: true });
-				usage = parseSseUsage(buffer, usage);
-				if (buffer.length > 16_384) {
-					buffer = buffer.slice(-4_096);
+							? encoder.encode(chunk)
+							: encoder.encode(String(chunk ?? ""));
+				pending += decoder.decode(bytes, { stream: true });
+				let newline = pending.indexOf("\n");
+				while (newline !== -1) {
+					const line = pending.slice(0, newline);
+					pending = pending.slice(newline + 1);
+					const normalized = normalizeSseLine(line, model);
+					usage = parseSseUsage(`${normalized}\n`, usage);
+					controller.enqueue(encoder.encode(`${normalized}\n`));
+					newline = pending.indexOf("\n");
 				}
-				controller.enqueue(bytes);
 			},
 			async flush() {
+				const tail = `${pending}${decoder.decode()}`.trimEnd();
+				if (tail.length > 0) {
+					const normalized = normalizeSseLine(tail, model);
+					usage = parseSseUsage(`${normalized}\n`, usage);
+					controller.enqueue(encoder.encode(`${normalized}\n`));
+				}
 				const debit =
 					(usage ? billedMicros(model, usage, markup) : null) ?? fallback;
 				await consumeMicrodollars(kv, userId, debit);

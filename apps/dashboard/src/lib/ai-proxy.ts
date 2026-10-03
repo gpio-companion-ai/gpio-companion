@@ -261,6 +261,66 @@ export function toChatCompletion(
 	};
 }
 
+export function toChatChunk(model: string, payload: unknown): unknown {
+	if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+		return payload;
+	}
+	const record = payload as Record<string, unknown>;
+	if ("choices" in record || "error" in record) {
+		return record;
+	}
+	const usage = extractUsage(record);
+	if (usage) {
+		return {
+			id: `gpio-chunk-${crypto.randomUUID()}`,
+			object: "chat.completion.chunk",
+			created: Math.floor(Date.now() / 1000),
+			model,
+			choices: [],
+			usage: {
+				prompt_tokens: usage.prompt_tokens,
+				completion_tokens: usage.completion_tokens,
+				total_tokens: usage.prompt_tokens + usage.completion_tokens,
+			},
+		};
+	}
+	const text = assistantText(record);
+	if (text != null) {
+		return {
+			id: `gpio-chunk-${crypto.randomUUID()}`,
+			object: "chat.completion.chunk",
+			created: Math.floor(Date.now() / 1000),
+			model,
+			choices: [
+				{
+					index: 0,
+					delta: { role: "assistant", content: text },
+					finish_reason: null,
+				},
+			],
+		};
+	}
+	return record;
+}
+
+export function normalizeSseLine(line: string, model: string): string {
+	const trimmed = line.trimStart();
+	if (!trimmed.startsWith("data:")) {
+		return line;
+	}
+	const payload = trimmed.slice(5).trim();
+	if (!payload || payload === "[DONE]") {
+		return line;
+	}
+	let parsed: unknown;
+	try {
+		parsed = JSON.parse(payload);
+	} catch {
+		return line;
+	}
+	return `data: ${JSON.stringify(toChatChunk(model, parsed))}`;
+}
+
 export function parseSseUsage(
 	chunk: string,
 	current: TokenUsage | null,
