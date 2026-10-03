@@ -1,3 +1,4 @@
+import { APP_VIEWS, type AppView, isAppName } from "./app-server.ts";
 import { boardFileRelative } from "./board-files.ts";
 import { debugAuthQuery } from "./debug.ts";
 import type { DeviceAuthHeaders } from "./device-auth.ts";
@@ -53,13 +54,21 @@ export type UiPreviewCommand = {
 	path: string;
 };
 
+export type UiAppCommand = {
+	type: "app";
+	appId: string;
+	view: AppView;
+	title: string;
+};
+
 export type UiCommand =
 	| UiNavigateCommand
 	| UiDockCommand
 	| UiPaletteCommand
 	| UiToastCommand
 	| UiModalCommand
-	| UiPreviewCommand;
+	| UiPreviewCommand
+	| UiAppCommand;
 
 export const UI_NAVIGATE_TARGETS = [
 	"project",
@@ -189,6 +198,8 @@ export function parseUiCommand(input: unknown): UiCommand {
 			return parseModal(record);
 		case "preview":
 			return parsePreview(record);
+		case "app":
+			return parseApp(record);
 		default:
 			throw new UiError("unknown ui command");
 	}
@@ -317,4 +328,26 @@ function parsePreview(record: Record<string, unknown>): UiPreviewCommand {
 		throw new UiError("preview path is too long");
 	}
 	return { type: "preview", repo, path };
+}
+
+function parseApp(record: Record<string, unknown>): UiAppCommand {
+	if (typeof record.appId !== "string" || !isAppName(record.appId.trim())) {
+		throw new UiError("app id is invalid");
+	}
+	const appId = record.appId.trim();
+	let view: AppView = "split";
+	if (record.view !== undefined) {
+		if (
+			typeof record.view !== "string" ||
+			!(APP_VIEWS as readonly string[]).includes(record.view)
+		) {
+			throw new UiError("app view must be split, modal, or page");
+		}
+		view = record.view as AppView;
+	}
+	const title =
+		typeof record.title === "string" && record.title.trim()
+			? record.title.trim().slice(0, UI_TITLE_MAX)
+			: appId;
+	return { type: "app", appId, view, title };
 }

@@ -82,6 +82,7 @@ const LOCAL_COMMANDS = new Set([
 	"verify",
 	"console",
 	"ui",
+	"app",
 	"status",
 	"health",
 	"help",
@@ -101,7 +102,7 @@ if (LOCAL_COMMANDS.has(command)) {
 
 if (command !== "serve") {
 	console.error(
-		"usage: gpio-companion serve | version | git-credential | github-token | sketch | flash | gpio | proxy | verify | console | ui | status | health",
+		"usage: gpio-companion serve | version | git-credential | github-token | sketch | flash | gpio | proxy | verify | console | ui | app | status | health",
 	);
 	process.exit(1);
 }
@@ -277,6 +278,7 @@ async function shutdown(signal: string): Promise<void> {
 	stopUsbWatch();
 	hub.stop();
 	run.stop();
+	server.app.stop();
 	proxy.release();
 	await Promise.all([gpio.releaseAll?.() ?? Promise.resolve(), ble.stop()]);
 	try {

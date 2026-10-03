@@ -66,6 +66,7 @@ import { useColorMode, useColors } from "../lib/color-mode.tsx";
 import { dashboardUrl } from "../lib/config.ts";
 import { useLocale, useT } from "../lib/locale.tsx";
 import type { Colors } from "../lib/theme.ts";
+import AppWebView from "./AppWebView.tsx";
 import BreadboardWebView from "./BreadboardWebView.tsx";
 import ModelWebView from "./ModelWebView.tsx";
 import { MarkdownView } from "./OcMarkdown.tsx";
@@ -105,6 +106,8 @@ type SketchAction = {
 export type CodeFilesBridge = {
 	openPath: (path: string) => Promise<void>;
 	textFor: (path: string) => Promise<string>;
+	openApp: (appId: string, title: string) => void;
+	closeApp: () => void;
 };
 
 export default function ProjectFiles({
@@ -132,6 +135,10 @@ export default function ProjectFiles({
 	const [branch, setBranch] = useState("");
 	const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
 	const [file, setFile] = useState<OpenFile | null>(null);
+	const [appView, setAppView] = useState<{
+		appId: string;
+		title: string;
+	} | null>(null);
 	const [draft, setDraft] = useState("");
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
 	const [mdView, setMdView] = useState<"parsed" | "raw">("parsed");
@@ -158,6 +165,8 @@ export default function ProjectFiles({
 	const fileRef = useRef(file);
 	const draftRef = useRef(draft);
 	const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
+	const openAppRef = useRef<(appId: string, title: string) => void>(() => {});
+	const closeAppRef = useRef<() => void>(() => {});
 	const openedPath = useRef("");
 	const editorSelectionRef = useRef(onEditorSelection);
 	editorSelectionRef.current = onEditorSelection;
@@ -332,6 +341,7 @@ export default function ProjectFiles({
 			};
 			setFile(next);
 			setDraft(next.text);
+			setAppView(null);
 			if (openedPath.current !== path) {
 				openedPath.current = path;
 				setDiagramView(path === BREADBOARD_DIAGRAM_JSON ? "board" : "json");
@@ -395,9 +405,44 @@ export default function ProjectFiles({
 		await doOpen(path);
 	}
 	openPathRef.current = openPath;
+
+	function openApp(appId: string, title: string) {
+		if (!token || !uuid || !appId) {
+			return;
+		}
+		const current = fileRef.current;
+		if (
+			current &&
+			boardFileDirty(current.kind, draftRef.current, current.text)
+		) {
+			confirmDiscard(() => {
+				editorSelectionRef.current?.(current.path, null);
+				setFile(null);
+				setDraft("");
+				setAppView({ appId, title: title || appId });
+			});
+			return;
+		}
+		if (current) {
+			editorSelectionRef.current?.(current.path, null);
+		}
+		setFile(null);
+		setDraft("");
+		setAppView({ appId, title: title || appId });
+	}
+
+	function closeApp() {
+		setAppView(null);
+	}
+	openAppRef.current = openApp;
+	closeAppRef.current = closeApp;
+
 	if (bridge) {
 		bridge.current.openPath = (path: string) => openPathRef.current(path);
 		bridge.current.textFor = textFor;
+		bridge.current.openApp = (appId: string, title: string) =>
+			openAppRef.current(appId, title);
+		bridge.current.closeApp = () => closeAppRef.current();
 	}
 
 	function reloadStale() {
@@ -927,7 +972,17 @@ export default function ProjectFiles({
 					{saved}
 				</Text>
 			) : null}
-			{file ? (
+			{appView ? (
+				<View style={{ flex: 1, minHeight: 320 }}>
+					<AppWebView
+						token={token}
+						uuid={uuid}
+						appId={appView.appId}
+						title={appView.title}
+						onClose={closeApp}
+					/>
+				</View>
+			) : file ? (
 				<View style={{ flex: 1, minHeight: 320 }}>
 					<View
 						style={{

@@ -3,8 +3,13 @@ import {
 	AGENT_PATH,
 	AGENT_STOP_PATH,
 	AgentError,
+	APP_PATH,
+	APP_START_PATH,
+	APP_STOP_PATH,
+	AppError,
 	ARDUINO_PROXY_PATH,
 	ArduinoProxyError,
+	appNameFromMintPath,
 	CONSOLE_PATH,
 	CONSOLE_USB_PATH,
 	CONSOLE_USB_STOP_PATH,
@@ -35,6 +40,8 @@ import {
 	INFO_PATH,
 	isAgentPath,
 	isAllowedDebugOrigin,
+	isAppFrameMintPath,
+	isAppManagePath,
 	isArduinoProxyFqbn,
 	isArduinoProxyPath,
 	isConsolePath,
@@ -56,6 +63,7 @@ import {
 	PROJECTS_REMOVE_PATH,
 	PROJECTS_SYNC_PATH,
 	pairingCredentials,
+	parseAppFramePath,
 	parseBoardFileListPut,
 	parseBoardFileReadPut,
 	parseBoardFileRemovePut,
@@ -103,6 +111,11 @@ import {
 } from "gpio-companion";
 import { type AgentController, createAgentController } from "./agent.ts";
 import { type FetchLike, proxyAiRequest } from "./ai-credentials.ts";
+import {
+	type AppController,
+	appUpstreamWsUrl,
+	createAppController,
+} from "./app-server.ts";
 import {
 	type ArduinoProxyController,
 	createArduinoProxy,
@@ -222,6 +235,7 @@ export type ServeOptions = {
 	flash?: FlashController;
 	run?: RunController;
 	agent?: AgentController;
+	app?: AppController;
 	verify?: VerifyController;
 	proxy?: ArduinoProxyController;
 	console?: ConsoleHub;
@@ -239,6 +253,7 @@ export type DeviceRequestExtras = {
 	flash?: FlashController;
 	run?: RunController;
 	agent?: AgentController;
+	app?: AppController;
 	verify?: VerifyController;
 	proxy?: ArduinoProxyController;
 	console?: ConsoleHub;
@@ -263,9 +278,14 @@ export type DeviceRequestExtras = {
 };
 
 type TunnelWsData = {
-	stream: "debug" | "gpio" | "console" | "files" | "opencode" | "ui";
+	stream: "debug" | "gpio" | "console" | "files" | "opencode" | "ui" | "app";
 	repo?: string;
 	lastEventId?: string;
+	appSuffix?: string;
+	appSearch?: string;
+	appPort?: number;
+	appUpstream?: WebSocket;
+	appPending?: Array<string | Uint8Array>;
 };
 
 type OpencodeSocket = {
@@ -274,11 +294,18 @@ type OpencodeSocket = {
 	data: TunnelWsData;
 };
 
+type AppSocket = {
+	send(data: string | ArrayBuffer | Uint8Array): void;
+	close(code?: number, reason?: string): void;
+	data: TunnelWsData;
+};
+
 export type DeviceApiServer = ReturnType<typeof Bun.serve<TunnelWsData>> & {
 	run: RunController;
 	flash: FlashController;
 	verify: VerifyController;
 	console: ConsoleHub;
+	app: AppController;
 };
 
 export function startDeviceApi(options: ServeOptions): DeviceApiServer {
@@ -302,6 +329,8 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 	});
 	const consoleHub = options.console ?? createConsoleHub();
 	const uiHub = options.ui ?? createUiHub();
+	const app =
+		options.app ?? createAppController({ projectsDir: options.projectsDir });
 	const fileHub = createBoardFileHub(options.projectsDir ?? projectsRoot());
 	const opencodeStops = new WeakMap<object, AbortController>();
 	const opencodeEnvPath =
@@ -346,6 +375,70 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 	function stopOpencodeBridge(ws: object) {
 		opencodeStops.get(ws)?.abort();
 		opencodeStops.delete(ws);
+	}
+
+	function startAppBridge(ws: AppSocket) {
+		const port = ws.data.appPort ?? 0;
+		const suffix = ws.data.appSuffix ?? "/";
+		const search = ws.data.appSearch ?? "";
+		let upstream: WebSocket;
+		try {
+			upstream = new WebSocket(appUpstreamWsUrl(port, suffix, search));
+		} catch {
+			try {
+				ws.close(1011, "app unavailable");
+			} catch {
+				undefined;
+			}
+			return;
+		}
+		ws.data.appUpstream = upstream;
+		const pending: Array<string | Uint8Array> = [];
+		ws.data.appPending = pending;
+		upstream.addEventListener("open", () => {
+			for (const item of pending.splice(0)) {
+				try {
+					upstream.send(item);
+				} catch {
+					undefined;
+				}
+			}
+		});
+		upstream.addEventListener("message", (event) => {
+			const data = event.data;
+			try {
+				if (typeof data === "string") {
+					ws.send(data);
+				} else if (data instanceof ArrayBuffer) {
+					ws.send(data);
+				} else if (ArrayBuffer.isView(data)) {
+					ws.send(
+						new Uint8Array(
+							data.buffer,
+							data.byteOffset,
+							data.byteLength as number,
+						),
+					);
+				}
+			} catch {
+				undefined;
+			}
+		});
+		const stop = () => {
+			try {
+				upstream.close();
+			} catch {
+				undefined;
+			}
+		};
+		upstream.addEventListener("close", () => {
+			try {
+				ws.close(1011, "app closed");
+			} catch {
+				undefined;
+			}
+		});
+		upstream.addEventListener("error", stop);
 	}
 	const jobs: { run?: RunController; verify?: VerifyController } = {};
 	const run =
@@ -425,6 +518,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 			createAgentController({
 				projectsDir: options.projectsDir,
 			}),
+		app,
 		verify,
 		projectsDir: options.projectsDir,
 		applyUpdate: options.applyUpdate,
@@ -451,6 +545,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 			const url = new URL(request.url);
 			const path = url.pathname.replace(/\/+$/, "") || "/";
 			const upgrade = request.headers.get("upgrade")?.toLowerCase() ?? "";
+			const appFrame = parseAppFramePath(path);
 			const watchRepo =
 				request.method === "GET" ? parseBoardFileWatchPath(path) : null;
 			const eventRepo =
@@ -518,7 +613,8 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 				path !== CONSOLE_PATH &&
 				path !== UI_PATH &&
 				!watchRepo &&
-				!eventRepo
+				!eventRepo &&
+				!appFrame
 			) {
 				console.error(`gpio-companion debug: websocket to ${path}`);
 			}
@@ -586,6 +682,56 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					})) ?? (undefined as never)
 				);
 			}
+			if (appFrame) {
+				const origin = request.headers.get("origin") ?? "";
+				if (!isAllowedDebugOrigin(origin, dashboardUrl)) {
+					console.error(`gpio-companion app: unauthorized origin ${origin}`);
+					return Response.json(
+						{ error: "unauthorized app origin" },
+						{ status: 401 },
+					);
+				}
+				if (!extras.app) {
+					return Response.json(
+						{ error: "app is unavailable" },
+						{ status: 503 },
+					);
+				}
+				if (upgrade === "websocket") {
+					try {
+						const auth = extras.app.authorize(appFrame);
+						if (
+							server.upgrade(request, {
+								data: {
+									stream: "app",
+									appSuffix: appFrame.suffix,
+									appSearch: url.search,
+									appPort: auth.port,
+								},
+							})
+						) {
+							return undefined as never;
+						}
+						return new Response("upgrade failed", { status: 400 });
+					} catch (error) {
+						const message =
+							error instanceof Error ? error.message : "app frame failed";
+						const status = error instanceof AppError ? error.status : 400;
+						return Response.json({ error: message }, { status });
+					}
+				}
+				try {
+					return await extras.app.proxy(request, appFrame, url.search);
+				} catch (error) {
+					if (error instanceof AppError) {
+						return Response.json(
+							{ error: error.message },
+							{ status: error.status },
+						);
+					}
+					return Response.json({ error: "app frame failed" }, { status: 502 });
+				}
+			}
 			let response: Response;
 			try {
 				response = await handleDeviceRequest(
@@ -616,6 +762,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					error instanceof FlashError ||
 					error instanceof RunError ||
 					error instanceof AgentError ||
+					error instanceof AppError ||
 					error instanceof VerifyError ||
 					error instanceof ConsoleError ||
 					error instanceof UiError ||
@@ -664,6 +811,10 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					startOpencodeBridge(ws);
 					return;
 				}
+				if (ws.data.stream === "app") {
+					startAppBridge(ws as AppSocket);
+					return;
+				}
 				debug.add(ws);
 			},
 			message(ws, message) {
@@ -681,6 +832,19 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 				}
 				if (ws.data.stream === "ui") {
 					uiHub.handle(ws, text);
+					return;
+				}
+				if (ws.data.stream === "app") {
+					const upstream = ws.data.appUpstream;
+					if (!upstream) {
+						return;
+					}
+					if (upstream.readyState === 1) {
+						upstream.send(message);
+					} else {
+						ws.data.appPending?.push(message);
+					}
+					return;
 				}
 			},
 			close(ws) {
@@ -704,6 +868,14 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					stopOpencodeBridge(ws);
 					return;
 				}
+				if (ws.data.stream === "app") {
+					try {
+						ws.data.appUpstream?.close();
+					} catch {
+						undefined;
+					}
+					return;
+				}
 				debug.remove(ws);
 			},
 		},
@@ -713,6 +885,7 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 		flash,
 		verify,
 		console: consoleHub,
+		app,
 	});
 }
 
@@ -812,7 +985,10 @@ export async function handleDeviceRequest(
 			isVerifyPath(path) ||
 			isConsolePath(path) ||
 			isUiPath(path) ||
-			isArduinoProxyPath(path)) &&
+			isArduinoProxyPath(path) ||
+			path === APP_PATH ||
+			path === APP_START_PATH ||
+			path === APP_STOP_PATH) &&
 		isLoopback(url) &&
 		!hasDeviceSignature(request.headers)
 	) {
@@ -833,6 +1009,13 @@ export async function handleDeviceRequest(
 		}
 		if (isAgentPath(path)) {
 			return handleAgent(method, path, bodyText, extras);
+		}
+		if (
+			path === APP_PATH ||
+			path === APP_START_PATH ||
+			path === APP_STOP_PATH
+		) {
+			return await handleApp(method, path, bodyText, extras);
 		}
 		if (isVerifyPath(path)) {
 			return handleVerify(method, path, bodyText, extras);
@@ -1208,6 +1391,10 @@ export async function handleDeviceRequest(
 
 	if (isAgentPath(path)) {
 		return handleAgent(method, path, bodyText, extras);
+	}
+
+	if (isAppManagePath(path)) {
+		return await handleApp(method, path, bodyText, extras);
 	}
 
 	if (isVerifyPath(path)) {
@@ -1690,6 +1877,31 @@ function handleAgent(
 	}
 	if (method === "POST" && path === AGENT_STOP_PATH) {
 		return json(agent.stop());
+	}
+	return json({ error: "method not allowed" }, 405);
+}
+
+async function handleApp(
+	method: string,
+	path: string,
+	bodyText: string,
+	extras: DeviceRequestExtras | undefined,
+): Promise<Response> {
+	const app = extras?.app;
+	if (!app) {
+		return json({ error: "app is unavailable" }, 503);
+	}
+	if (method === "GET" && path === APP_PATH) {
+		return json(app.status());
+	}
+	if (method === "POST" && path === APP_START_PATH) {
+		return json(await app.start(parseJson(bodyText)));
+	}
+	if (method === "POST" && path === APP_STOP_PATH) {
+		return json(app.stop());
+	}
+	if (method === "POST" && isAppFrameMintPath(path)) {
+		return json(app.mint(appNameFromMintPath(path)));
 	}
 	return json({ error: "method not allowed" }, 405);
 }

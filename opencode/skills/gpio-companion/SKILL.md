@@ -8,7 +8,8 @@ description: >-
   USB Arduino flash is gpio-arduino. tscircuit breadboard/PCB, visual sheets,
   printable parts (skill gpio-3d), JLCPCB parts lookup (skill gpio-jlcpcb),
   dashboard UI actions (skill gpio-ui: `ui list` first, then navigate/dock/
-  toast/modal when a dashboard app is open), GitHub, Bun.
+  toast/modal when a dashboard app is open), custom board apps served from
+  the project repo (skill gpio-app: `app start` then `ui app`), GitHub, Bun.
   Use on Orange Pi / Raspberry Pi Armbian with OpenCode, and in this monorepo.
 ---
 

@@ -51,6 +51,7 @@ import { useT } from "../hooks/useLocale.tsx";
 import useMobile from "../hooks/useMobile.ts";
 import { useWorkbench } from "../hooks/useWorkbench.tsx";
 import { unwrapAction } from "../lib/action.ts";
+import AppFrame from "./AppFrame.tsx";
 import BreadboardViewer from "./BreadboardViewer.tsx";
 import ModelViewer from "./ModelViewer.tsx";
 import { MarkdownView } from "./OcMarkdown.tsx";
@@ -58,6 +59,8 @@ import { MarkdownView } from "./OcMarkdown.tsx";
 export type CodeFilesBridge = {
 	textFor: (path: string) => Promise<string>;
 	openPath: (path: string) => Promise<void>;
+	openApp: (appId: string, title: string) => void;
+	closeApp: () => void;
 };
 
 type FileMenu = {
@@ -127,6 +130,10 @@ export default function ProjectFiles({
 	const [branch, setBranch] = useState("");
 	const [openDirs, setOpenDirs] = useState<Set<string>>(new Set());
 	const [file, setFile] = useState<OpenFile | null>(null);
+	const [appView, setAppView] = useState<{
+		appId: string;
+		title: string;
+	} | null>(null);
 	const [draft, setDraft] = useState("");
 	const [diagramView, setDiagramView] = useState<"json" | "board">("board");
 	const [mdView, setMdView] = useState<"parsed" | "raw">("parsed");
@@ -157,6 +164,8 @@ export default function ProjectFiles({
 	draftRef.current = draft;
 	mobileRef.current = mobile;
 	const openPathRef = useRef<(path: string) => Promise<void>>(async () => {});
+	const openAppRef = useRef<(appId: string, title: string) => void>(() => {});
+	const closeAppRef = useRef<() => void>(() => {});
 	const openedPath = useRef("");
 	const dirty = boardFileDirty(file?.kind ?? "", draft, file?.text ?? "");
 	const showBoard =
@@ -177,6 +186,7 @@ export default function ProjectFiles({
 		}
 		setFile(null);
 		setDraft("");
+		setAppView(null);
 		setStale(false);
 		setNote("");
 		setSaved("");
@@ -377,6 +387,7 @@ export default function ProjectFiles({
 		if (current && current.path !== path) {
 			editorSelectionRef.current?.(current.path, null);
 		}
+		setAppView(null);
 		setFileLoading(true);
 		const result = await readFile({ uuid, name, path });
 		setFileLoading(false);
@@ -418,6 +429,40 @@ export default function ProjectFiles({
 		});
 	}
 	openPathRef.current = openPath;
+
+	function openApp(appId: string, title: string) {
+		if (!uuid || !appId) {
+			return;
+		}
+		const current = fileRef.current;
+		if (
+			current &&
+			current.kind === "text" &&
+			draftRef.current !== current.text &&
+			!window.confirm(t("code.discardConfirm"))
+		) {
+			return;
+		}
+		editorSelectionRef.current?.(current?.path ?? "", null);
+		setFile(null);
+		setDraft("");
+		setStale(false);
+		setNote("");
+		setSaved("");
+		setAppView({ appId, title: title || appId });
+		if (mobileRef.current) {
+			setMobilePane("preview");
+		}
+	}
+
+	function closeApp() {
+		setAppView(null);
+		if (mobileRef.current && !fileRef.current) {
+			setMobilePane("chat");
+		}
+	}
+	openAppRef.current = openApp;
+	closeAppRef.current = closeApp;
 
 	function shownError(message: string): string {
 		const key = codeComposerErrorKey(message);
@@ -593,6 +638,9 @@ export default function ProjectFiles({
 	if (bridge) {
 		bridge.current.textFor = textFor;
 		bridge.current.openPath = (path: string) => openPathRef.current(path);
+		bridge.current.openApp = (appId: string, title: string) =>
+			openAppRef.current(appId, title);
+		bridge.current.closeApp = () => closeAppRef.current();
 	}
 
 	async function addToContext(path: string) {
@@ -849,7 +897,7 @@ export default function ProjectFiles({
 							role="tab"
 							aria-selected={mobilePane === tab.id}
 							className={mobilePane === tab.id ? "is-on" : undefined}
-							disabled={tab.id === "preview" && !file}
+							disabled={tab.id === "preview" && !file && !appView}
 							onClick={() => setMobilePane(tab.id)}
 						>
 							{tab.label}
@@ -1037,8 +1085,20 @@ export default function ProjectFiles({
 						)}
 					</div>
 				</aside>
-				<div className={`oc-stage${file ? " is-split" : ""}`} ref={stageRef}>
-					{file ? (
+				<div
+					className={`oc-stage${file || appView ? " is-split" : ""}`}
+					ref={stageRef}
+				>
+					{appView ? (
+						<section className="oc-editor" aria-label={appView.title}>
+							<AppFrame
+								uuid={uuid}
+								appId={appView.appId}
+								title={appView.title}
+								onClose={closeApp}
+							/>
+						</section>
+					) : file ? (
 						<section className="oc-editor" aria-label={file.path}>
 							<div className="oc-editor-bar">
 								<span
@@ -1187,7 +1247,7 @@ export default function ProjectFiles({
 							</div>
 						</section>
 					) : null}
-					{file ? (
+					{file || appView ? (
 						<div className="oc-split" onPointerDown={onSplitDown} />
 					) : null}
 					<div className="oc-chat">{children}</div>

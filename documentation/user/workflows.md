@@ -117,6 +117,24 @@ You normally do not need to edit these paths manually, but they help explain wha
 | `technical/` | Wiring notes and technical sheets |
 | `host/` | C sketches run by the companion |
 | `firmware/` | C sketches flashed to a USB Arduino |
+| `app/` | Custom board apps the agent serves for this project |
+
+## Custom board apps
+
+When a project needs its own control panel or live view — sliders, charts, a
+wizard — the agent can build a small board app and serve it from the project.
+Ask for it in Open Code ("make a panel that…"), and the agent starts the app
+on the board and opens it for you.
+
+- **Split view** opens beside the chat in Open Code (where file previews
+  appear). **Dialog** opens it over the current page, and **page** opens it
+  as its own view (web `/devices/app`).
+- The app runs on your board and is reached through a private, short-lived
+  link; the browser never holds your board credentials.
+- The link renews automatically. If an app stops, its views show an error
+  note — ask the agent to start it again.
+- A board app is a custom surface for that project. Hardware control still
+  goes through the usual sketches, flashing, and Live GPIO.
 
 ## Updates and troubleshooting
 

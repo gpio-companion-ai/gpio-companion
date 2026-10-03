@@ -443,6 +443,8 @@ export default function OpenCodeSession({
 		openPath: async () => {
 			throw new Error("file is missing");
 		},
+		openApp: () => undefined,
+		closeApp: () => undefined,
 	});
 	const previewPending = useRef<{ repo: string; path: string } | null>(null);
 	const repoRef = useRef(repo);
@@ -722,6 +724,46 @@ export default function OpenCodeSession({
 			void filesBridge.current.openPath(pending.path).catch(() => undefined);
 		}
 	}, [repo]);
+
+	function requestUiApp(appId: string, title: string) {
+		if (!appId) {
+			return;
+		}
+		filesBridge.current.openApp(appId, title);
+	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: shell event wiring mounts once
+	useEffect(() => {
+		function onUiApp(event: Event) {
+			const detail = (
+				event as CustomEvent<{ appId?: unknown; title?: unknown }>
+			).detail;
+			if (!detail || typeof detail.appId !== "string") {
+				return;
+			}
+			requestUiApp(
+				detail.appId,
+				typeof detail.title === "string" ? detail.title : detail.appId,
+			);
+		}
+		// Sticky request set by the app shell when it navigates to Code first.
+		try {
+			const win = window as unknown as {
+				__gpioUiApp?: { appId: string; title: string };
+			};
+			const sticky = win.__gpioUiApp;
+			if (sticky) {
+				win.__gpioUiApp = undefined;
+				requestUiApp(sticky.appId, sticky.title);
+			}
+		} catch {
+			undefined;
+		}
+		window.addEventListener("gpio-ui-app", onUiApp);
+		return () => {
+			window.removeEventListener("gpio-ui-app", onUiApp);
+		};
+	}, []);
 
 	function openSession(sessionID: string) {
 		if (mode !== "session" || sessionID !== view.sessionID) resetAudioSession();

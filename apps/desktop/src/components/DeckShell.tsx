@@ -28,6 +28,7 @@ import {
 	isAllowedDeviceTab,
 } from "../lib/dashboard-mode";
 import { useT } from "../locale";
+import AppFrame from "./AppFrame";
 import BoardPresenceAlerts from "./BoardPresenceAlerts";
 import DockBody from "./DockBody";
 
@@ -125,6 +126,11 @@ export default function DeckShell({
 		useState<ProfileSection>("account");
 	const [uiToast, setUiToast] = useState<string | null>(null);
 	const [uiModal, setUiModal] = useState<UiModalCommand | null>(null);
+	const [uiApp, setUiApp] = useState<{
+		appId: string;
+		title: string;
+		full: boolean;
+	} | null>(null);
 	const uiToastTimer = useRef(0);
 
 	const uiSocket = useUiSocket({
@@ -187,6 +193,41 @@ export default function DeckShell({
 				case "modal":
 					setUiModal(command);
 					return;
+				case "app": {
+					if (command.view === "modal") {
+						setUiApp({
+							appId: command.appId,
+							title: command.title,
+							full: false,
+						});
+						return;
+					}
+					if (command.view === "page") {
+						setUiApp({
+							appId: command.appId,
+							title: command.title,
+							full: true,
+						});
+						return;
+					}
+					// split: open beside the chat, in the Code preview pane.
+					if (!(section === "devices" && deviceTab === "code")) {
+						onNavigate("devices");
+						onDeviceTab("code");
+					}
+					const detail = { appId: command.appId, title: command.title };
+					try {
+						(
+							window as unknown as {
+								__gpioUiApp?: typeof detail;
+							}
+						).__gpioUiApp = detail;
+						window.dispatchEvent(new CustomEvent("gpio-ui-app", { detail }));
+					} catch {
+						undefined;
+					}
+					return;
+				}
 				case "preview": {
 					// Already on Code: only dispatch the preview event so the
 					// active chat session stays mounted.
@@ -764,6 +805,29 @@ export default function DeckShell({
 						{t("deck.ui.dismiss")}
 					</Button>
 				</DialogActions>
+			</Dialog>
+
+			<Dialog
+				open={Boolean(uiApp)}
+				onClose={() => setUiApp(null)}
+				fullWidth
+				fullScreen={uiApp?.full ?? false}
+				scroll="paper"
+				sx={{ zIndex: 1400 }}
+				slotProps={{
+					paper: {
+						className: uiApp?.full ? "w-full h-full" : "max-w-3xl w-full h-4/5",
+					},
+				}}
+			>
+				{uiApp && uuid ? (
+					<AppFrame
+						uuid={uuid}
+						appId={uiApp.appId}
+						title={uiApp.title}
+						onClose={() => setUiApp(null)}
+					/>
+				) : null}
 			</Dialog>
 		</div>
 	);

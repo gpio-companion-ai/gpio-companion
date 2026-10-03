@@ -138,6 +138,7 @@ import { useColors } from "../lib/color-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { useLocale, useT } from "../lib/locale.tsx";
 import { storageGet, storageSet } from "../lib/storage.ts";
+import { takePendingUiApp } from "../lib/ui-app.ts";
 import { takePendingUiPreview } from "../lib/ui-preview.ts";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
@@ -302,6 +303,8 @@ export default function Code() {
 	const filesBridge = useRef<CodeFilesBridge>({
 		openPath: async () => undefined,
 		textFor: async () => "",
+		openApp: () => undefined,
+		closeApp: () => undefined,
 	});
 	const previewPending = useRef<{ repo: string; path: string } | null>(null);
 	const repoRef = useRef(repo);
@@ -566,6 +569,40 @@ export default function Code() {
 			"gpio-ui-preview",
 			onPreview,
 		);
+		return () => {
+			subscription.remove();
+		};
+	}, []);
+
+	function requestUiApp(appId: string, title: string) {
+		if (!appId) {
+			return;
+		}
+		setPane("files");
+		filesBridge.current.openApp(appId, title);
+	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: shell event wiring mounts once
+	useEffect(() => {
+		function onUiApp(payload: unknown) {
+			const detail =
+				payload && typeof payload === "object"
+					? (payload as { appId?: unknown; title?: unknown })
+					: undefined;
+			if (!detail || typeof detail.appId !== "string") {
+				return;
+			}
+			requestUiApp(
+				detail.appId,
+				typeof detail.title === "string" ? detail.title : detail.appId,
+			);
+		}
+		// Sticky request set by the app shell when it navigates to Code first.
+		const sticky = takePendingUiApp();
+		if (sticky) {
+			requestUiApp(sticky.appId, sticky.title);
+		}
+		const subscription = DeviceEventEmitter.addListener("gpio-ui-app", onUiApp);
 		return () => {
 			subscription.remove();
 		};
@@ -3610,9 +3647,7 @@ function ToolStack({
 					backgroundColor: pressed ? "rgba(128,128,128,0.1)" : "transparent",
 				})}
 			>
-				<Text style={{ color: muted, fontSize: 10 }}>
-					{open ? "▾" : "▸"}
-				</Text>
+				<Text style={{ color: muted, fontSize: 10 }}>{open ? "▾" : "▸"}</Text>
 				<Text
 					numberOfLines={1}
 					style={{ flex: 1, minWidth: 0, color, fontWeight: "600" }}
@@ -3775,9 +3810,7 @@ function ThinkingStack({
 					backgroundColor: pressed ? "rgba(128,128,128,0.1)" : "transparent",
 				})}
 			>
-				<Text style={{ color: muted, fontSize: 10 }}>
-					{open ? "▾" : "▸"}
-				</Text>
+				<Text style={{ color: muted, fontSize: 10 }}>{open ? "▾" : "▸"}</Text>
 				<Text
 					numberOfLines={1}
 					style={{ flex: 1, minWidth: 0, color: muted, fontStyle: "italic" }}

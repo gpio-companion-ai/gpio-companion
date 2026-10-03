@@ -4,7 +4,8 @@ description: >-
   Act on the open gpio-companion dashboard app (web, desktop, or mobile):
   always GET /v1/ui first on user-visible tasks; when sockets are non-empty,
   navigate, open a dock panel, open/close the command palette, toast, preview
-  a board file, and ask a modal question when advantageous. Signed /v1/ui WebSocket channel; the
+  a board file, open a running board app (started with the gpio-app skill),
+  and ask a modal question when advantageous. Signed /v1/ui WebSocket channel; the
   agent posts unsigned to loopback only. Use after starting, flashing, or
   verifying so the user can watch. Not DeviceHub. Never start sketches, flash,
   unpair, delete, order, or change WiFi through this channel.
@@ -55,6 +56,7 @@ Response: `delivered=1`.
 | `toast` | `{"type":"toast","text":"..."}` | Short text (max 160 chars) |
 | `preview` | see below | Open a board file in the Code view |
 | `modal` | see below | Title + body + up to 3 buttons, waits for a click |
+| `app` | see below | Open a running board app (skill `gpio-app`) in the Code pane, a dialog, or its own page |
 
 Known `navigate` targets (unknown ones are ignored): `project`, `code`,
 `docs`, `devices`, `pair`, `wifi`, `keys`, `requests`, `debug`, `admin`,
@@ -96,6 +98,19 @@ gpio-companion ui reply --id ask-blink-7
   may still answer. Replies are kept for 2 minutes — a slow user needs a
   re-poll, not a new modal.
 - When `delivered` was 0, do not wait on a reply — nobody saw the modal.
+
+## Board apps
+
+```sh
+gpio-companion ui app --id led-panel --view split --title "LED panel"
+```
+
+- Only after `gpio-companion app start` succeeded for that `--id` (skill
+  `gpio-app`). The id is the app name; no URLs ever cross this channel.
+- `--view`: `split` (Code middle pane, default), `modal` (dialog),
+  `page` (own page/window).
+- Fire-and-forget like `toast` — no reply to poll. If the app is not running,
+  the dashboard shows an error note in the surface.
 
 ## What this channel is for
 

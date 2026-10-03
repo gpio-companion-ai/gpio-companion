@@ -989,6 +989,21 @@ export function connectUiLive(token: string, uuid: string) {
 	});
 }
 
+export type AppLiveGrant = {
+	name: string;
+	token: string;
+	path: string;
+	expiresAt: number;
+	url: string;
+};
+
+export function mintAppFrame(token: string, uuid: string, appId: string) {
+	return request<AppLiveGrant>(token, "/api/mobile/app-live", {
+		method: "POST",
+		body: JSON.stringify({ uuid, appId }),
+	});
+}
+
 export function startUsbConsole(
 	token: string,
 	input: { uuid: string; port: string; baud?: number },

@@ -59,11 +59,13 @@ import {
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { translateError, useT } from "../lib/locale.tsx";
 import { storageGet, storageSet } from "../lib/storage.ts";
+import { setPendingUiApp } from "../lib/ui-app.ts";
 import { setPendingUiPreview } from "../lib/ui-preview.ts";
 import { useConsoleTunnel } from "../lib/use-console-tunnel.ts";
 import { useDeviceHub as useLiveHub } from "../lib/use-device-hub.ts";
 import { useGpioTunnel } from "../lib/use-gpio-tunnel.ts";
 import { useUiSocket } from "../lib/use-ui-socket.ts";
+import AppWebView from "./AppWebView.tsx";
 import BoardPresenceAlerts from "./BoardPresenceAlerts.tsx";
 import { ErrorText, PrimaryButton, TextButton } from "./ui.tsx";
 
@@ -182,6 +184,11 @@ function DeckFrame({ children }: { children: ReactNode }) {
 
 	const [uiToast, setUiToast] = useState<string | null>(null);
 	const [uiModal, setUiModal] = useState<UiModalCommand | null>(null);
+	const [uiApp, setUiApp] = useState<{
+		appId: string;
+		title: string;
+		full: boolean;
+	} | null>(null);
 	const uiToastTimer = useRef(0);
 	const admin = auth.session?.role === "admin";
 
@@ -268,6 +275,33 @@ function DeckFrame({ children }: { children: ReactNode }) {
 					const detail = { repo: command.repo, path: command.path };
 					setPendingUiPreview(detail);
 					DeviceEventEmitter.emit("gpio-ui-preview", detail);
+					return;
+				}
+				case "app": {
+					if (command.view === "modal") {
+						setUiApp({
+							appId: command.appId,
+							title: command.title,
+							full: false,
+						});
+						return;
+					}
+					if (command.view === "page") {
+						setUiApp({
+							appId: command.appId,
+							title: command.title,
+							full: true,
+						});
+						return;
+					}
+					// split: open beside the chat, in the Code files pane.
+					if (tab !== "code" || pathname !== "/") {
+						setTab("code");
+						navigate("/");
+					}
+					const detail = { appId: command.appId, title: command.title };
+					setPendingUiApp(detail);
+					DeviceEventEmitter.emit("gpio-ui-app", detail);
 					return;
 				}
 			}
@@ -726,6 +760,30 @@ function DeckFrame({ children }: { children: ReactNode }) {
 						</View>
 					</Pressable>
 				</Pressable>
+			</Modal>
+
+			<Modal
+				visible={Boolean(uiApp)}
+				animationType="slide"
+				onRequestClose={() => setUiApp(null)}
+			>
+				<View
+					style={{
+						flex: 1,
+						backgroundColor: colors.surface,
+						paddingTop: uiApp?.full ? 0 : 44,
+					}}
+				>
+					{uiApp && auth.token && selectedBoardUuid ? (
+						<AppWebView
+							token={auth.token}
+							uuid={selectedBoardUuid}
+							appId={uiApp.appId}
+							title={uiApp.title}
+							onClose={() => setUiApp(null)}
+						/>
+					) : null}
+				</View>
 			</Modal>
 		</View>
 	);

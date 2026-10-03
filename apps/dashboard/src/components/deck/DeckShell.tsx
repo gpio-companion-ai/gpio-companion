@@ -26,7 +26,11 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
-import type { UiModalCommand, UiNavigateTarget } from "gpio-companion";
+import type {
+	UiAppCommand,
+	UiModalCommand,
+	UiNavigateTarget,
+} from "gpio-companion";
 import type {
 	ComponentType,
 	ReactNode,
@@ -53,6 +57,7 @@ import {
 	PROFILE_TABS,
 	type SectionTab,
 } from "../../lib/dashboard-mode.ts";
+import AppFrame from "../AppFrame.tsx";
 import BoardPresenceAlerts from "../BoardPresenceAlerts.tsx";
 import DockBody from "./DockBody.tsx";
 
@@ -218,6 +223,10 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	);
 	const [uiToast, setUiToast] = useState<string | null>(null);
 	const [uiModal, setUiModal] = useState<UiModalCommand | null>(null);
+	const [uiAppModal, setUiAppModal] = useState<{
+		appId: string;
+		title: string;
+	} | null>(null);
 	const uiToastTimer = useRef(0);
 
 	const uiSocket = useUiSocket({
@@ -271,6 +280,10 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				case "modal":
 					setUiModal(command);
 					return;
+				case "app": {
+					openUiApp(command);
+					return;
+				}
 				case "preview": {
 					// Opening a file must not remount the Code page: when we are
 					// already on Code, only dispatch the preview event so the
@@ -303,6 +316,34 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 		}
 		uiSocket.reply(uiModal.id, action);
 		setUiModal(null);
+	}
+
+	function openUiApp(command: UiAppCommand) {
+		if (command.view === "modal") {
+			setUiAppModal({ appId: command.appId, title: command.title });
+			return;
+		}
+		if (command.view === "page") {
+			navigate(
+				`/devices/app?app=${encodeURIComponent(command.appId)}&title=${encodeURIComponent(command.title)}`,
+			);
+			return;
+		}
+		// split: open beside the chat, in the Code preview pane.
+		if (!isCodePath(pathname)) {
+			navigate(codeHrefPreservingSession());
+		}
+		const detail = { appId: command.appId, title: command.title };
+		try {
+			(
+				window as unknown as {
+					__gpioUiApp?: typeof detail;
+				}
+			).__gpioUiApp = detail;
+			window.dispatchEvent(new CustomEvent("gpio-ui-app", { detail }));
+		} catch {
+			undefined;
+		}
 	}
 
 	const rail = [
@@ -1141,6 +1182,25 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 						{t("deck.ui.dismiss")}
 					</Button>
 				</DialogActions>
+			</Dialog>
+
+			<Dialog
+				open={Boolean(uiAppModal)}
+				onClose={() => setUiAppModal(null)}
+				fullWidth
+				fullScreen={mobile}
+				scroll="paper"
+				sx={{ zIndex: 1400 }}
+				slotProps={{ paper: { className: "max-w-3xl w-full h-4/5" } }}
+			>
+				{uiAppModal && selectedBoardUuid ? (
+					<AppFrame
+						uuid={selectedBoardUuid}
+						appId={uiAppModal.appId}
+						title={uiAppModal.title}
+						onClose={() => setUiAppModal(null)}
+					/>
+				) : null}
 			</Dialog>
 		</div>
 	);

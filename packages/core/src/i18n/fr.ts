@@ -1234,6 +1234,12 @@ export const fr = {
 		discardConfirm: "Abandonner les modifications et recharger ?",
 		savedBoard: "Enregistré sur la carte",
 		loadingFile: "Chargement du fichier…",
+		appLoading: "Ouverture de l’appli de la carte…",
+		appError: "L’appli de la carte est indisponible.",
+		appReload: "Recharger",
+		appClose: "Fermer",
+		appMissing:
+			"Cette appli de la carte ne tourne pas. Demandez à l’agent de la démarrer.",
 		blockedComposer:
 			"Répondez ci-dessus pour continuer — l’envoi est en pause.",
 		attach: "Joindre un fichier",

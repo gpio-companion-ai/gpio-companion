@@ -115,6 +115,27 @@ Vous n’avez normalement pas besoin de modifier ces chemins à la main, mais il
 | `technical/` | Notes de câblage et fiches techniques |
 | `host/` | Croquis C exécutés par le compagnon |
 | `firmware/` | Croquis C gravés sur un Arduino USB |
+| `app/` | Applis de carte personnalisées servies par l’agent pour ce projet |
+
+## Applis de carte personnalisées
+
+Quand un projet demande son propre panneau de contrôle ou sa propre vue en
+direct — curseurs, graphiques, assistant — l’agent peut construire une petite
+appli de carte et la servir depuis le projet. Demandez-le dans Open Code
+(« fais un panneau qui… ») : l’agent démarre l’appli sur la carte et vous
+l’ouvre.
+
+- La **vue fractionnée** s’ouvre à côté du chat dans Open Code (là où les
+  aperçus de fichiers apparaissent). La **boîte de dialogue** s’ouvre
+  par-dessus la page actuelle, et la **page** l’ouvre dans sa propre vue
+  (`/devices/app` sur le web).
+- L’appli tourne sur votre carte et est joignable par un lien privé à durée
+  limitée ; le navigateur ne conserve jamais vos identifiants de carte.
+- Le lien se renouvelle automatiquement. Si une appli s’arrête, ses vues
+  affichent une note d’erreur — demandez à l’agent de la relancer.
+- Une appli de carte est une surface personnalisée pour ce projet. Le
+  contrôle du matériel passe toujours par les croquis, la gravure et le GPIO
+  en direct habituels.
 
 ## Mises à jour et dépannage
 
