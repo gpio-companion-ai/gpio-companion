@@ -10,7 +10,7 @@ import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Stepper, { Step, StepLabel } from "@shpaw415/mui-lite/Stepper";
 import Typography from "@shpaw415/mui-lite/Typography";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { DeviceStatus } from "../../components/DeviceBoardCard.tsx";
 import { LinesSkeleton } from "../../components/skeletons.tsx";
 import { useActionError } from "../../hooks/useActionError.tsx";
@@ -84,18 +84,51 @@ export default function ProjectPage() {
 	const selectedUuidRef = useRef(selectedUuid);
 	selectedUuidRef.current = selectedUuid;
 
+	// run() unwraps the ActionResult, so profile is UserProfile | null:
+	// null means not saved yet (or the fetch failed and self-heal will retry).
+	const refreshProfile = useCallback(
+		async (signal?: { cancelled: boolean }) => {
+			const userId = session.data?.id;
+			if (!userId) {
+				setProfileSet(true);
+				return;
+			}
+			const profile = await run(getProfile());
+			if (signal?.cancelled) {
+				return;
+			}
+			setProfileSet(Boolean(profile));
+		},
+		[run, session.data?.id],
+	);
+
 	useEffect(() => {
-		const userId = session.data?.id;
-		if (!userId) {
-			setProfileSet(true);
-			return;
+		const signal = { cancelled: false };
+		void refreshProfile(signal);
+		return () => {
+			signal.cancelled = true;
+		};
+	}, [refreshProfile]);
+
+	// Self-heal like the GitHub step: a transient auth race on load must not
+	// strand the "Tell us about you" step until a manual reload.
+	const refreshProfileRef = useRef(refreshProfile);
+	refreshProfileRef.current = refreshProfile;
+
+	useEffect(() => {
+		function onVisible() {
+			if (document.visibilityState === "hidden") {
+				return;
+			}
+			void refreshProfileRef.current();
 		}
-		void run(getProfile())
-			.then((result) => {
-				setProfileSet(Boolean(result?.ok && result.data));
-			})
-			.catch(() => setProfileSet(true));
-	}, [session.data?.id, run]);
+		document.addEventListener("visibilitychange", onVisible);
+		window.addEventListener("focus", onVisible);
+		return () => {
+			document.removeEventListener("visibilitychange", onVisible);
+			window.removeEventListener("focus", onVisible);
+		};
+	}, []);
 
 	useEffect(() => {
 		const userId = session.data?.id;
