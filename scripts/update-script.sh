@@ -57,7 +57,7 @@ ensure_root
 
 cd "$REPO_ROOT"
 
-before="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+before="$(git_in "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 branch="main"
 if [[ -f "$CONFIG_DIR/branch" ]]; then
 	branch="$(cat "$CONFIG_DIR/branch")"
@@ -68,7 +68,7 @@ if ! sync_managed_checkout "$REPO_ROOT" "$branch"; then
 	exit 1
 fi
 
-after="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+after="$(git_in "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
 echo "gpio-companion update: $before -> $after"
 
 SCRIPT_DIR="$REPO_ROOT/scripts"
@@ -98,10 +98,10 @@ paths_changed() {
 	if [[ "$from" == "unknown" || "$from" == "none" || "$after" == "unknown" ]]; then
 		return 0
 	fi
-	if ! git cat-file -e "$from" >/dev/null 2>&1 || ! git cat-file -e "$after" >/dev/null 2>&1; then
+	if ! git_in "$REPO_ROOT" cat-file -e "$from" >/dev/null 2>&1 || ! git_in "$REPO_ROOT" cat-file -e "$after" >/dev/null 2>&1; then
 		return 0
 	fi
-	git diff --name-only "$from" "$after" | grep -Eq "$pattern"
+	git_in "$REPO_ROOT" diff --name-only "$from" "$after" | grep -Eq "$pattern"
 }
 
 server_needs_build() {
