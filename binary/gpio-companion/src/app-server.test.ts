@@ -475,41 +475,9 @@ describe("app http api", () => {
 		expect(upstreamHits[1]?.url).toBe("http://127.0.0.1:4600/api/data?x=1");
 	});
 
-	test("frame preflight answers OPTIONS with CORS headers", async () => {
-		const grant = apiApp.mint("led-panel");
-		const pre = await fetch(
-			`${api.url}v1/app/led-panel/${grant.token}/api/data`,
-			{
-				method: "OPTIONS",
-				headers: {
-					origin: "null",
-					"access-control-request-method": "POST",
-					"access-control-request-headers": "content-type",
-				},
-			},
-		);
-		expect(pre.status).toBe(204);
-		expect(pre.headers.get("access-control-allow-origin")).toBe("*");
-		expect(pre.headers.get("access-control-allow-methods")).toContain("POST");
-		expect(pre.headers.get("access-control-allow-headers")).toBe(
-			"content-type",
-		);
-		expect(pre.headers.get("access-control-max-age")).toBe("600");
-		const dead = await fetch(
-			`${api.url}v1/app/led-panel/${"b".repeat(43)}/api/data`,
-			{ method: "OPTIONS", headers: { origin: "null" } },
-		);
-		expect(dead.status).toBe(403);
-		expect(dead.headers.get("access-control-allow-origin")).toBe("*");
-	});
-
 	test("frame with a bad token or foreign origin is refused", async () => {
 		const bad = await fetch(`${api.url}v1/app/led-panel/${"b".repeat(43)}/`);
 		expect(bad.status).toBe(403);
-		expect(bad.headers.get("access-control-allow-origin")).toBe("*");
-		await expect(bad.json()).resolves.toMatchObject({
-			error: expect.stringContaining("token"),
-		});
 		const grant = apiApp.mint("led-panel");
 		const foreign = await fetch(`${api.url}v1/app/led-panel/${grant.token}/`, {
 			headers: { origin: "https://evil.example" },
@@ -560,5 +528,86 @@ describe("app ws bridge", () => {
 			Promise.race([reply, Bun.sleep(2_000).then(() => "timeout")]),
 		).resolves.toBe("echo:ping");
 		socket.close();
+	});
+});
+
+describe("app frame CORS regression guards", () => {
+	test("authorized frame GET carries allow-origin", async () => {
+		const grant = apiApp.mint("led-panel");
+		const page = await fetch(
+			`${api.url}v1/app/led-panel/${grant.token}/api/state`,
+			{ headers: { origin: "null" } },
+		);
+		expect(page.status).toBe(200);
+		expect(page.headers.get("access-control-allow-origin")).toBe("*");
+		expect(page.headers.get("referrer-policy")).toBe("no-referrer");
+		expect(page.headers.get("set-cookie")).toBeNull();
+		await expect(page.text()).resolves.toBe("<h1>panel</h1>");
+	});
+
+	test("frame OPTIONS preflight carries full CORS headers", async () => {
+		const grant = apiApp.mint("led-panel");
+		const pre = await fetch(
+			`${api.url}v1/app/led-panel/${grant.token}/api/state`,
+			{
+				method: "OPTIONS",
+				headers: {
+					origin: "null",
+					"access-control-request-method": "POST",
+					"access-control-request-headers": "content-type, x-custom",
+				},
+			},
+		);
+		expect(pre.status).toBe(204);
+		expect(pre.headers.get("access-control-allow-origin")).toBe("*");
+		expect(pre.headers.get("access-control-allow-methods")).toBe(
+			"GET, POST, PUT, PATCH, DELETE, OPTIONS",
+		);
+		expect(pre.headers.get("access-control-allow-headers")).toBe(
+			"content-type, x-custom",
+		);
+		expect(pre.headers.get("access-control-max-age")).toBe("600");
+	});
+
+	test("dead token error stays readable through CORS", async () => {
+		const dead = await fetch(
+			`${api.url}v1/app/led-panel/${"b".repeat(43)}/api/state`,
+			{ headers: { origin: "null" } },
+		);
+		expect(dead.status).toBe(403);
+		expect(dead.headers.get("access-control-allow-origin")).toBe("*");
+		await expect(dead.json()).resolves.toMatchObject({
+			error: expect.stringContaining("token"),
+		});
+	});
+
+	test("foreign origin error carries allow-origin", async () => {
+		const grant = apiApp.mint("led-panel");
+		const foreign = await fetch(
+			`${api.url}v1/app/led-panel/${grant.token}/api/state`,
+			{ headers: { origin: "https://evil.example" } },
+		);
+		expect(foreign.status).toBe(401);
+		expect(foreign.headers.get("access-control-allow-origin")).toBe("*");
+	});
+
+	test("device api OPTIONS outside frames stays a bare 204", async () => {
+		const bare = await fetch(`${api.url}v1/app`, { method: "OPTIONS" });
+		expect(bare.status).toBe(204);
+		expect(bare.headers.get("access-control-allow-origin")).toBeNull();
+	});
+
+	test("stopped app frame error carries allow-origin", async () => {
+		const grant = apiApp.mint("led-panel");
+		await fetch(`${api.url}v1/app/stop`, { method: "POST" });
+		const gone = await fetch(
+			`${api.url}v1/app/led-panel/${grant.token}/api/state`,
+			{ headers: { origin: "null" } },
+		);
+		expect(gone.status).toBe(404);
+		expect(gone.headers.get("access-control-allow-origin")).toBe("*");
+		await expect(gone.json()).resolves.toMatchObject({
+			error: expect.stringContaining("not running"),
+		});
 	});
 });
