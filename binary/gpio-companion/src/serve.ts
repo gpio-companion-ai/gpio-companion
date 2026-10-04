@@ -52,7 +52,6 @@ import {
 	isGpioWsRefresh,
 	isOpencodeProxyPath,
 	isRunPath,
-	isSshPath,
 	isUiPath,
 	isUsbArduinoPort,
 	isVerifyPath,
@@ -97,9 +96,9 @@ import {
 	RunError,
 	redactDeviceConfig,
 	redactLogText,
+	SSH_PATH,
 	scopeOpencodeSearch,
 	secretsStatus,
-	SSH_PATH,
 	UI_PATH,
 	UI_REPLY_POLL_MS,
 	UiError,
@@ -190,10 +189,7 @@ import {
 import { createHostRun, type RunController } from "./run.ts";
 import type { SecretsStore } from "./secrets.ts";
 import { listBoardSketches } from "./sketches.ts";
-import {
-	createSshController,
-	type SshController,
-} from "./ssh.ts";
+import { createSshController, type SshController } from "./ssh.ts";
 import { type ConfigStore, DEFAULT_PORT } from "./store.ts";
 import type { ApplyTunnel } from "./tunnel.ts";
 import { createUiHub, type UiHub } from "./ui.ts";
@@ -236,6 +232,7 @@ export type ServeOptions = {
 	opencodeFetch?: FetchLike;
 	opencodeEnvPath?: string;
 	opencodeUpstream?: string;
+	opencodeJsonPath?: string;
 	readDisk?: () => DiskStats | null;
 	readLogs?: () => Promise<string>;
 	readNetwork?: () => NetworkStatus | null;

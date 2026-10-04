@@ -3,9 +3,7 @@
 	"name": "gpio-companion-marketplace",
 	"pages_build_output_dir": ".frame-master/build",
 	"compatibility_date": "2026-02-17",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	"vars": {
 		"BUN_VERSION": "1.4.2",
 		"SKIP_DEPENDENCY_INSTALL": "true",

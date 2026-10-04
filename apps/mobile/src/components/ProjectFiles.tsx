@@ -156,7 +156,7 @@ export default function ProjectFiles({
 	} | null>(null);
 	const [sketchAction, setSketchAction] = useState<SketchAction | null>(null);
 	const sketchActionId = useRef(0);
-	const [picked, setPicked] = useState<ExplorerPick | null>(null);
+	const [picked, _setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState("");
 	const [nameDraft, setNameDraft] = useState("");

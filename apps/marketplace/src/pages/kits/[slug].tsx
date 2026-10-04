@@ -26,7 +26,9 @@ export default function KitDetailPage() {
 	const cart = useCart();
 	const pathname = usePath() ?? "";
 	const slug = slugFromPath(pathname);
-	const [item, setItem] = useState<PublicCatalogProduct | null | undefined>(undefined);
+	const [item, setItem] = useState<PublicCatalogProduct | null | undefined>(
+		undefined,
+	);
 	const [qty, setQty] = useState(1);
 	const [added, setAdded] = useState(false);
 
@@ -75,7 +77,11 @@ export default function KitDetailPage() {
 				</Chip>
 				<Typography color="textSecondary">{description}</Typography>
 				<Price amount={item.priceCents / 100} currency="USD" />
-				<QuantityControl value={qty} label={t("product.quantity")} onChange={setQty} />
+				<QuantityControl
+					value={qty}
+					label={t("product.quantity")}
+					onChange={setQty}
+				/>
 				<Button
 					variant="contained"
 					disabled={!inStock}

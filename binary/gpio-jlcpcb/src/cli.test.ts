@@ -21,7 +21,9 @@ describe("gpio-jlcpcb", () => {
 				"https://gpio-companion.com/auth/cli/callback?code=code-1&state=state-1",
 			exchange: async (code, redirectURI, verifier) => {
 				expect(code).toBe("code-1");
-				expect(redirectURI).toBe("https://gpio-companion.com/auth/cli/callback");
+				expect(redirectURI).toBe(
+					"https://gpio-companion.com/auth/cli/callback",
+				);
 				expect(verifier).toBe("verifier-1");
 				return {
 					tokens: { access: "access", refresh: "refresh", expiresIn: 60 },
@@ -31,9 +33,7 @@ describe("gpio-jlcpcb", () => {
 				persisted = true;
 			},
 		});
-		expect(redirects).toEqual([
-			"https://gpio-companion.com/auth/cli/callback",
-		]);
+		expect(redirects).toEqual(["https://gpio-companion.com/auth/cli/callback"]);
 		expect(persisted).toBe(true);
 	});
 

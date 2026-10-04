@@ -90,9 +90,6 @@ declare module "three/addons/controls/OrbitControls.js" {
 declare module "three/addons/loaders/GLTFLoader.js" {
 	import type { Object3D } from "three";
 	export class GLTFLoader {
-		parseAsync(
-			data: ArrayBuffer,
-			path: string,
-		): Promise<{ scene: Object3D }>;
+		parseAsync(data: ArrayBuffer, path: string): Promise<{ scene: Object3D }>;
 	}
 }

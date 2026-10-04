@@ -166,9 +166,7 @@ export function buildEasyShipItems(
 		assertPositiveCents(line.unitPriceCents, `Customs value for ${line.sku}`);
 		const product = byId.get(line.productId);
 		if (!product?.weightGrams) {
-			throw new Error(
-				`Shipping weight is not configured for: ${line.sku}`,
-			);
+			throw new Error(`Shipping weight is not configured for: ${line.sku}`);
 		}
 		return {
 			sku: line.sku,
@@ -216,9 +214,7 @@ export function validateEasyShipDestination(
 		}
 	}
 	if (COUNTRIES_REQUIRING_REGION.has(country) && !destination.region?.trim()) {
-		throw new Error(
-			`Region/state is required for shipping to ${country}`,
-		);
+		throw new Error(`Region/state is required for shipping to ${country}`);
 	}
 }
 
@@ -338,7 +334,9 @@ export async function requestEasyShipRates(
 		},
 	);
 	if (!response.ok) {
-		const body = (await response.json().catch(() => null)) as EasyShipErrorBody | null;
+		const body = (await response
+			.json()
+			.catch(() => null)) as EasyShipErrorBody | null;
 		const detail = body?.error?.details?.join("; ");
 		throw new Error(
 			body?.error?.message ?? detail ?? "EasyShip rate request failed",

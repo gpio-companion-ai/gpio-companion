@@ -4,13 +4,13 @@ import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Select from "@shpaw415/mui-lite/Select";
-import TextField from "@shpaw415/mui-lite/TextField";
 import Table, {
 	TableBody,
 	TableCell,
 	TableHead,
 	TableRow,
 } from "@shpaw415/mui-lite/Table";
+import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { useCallback, useEffect, useState } from "react";
 import AdminSection from "../../../components/AdminSection.tsx";
@@ -18,8 +18,8 @@ import TablePaginationShell, {
 	type RowsPerPage,
 } from "../../../components/TablePaginationShell.tsx";
 import { useLocale, useT } from "../../../hooks/useLocale.tsx";
-import { formatCents } from "../../../lib/format.ts";
 import type { FulfillmentStatus } from "../../../lib/db/schema.ts";
+import { formatCents } from "../../../lib/format.ts";
 
 type AdminOrder = Awaited<ReturnType<typeof GET>>[number];
 
@@ -133,7 +133,10 @@ export default function AdminOrdersPage() {
 						<TableBody>
 							{visible.length === 0 ? (
 								<TableRow>
-									<TableCell colSpan={5} style={{ color: "var(--market-muted)" }}>
+									<TableCell
+										colSpan={5}
+										style={{ color: "var(--market-muted)" }}
+									>
 										{t("admin.emptyOrders")}
 									</TableCell>
 								</TableRow>

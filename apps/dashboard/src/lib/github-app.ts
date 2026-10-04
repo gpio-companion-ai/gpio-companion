@@ -6,6 +6,8 @@ import {
 } from "gpio-companion";
 import { loadDevices, type PairingKv, pairOwnerKey } from "./pairing-store.ts";
 
+type RequestUrlLike = { url: string };
+
 export type GithubAppEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
 	GITHUB_APP_ID?: string;
@@ -98,20 +100,23 @@ export function githubAppInstallUrl(slug: string, state: string): string {
 	return `https://github.com/apps/${encodeURIComponent(slug)}/installations/new?state=${encodeURIComponent(state)}`;
 }
 
-export function githubAppOrigin(request: Request, env: GithubAppEnv): string {
+export function githubAppOrigin(
+	request: RequestUrlLike,
+	env: GithubAppEnv,
+): string {
 	const redirect = env.PUBLIC_AUTH_REDIRECT_URI?.trim() ?? "";
 	return redirect ? new URL(redirect).origin : new URL(request.url).origin;
 }
 
 export function githubAppCallbackUri(
-	request: Request,
+	request: RequestUrlLike,
 	env: GithubAppEnv,
 ): string {
 	return `${githubAppOrigin(request, env)}/profile/github`;
 }
 
 export function githubAppCallbackCandidates(
-	request: Request,
+	request: RequestUrlLike,
 	env: GithubAppEnv,
 	preferred?: string,
 ): string[] {
@@ -151,7 +156,7 @@ export function githubAppConnectUrl(
 	env: GithubAppEnv,
 	slug: string,
 	state: string,
-	request: Request,
+	request: RequestUrlLike,
 ): string {
 	const clientId = env.GITHUB_APP_CLIENT_ID?.trim() ?? "";
 	if (clientId && githubAppOAuthConfigured(env)) {
@@ -318,7 +323,7 @@ export async function exchangeGithubOAuthCode(
 async function exchangeGithubOAuthCodeWithFallback(
 	env: GithubAppEnv,
 	code: string,
-	request: Request,
+	request: RequestUrlLike,
 	preferred?: string,
 ): Promise<GithubOAuthTokens> {
 	const uris = githubAppCallbackCandidates(request, env, preferred);
@@ -412,7 +417,7 @@ export async function installationIdFromUserToken(
 export async function githubAppStatusForUser(
 	env: GithubAppEnv,
 	userId: string,
-	request: Request,
+	request: RequestUrlLike,
 ): Promise<GithubAppStatus> {
 	const slug = env.GITHUB_APP_SLUG?.trim() ?? "";
 	if (!slug || !env.GITHUB_APP_ID || !env.GITHUB_APP_PRIVATE_KEY) {
@@ -449,7 +454,7 @@ export async function completeGithubAppConnect(
 		state: string;
 		redirectUri?: string;
 	},
-	request: Request,
+	request: RequestUrlLike,
 ): Promise<{ connected: true; login: string; canCreate: boolean }> {
 	const state = input.state.trim();
 	const expected = await env.DYNAMIC_PAGE_KV.get(githubAppStateKey(state));

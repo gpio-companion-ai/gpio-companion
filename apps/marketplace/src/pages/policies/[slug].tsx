@@ -16,9 +16,9 @@ export default function PolicyPage() {
 	const { locale } = useLocale();
 	const t = useT();
 	const slug = slugFromPath(usePath() ?? "");
-	const [policy, setPolicy] = useState<Awaited<ReturnType<typeof getPolicy>> | undefined>(
-		undefined,
-	);
+	const [policy, setPolicy] = useState<
+		Awaited<ReturnType<typeof getPolicy>> | undefined
+	>(undefined);
 
 	useEffect(() => {
 		if (!slug) return;
@@ -39,7 +39,9 @@ export default function PolicyPage() {
 			<Typography variant="h3" component="h1">
 				{title}
 			</Typography>
-			<Typography className="market-policy-body">{body || t("policies.emptyBody")}</Typography>
+			<Typography className="market-policy-body">
+				{body || t("policies.emptyBody")}
+			</Typography>
 		</Paper>
 	);
 }

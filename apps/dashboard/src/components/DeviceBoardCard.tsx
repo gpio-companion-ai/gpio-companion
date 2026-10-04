@@ -164,20 +164,16 @@ export default function DeviceBoardCard({
 									/>
 								) : null}
 								{status ? (
-									<>
-										<Chip
-											label={
-												status.secrets?.githubReady
-													? t("devices.projectsConnected")
-													: t("devices.connectGithubChip")
-											}
-											color={
-												status.secrets?.githubReady ? "success" : "warning"
-											}
-											variant="outlined"
-											size="small"
-										/>
-									</>
+									<Chip
+										label={
+											status.secrets?.githubReady
+												? t("devices.projectsConnected")
+												: t("devices.connectGithubChip")
+										}
+										color={status.secrets?.githubReady ? "success" : "warning"}
+										variant="outlined"
+										size="small"
+									/>
 								) : null}
 							</Stack>
 							{!isEasy && loadInfo && live ? (

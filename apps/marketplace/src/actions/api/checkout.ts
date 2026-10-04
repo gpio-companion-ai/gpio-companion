@@ -43,7 +43,8 @@ export async function PUT(input: {
 }) {
 	const ctx = getContext<Env, never, never>(arguments);
 	const session = await requireUser(ctx);
-	if (!input.idempotencyKey?.trim()) throw new Error("Idempotency key is required");
+	if (!input.idempotencyKey?.trim())
+		throw new Error("Idempotency key is required");
 	return beginCheckout(commerceDb(ctx), ctx.env, {
 		userId: session.id ?? "",
 		items: input.items,

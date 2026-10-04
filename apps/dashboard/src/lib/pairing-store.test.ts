@@ -5,6 +5,7 @@ import {
 	isPairedUuid,
 	listAllDevices,
 	loadDevices,
+	normalizeBleMac,
 	parseDeviceList,
 	publicPairing,
 	removeDevice,
@@ -12,7 +13,6 @@ import {
 	requireOwnedDevice,
 	type StoredPairing,
 	transferDeviceRecord,
-	normalizeBleMac,
 	updateDeviceFields,
 	updateDeviceLabel,
 	updateDeviceLabelByUuid,
@@ -111,9 +111,9 @@ describe("normalizeBleMac", () => {
 		expect(() => normalizeBleMac("not-a-mac")).toThrow(
 			"invalid bluetooth address",
 		);
-		expect(() => normalizeBleMac("a1c15e00-6f10-4c9a-9c31-47b0c15e0001")).toThrow(
-			"invalid bluetooth address",
-		);
+		expect(() =>
+			normalizeBleMac("a1c15e00-6f10-4c9a-9c31-47b0c15e0001"),
+		).toThrow("invalid bluetooth address");
 	});
 });
 

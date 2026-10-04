@@ -1,21 +1,14 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { CommerceDatabase } from "../db/client";
-import {
-	inventory,
-	inventoryReservations,
-	products,
-} from "../db/schema";
+import { inventory, inventoryReservations, products } from "../db/schema";
 import {
 	buildEasyShipItems,
-	requestEasyShipRates,
 	type EasyShipDestination,
 	type EasyShipRateOption,
+	requestEasyShipRates,
 } from "../easyship";
 import { availableInventory } from "./totals";
-import {
-	type CartInputItem,
-	validateCartInput,
-} from "./validation";
+import { type CartInputItem, validateCartInput } from "./validation";
 
 export interface PricedCartLine {
 	productId: string;

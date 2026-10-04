@@ -22,7 +22,9 @@ describe("easyship environment", () => {
 	test("requires token and complete origin", () => {
 		expect(easyshipConfigured(base)).toBe(true);
 		expect(easyshipConfigured({ ...base, EASYSHIP_API_TOKEN: "" })).toBe(false);
-		expect(easyshipConfigured({ ...base, EASYSHIP_ORIGIN_CITY: "  " })).toBe(false);
+		expect(easyshipConfigured({ ...base, EASYSHIP_ORIGIN_CITY: "  " })).toBe(
+			false,
+		);
 	});
 
 	test("normalizes the origin country", () => {
@@ -41,7 +43,11 @@ describe("easyship rates", () => {
 
 	test("maps a rate and drops entries without a courier service", () => {
 		const option = mapEasyShipRate({
-			courier_service: { id: "abc", name: "DHL - Express", umbrella_name: "DHL" },
+			courier_service: {
+				id: "abc",
+				name: "DHL - Express",
+				umbrella_name: "DHL",
+			},
 			currency: "USD",
 			total_charge: 24.5,
 			min_delivery_time: 2,
@@ -71,13 +77,15 @@ describe("easyship rates", () => {
 });
 
 describe("easyship parcels", () => {
-	const product = (overrides: Partial<{
-		id: string;
-		weightGrams: number | null;
-		lengthCm: number | null;
-		widthCm: number | null;
-		heightCm: number | null;
-	}> = {}) => ({
+	const product = (
+		overrides: Partial<{
+			id: string;
+			weightGrams: number | null;
+			lengthCm: number | null;
+			widthCm: number | null;
+			heightCm: number | null;
+		}> = {},
+	) => ({
 		id: "prd_1",
 		weightGrams: 850,
 		lengthCm: 30,
@@ -110,7 +118,10 @@ describe("easyship parcels", () => {
 	test("takes the largest product dimensions as the box", () => {
 		const items = buildEasyShipItems(
 			[line, { ...line, productId: "prd_2", sku: "KIT-2" }],
-			[product(), product({ id: "prd_2", lengthCm: 40, widthCm: 15, heightCm: 12 })],
+			[
+				product(),
+				product({ id: "prd_2", lengthCm: 40, widthCm: 15, heightCm: 12 }),
+			],
 		);
 		expect(boxDimensions(items)).toEqual({ length: 40, width: 20, height: 12 });
 	});

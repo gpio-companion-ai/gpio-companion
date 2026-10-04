@@ -7,27 +7,19 @@
 			"name": "header-clip",
 			"file": "header-clip.glb",
 			"units": "mm",
-			"fits": [
-				"companion-header"
-			]
+			"fits": ["companion-header"]
 		},
 		{
 			"name": "arduino-header-clip",
 			"file": "arduino-header-clip.glb",
 			"units": "mm",
-			"fits": [
-				"arduino-uno",
-				"arduino-nano",
-				"arduino-mega"
-			]
+			"fits": ["arduino-uno", "arduino-nano", "arduino-mega"]
 		},
 		{
 			"name": "engraved-clip",
 			"file": "engraved-clip.glb",
 			"units": "mm",
-			"fits": [
-				"companion-header"
-			],
+			"fits": ["companion-header"],
 			"color": "#22cc88"
 		}
 	]

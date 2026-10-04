@@ -11,29 +11,141 @@
 	"pins": [
 		{ "physical": 1, "type": "power", "name": "3V3" },
 		{ "physical": 2, "type": "power", "name": "5V" },
-		{ "physical": 3, "soc": "PD26", "domain": "pio", "line": 122, "type": "gpio", "alt": ["TWI0_SDA"] },
+		{
+			"physical": 3,
+			"soc": "PD26",
+			"domain": "pio",
+			"line": 122,
+			"type": "gpio",
+			"alt": ["TWI0_SDA"]
+		},
 		{ "physical": 4, "type": "power", "name": "5V" },
-		{ "physical": 5, "soc": "PD25", "domain": "pio", "line": 121, "type": "gpio", "alt": ["TWI0_SCL"] },
+		{
+			"physical": 5,
+			"soc": "PD25",
+			"domain": "pio",
+			"line": 121,
+			"type": "gpio",
+			"alt": ["TWI0_SCL"]
+		},
 		{ "physical": 6, "type": "gnd" },
-		{ "physical": 7, "soc": "PD22", "domain": "pio", "line": 118, "type": "gpio" },
-		{ "physical": 8, "soc": "PL2", "domain": "rpio", "line": 2, "type": "gpio", "alt": ["S_UART_TX"] },
+		{
+			"physical": 7,
+			"soc": "PD22",
+			"domain": "pio",
+			"line": 118,
+			"type": "gpio"
+		},
+		{
+			"physical": 8,
+			"soc": "PL2",
+			"domain": "rpio",
+			"line": 2,
+			"type": "gpio",
+			"alt": ["S_UART_TX"]
+		},
 		{ "physical": 9, "type": "gnd" },
-		{ "physical": 10, "soc": "PL3", "domain": "rpio", "line": 3, "type": "gpio", "alt": ["S_UART_RX"] },
-		{ "physical": 11, "soc": "PD24", "domain": "pio", "line": 120, "type": "gpio", "alt": ["TWI2_SDA"] },
-		{ "physical": 12, "soc": "PD18", "domain": "pio", "line": 114, "type": "gpio" },
-		{ "physical": 13, "soc": "PD23", "domain": "pio", "line": 119, "type": "gpio", "alt": ["TWI2_SCL"] },
+		{
+			"physical": 10,
+			"soc": "PL3",
+			"domain": "rpio",
+			"line": 3,
+			"type": "gpio",
+			"alt": ["S_UART_RX"]
+		},
+		{
+			"physical": 11,
+			"soc": "PD24",
+			"domain": "pio",
+			"line": 120,
+			"type": "gpio",
+			"alt": ["TWI2_SDA"]
+		},
+		{
+			"physical": 12,
+			"soc": "PD18",
+			"domain": "pio",
+			"line": 114,
+			"type": "gpio"
+		},
+		{
+			"physical": 13,
+			"soc": "PD23",
+			"domain": "pio",
+			"line": 119,
+			"type": "gpio",
+			"alt": ["TWI2_SCL"]
+		},
 		{ "physical": 14, "type": "gnd" },
-		{ "physical": 15, "soc": "PL10", "domain": "rpio", "line": 10, "type": "gpio" },
-		{ "physical": 16, "soc": "PD15", "domain": "pio", "line": 111, "type": "gpio" },
+		{
+			"physical": 15,
+			"soc": "PL10",
+			"domain": "rpio",
+			"line": 10,
+			"type": "gpio"
+		},
+		{
+			"physical": 16,
+			"soc": "PD15",
+			"domain": "pio",
+			"line": 111,
+			"type": "gpio"
+		},
 		{ "physical": 17, "type": "power", "name": "3V3" },
-		{ "physical": 18, "soc": "PD16", "domain": "pio", "line": 112, "type": "gpio" },
-		{ "physical": 19, "soc": "PH5", "domain": "pio", "line": 229, "type": "gpio", "alt": ["SPI1_MOSI", "TWI1_SCL"] },
+		{
+			"physical": 18,
+			"soc": "PD16",
+			"domain": "pio",
+			"line": 112,
+			"type": "gpio"
+		},
+		{
+			"physical": 19,
+			"soc": "PH5",
+			"domain": "pio",
+			"line": 229,
+			"type": "gpio",
+			"alt": ["SPI1_MOSI", "TWI1_SCL"]
+		},
 		{ "physical": 20, "type": "gnd" },
-		{ "physical": 21, "soc": "PH6", "domain": "pio", "line": 230, "type": "gpio", "alt": ["SPI1_MISO", "TWI1_SDA"] },
-		{ "physical": 22, "soc": "PD21", "domain": "pio", "line": 117, "type": "gpio" },
-		{ "physical": 23, "soc": "PH4", "domain": "pio", "line": 228, "type": "gpio", "alt": ["SPI1_CLK"] },
-		{ "physical": 24, "soc": "PH3", "domain": "pio", "line": 227, "type": "gpio", "alt": ["SPI1_CS"] },
+		{
+			"physical": 21,
+			"soc": "PH6",
+			"domain": "pio",
+			"line": 230,
+			"type": "gpio",
+			"alt": ["SPI1_MISO", "TWI1_SDA"]
+		},
+		{
+			"physical": 22,
+			"soc": "PD21",
+			"domain": "pio",
+			"line": 117,
+			"type": "gpio"
+		},
+		{
+			"physical": 23,
+			"soc": "PH4",
+			"domain": "pio",
+			"line": 228,
+			"type": "gpio",
+			"alt": ["SPI1_CLK"]
+		},
+		{
+			"physical": 24,
+			"soc": "PH3",
+			"domain": "pio",
+			"line": 227,
+			"type": "gpio",
+			"alt": ["SPI1_CS"]
+		},
 		{ "physical": 25, "type": "gnd" },
-		{ "physical": 26, "soc": "PL8", "domain": "rpio", "line": 8, "type": "gpio" }
+		{
+			"physical": 26,
+			"soc": "PL8",
+			"domain": "rpio",
+			"line": 8,
+			"type": "gpio"
+		}
 	]
 }

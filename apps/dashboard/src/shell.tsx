@@ -13,6 +13,7 @@ export default function RenderShell({
 		<html lang="en" suppressHydrationWarning>
 			<head>
 				<script
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: blocking pre-hydration theme/locale bootstrap must be inline
 					dangerouslySetInnerHTML={{
 						__html: `try{var m=localStorage.getItem("gpio-companion-color-mode");if(m!=="light"&&m!=="dark"){m=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.dataset.theme=m;document.documentElement.style.colorScheme=m;var l=localStorage.getItem("gpio-companion-locale")||navigator.language||"en";l=String(l).toLowerCase().replace("_","-");document.documentElement.lang=l==="fr"||l.indexOf("fr-")===0?"fr":"en"}catch(e){}`,
 					}}

@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import type { JlcpcbOrderBundle } from "gpio-companion";
 import { parseJlcpcbDraft } from "gpio-companion";
 import {
@@ -167,7 +168,11 @@ export async function saveJlcpcbDraft(
 			: []),
 	];
 	if (db.batch) {
-		await db.batch([...clear, ...insert]);
+		const queries = [...clear, ...insert] as unknown as [
+			BatchItem<"sqlite">,
+			...BatchItem<"sqlite">[],
+		];
+		await db.batch(queries);
 	} else {
 		for (const query of [...clear, ...insert]) {
 			await query;

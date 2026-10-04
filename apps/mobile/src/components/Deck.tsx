@@ -430,6 +430,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 		}).start();
 	}, [drawerOpen, drawerWidth, drawerX]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: pathname/tab are change signals that close the drawer
 	useEffect(() => {
 		setDrawerOpen(false);
 	}, [pathname, tab]);
@@ -1807,6 +1808,7 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 		if (isEasy && (tab === "problems" || tab === "ssh")) setTab("console");
 	}, [isEasy, tab]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: reloads boards when the selected device changes
 	useEffect(() => {
 		if (!auth.token) {
 			setPairedBoards([]);

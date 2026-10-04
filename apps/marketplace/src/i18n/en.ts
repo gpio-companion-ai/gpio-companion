@@ -46,12 +46,14 @@ export const en = {
 		shipping: "Shipping",
 		total: "Total USD",
 		checkout: "Checkout",
-		checkoutDisabled: "Checkout stays closed until every line has a live price and stock.",
+		checkoutDisabled:
+			"Checkout stays closed until every line has a live price and stock.",
 		backToCart: "Back to cart",
 		unavailable: "No longer available",
 		shippingLater: "Shipping is calculated at checkout.",
 		signIn: "Sign in to check out",
-		stockChanged: "A kit is no longer available at this quantity. Nothing was removed or repriced.",
+		stockChanged:
+			"A kit is no longer available at this quantity. Nothing was removed or repriced.",
 	},
 	home: {
 		title: "A bench that already knows the board",
@@ -60,21 +62,28 @@ export const en = {
 		browse: "Browse kits",
 		pointsTitle: "What the bench already does",
 		agent: "On-device agent",
-		agentBody: "OpenCode runs on the board, next to the pins, not in a remote IDE tab.",
+		agentBody:
+			"OpenCode runs on the board, next to the pins, not in a remote IDE tab.",
 		circuits: "Visual circuit guidance",
-		circuitsBody: "Breadboard and PCB views stay attached to the project you are building.",
+		circuitsBody:
+			"Breadboard and PCB views stay attached to the project you are building.",
 		github: "GitHub projects",
-		githubBody: "Each design lives in git, with the same project the dashboard already uses.",
+		githubBody:
+			"Each design lives in git, with the same project the dashboard already uses.",
 		gpio: "GPIO control",
-		gpioBody: "Header pins are driven from the host, including the Arduino proxy path.",
+		gpioBody:
+			"Header pins are driven from the host, including the Arduino proxy path.",
 		arduino: "Arduino in C",
-		arduinoBody: "Firmware is C over USB, flashed from the companion, not a toy block language.",
+		arduinoBody:
+			"Firmware is C over USB, flashed from the companion, not a toy block language.",
 		featured: "Published kits",
-		empty: "No kit is published yet. Drafts stay in admin until price, photos, stock, and policies are set.",
+		empty:
+			"No kit is published yet. Drafts stay in admin until price, photos, stock, and policies are set.",
 	},
 	catalog: {
 		title: "Kit catalog",
-		subtitle: "Rows are publication-gated. Draft rows stay disabled until an admin publishes them.",
+		subtitle:
+			"Rows are publication-gated. Draft rows stay disabled until an admin publishes them.",
 		search: "Search kits, SKU…",
 		searchLabel: "Search kits",
 		sortBench: "Sort: Bench pick",
@@ -122,7 +131,8 @@ export const en = {
 		selectShippingFirst: "Choose a shipping option before paying.",
 		shippingDays: "{min}–{max} working days",
 		pay: "Pay with PayPal",
-		paypalMissing: "PayPal is not configured, so checkout cannot capture a payment.",
+		paypalMissing:
+			"PayPal is not configured, so checkout cannot capture a payment.",
 		paypalConsent: "PayPal loads only after you allow third-party cookies.",
 		allowPaypal: "Allow PayPal",
 		signIn: "Sign in with GitHub before paying.",
@@ -133,7 +143,8 @@ export const en = {
 		title: "Orders",
 		emptyTitle: "No orders yet",
 		emptyBody: "Your completed kit orders will appear here.",
-		subtitle: "Sign in to see your kit orders. Guests check out after signing in with GitHub.",
+		subtitle:
+			"Sign in to see your kit orders. Guests check out after signing in with GitHub.",
 		orderId: "Order",
 		date: "Date",
 		total: "Total",
@@ -273,7 +284,8 @@ export const en = {
 	policies: {
 		title: "Policies",
 		emptyTitle: "No published policies",
-		emptyBody: "Shipping, returns, and legal copy appear here after an admin publishes them.",
+		emptyBody:
+			"Shipping, returns, and legal copy appear here after an admin publishes them.",
 		contactTitle: "Contact",
 		contactBody:
 			"Order questions use your signed-in order history. Seller identity and a contact address are published in the policies, not invented here.",

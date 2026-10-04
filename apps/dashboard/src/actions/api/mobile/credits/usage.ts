@@ -1,14 +1,8 @@
 "no action";
 
-import {
-	getAiUsageSummary,
-	parseUsageDays,
-} from "../../../../lib/ai-usage.ts";
+import { getAiUsageSummary, parseUsageDays } from "../../../../lib/ai-usage.ts";
 import { createDashboardDatabase } from "../../../../lib/db/client.ts";
-import {
-	type MobileContext,
-	runMobile,
-} from "../../../../lib/mobile-http.ts";
+import { type MobileContext, runMobile } from "../../../../lib/mobile-http.ts";
 
 export async function onRequestGet(ctx: MobileContext) {
 	return runMobile(ctx, async (identity) => {

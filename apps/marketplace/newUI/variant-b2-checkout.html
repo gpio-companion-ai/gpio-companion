@@ -29,16 +29,16 @@ table{width:100%;border-collapse:collapse;font-size:.88rem}td{padding:.6rem .4re
 <div class="wrap">
 <main class="card pad"><h2>Shipping address (sent to PayPal as-is)</h2>
 <div class="warn">Demo state: starter kit is DRAFT — checkout stays disabled until admin publishes price, stock, photos, policies. Form below is the real layout.</div>
-<div class="row"><div><label>Full name</label><input placeholder="Ada Lovelace"></div><div><label>Country</label><select><option>France</option><option>United States</option><option>Canada</option></select></div></div>
-<div class="row"><div><label>Address</label><input placeholder="12 rue des Pins"></div><div><label>City / Postal</label><input placeholder="Paris 75011"></div></div>
-<label>Shipping method (admin flat-rate table, USD)</label><select><option>Standard — rate TBD by admin</option><option>Tracked — rate TBD by admin</option></select>
+<div class="row"><div><label for="co-name">Full name</label><input id="co-name" placeholder="Ada Lovelace"></div><div><label for="co-country">Country</label><select id="co-country"><option>France</option><option>United States</option><option>Canada</option></select></div></div>
+<div class="row"><div><label for="co-address">Address</label><input id="co-address" placeholder="12 rue des Pins"></div><div><label for="co-city">City / Postal</label><input id="co-city" placeholder="Paris 75011"></div></div>
+<label for="co-shipping">Shipping method (admin flat-rate table, USD)</label><select id="co-shipping"><option>Standard — rate TBD by admin</option><option>Tracked — rate TBD by admin</option></select>
 <div class="okbox" style="margin-top:.8rem">Reservation rule: D1 atomic reserve at checkout start → sold only after verified capture. Fail whole cart if any line goes unavailable.</div>
 </main>
 <aside class="card pad"><h2>Order summary</h2>
 <table><tr><td>starter-kit × 1</td><td style="text-align:right">—</td></tr><tr><td style="color:var(--mut)">Shipping (FR standard)</td><td style="text-align:right">—</td></tr></table>
 <div class="tot"><span>Subtotal</span><span>—</span></div><div class="tot"><span>Shipping</span><span>—</span></div><div class="tot grand"><span>Total USD</span><span>—</span></div>
-<button class="btn" disabled style="margin-top:.8rem">Pay with PayPal (disabled · draft)</button>
-<button class="ghost" style="width:100%;margin-top:.5rem">Back to cart</button>
+<button type="button" class="btn" disabled style="margin-top:.8rem">Pay with PayPal (disabled · draft)</button>
+<button type="button" class="ghost" style="width:100%;margin-top:.5rem">Back to cart</button>
 <p style="color:var(--mut);font-size:.8rem">Orders v2 immediate capture · PayPal-Request-Id + custom_id · webhook reconciles closed-browser captures.</p></aside>
 </div>
 <p class="note">B2 — Dense checkout. Stepper + form-above + summary rail. Maps to <code>/cart → /checkout → /orders/[id]</code>. Honest disabled state; no fake totals.</p>

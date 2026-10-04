@@ -13,6 +13,7 @@ type DraftContext = {
 	request: Request;
 	env: {
 		DASHBOARD_DB?: D1Database;
+		DYNAMIC_PAGE_KV: KVNamespace;
 		GPIO_COMPANION_DEVICE_PRIVATE_KEY?: string;
 	};
 };

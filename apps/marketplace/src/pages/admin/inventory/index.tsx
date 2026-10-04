@@ -54,8 +54,7 @@ export default function AdminInventoryPage() {
 
 	useEffect(() => {
 		void reload();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [reload]);
 
 	async function run(action: () => Promise<unknown>) {
 		setBusy(true);
@@ -85,8 +84,9 @@ export default function AdminInventoryPage() {
 			{error ? <Alert severity="error">{error}</Alert> : null}
 			{level ? (
 				<Typography color="textSecondary">
-					{t("admin.onHand")} {level.onHand} · {t("admin.reserved")} {level.reserved} ·{" "}
-					{t("admin.available")} {Math.max(0, level.onHand - level.reserved)}
+					{t("admin.onHand")} {level.onHand} · {t("admin.reserved")}{" "}
+					{level.reserved} · {t("admin.available")}{" "}
+					{Math.max(0, level.onHand - level.reserved)}
 				</Typography>
 			) : null}
 			<Paper variant="outlined" className="market-admin-form">
@@ -120,9 +120,7 @@ export default function AdminInventoryPage() {
 								setError("On-hand must be a non-negative integer");
 								return;
 							}
-							void run(() => POST(productId, parsed)).then(() =>
-								setOnHand(""),
-							);
+							void run(() => POST(productId, parsed)).then(() => setOnHand(""));
 						}}
 					>
 						{t("admin.configureStock")}
@@ -164,7 +162,11 @@ export default function AdminInventoryPage() {
 				</div>
 			</Paper>
 			<Paper variant="outlined" className="market-table-shell">
-				<Typography variant="h6" component="h2" style={{ padding: "1rem 1rem 0" }}>
+				<Typography
+					variant="h6"
+					component="h2"
+					style={{ padding: "1rem 1rem 0" }}
+				>
 					{t("admin.history")}
 				</Typography>
 				{loading ? (
@@ -185,7 +187,10 @@ export default function AdminInventoryPage() {
 						<TableBody>
 							{selectedHistory.length === 0 ? (
 								<TableRow>
-									<TableCell colSpan={5} style={{ color: "var(--market-muted)" }}>
+									<TableCell
+										colSpan={5}
+										style={{ color: "var(--market-muted)" }}
+									>
 										{t("admin.emptyHistory")}
 									</TableCell>
 								</TableRow>

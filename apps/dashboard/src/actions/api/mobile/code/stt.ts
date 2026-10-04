@@ -15,6 +15,10 @@ type Env = MobileContext["env"] & {
 export async function onRequestPost(ctx: MobileContext) {
 	return runMobile(ctx, async (identity) => {
 		const env = ctx.env as Env;
-		return transcribeCodeAudio(env, identity.id, await readJsonBody(ctx.request));
+		return transcribeCodeAudio(
+			env,
+			identity.id,
+			await readJsonBody(ctx.request),
+		);
 	});
 }

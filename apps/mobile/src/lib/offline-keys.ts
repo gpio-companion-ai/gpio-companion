@@ -76,7 +76,9 @@ async function writeMap(map: Record<string, StoredOfflineKey>): Promise<void> {
 	await (await store()).setItem(KEY, JSON.stringify(map));
 }
 
-export async function loadOfflineKey(uuid: string): Promise<StoredOfflineKey | null> {
+export async function loadOfflineKey(
+	uuid: string,
+): Promise<StoredOfflineKey | null> {
 	const trimmed = uuid.trim();
 	if (!trimmed) {
 		return null;

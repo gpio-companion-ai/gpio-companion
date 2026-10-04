@@ -62,10 +62,7 @@ function assertCents(value: unknown): number | null {
 	return value;
 }
 
-function assertPositiveAmount(
-	value: unknown,
-	label: string,
-): number | null {
+function assertPositiveAmount(value: unknown, label: string): number | null {
 	if (value === null || value === undefined) return null;
 	if (typeof value !== "number" || !Number.isSafeInteger(value) || value <= 0) {
 		throw new Error(`${label} must be a positive integer`);
@@ -165,9 +162,11 @@ function runWrangler(args: string[]): D1Result[] {
 	return parseD1Output(stdout);
 }
 
-function query(sql: string, target: "--local" | "--remote"): D1Result["results"] {
-	const targetArgs =
-		target === "--remote" ? ["--remote", "-y"] : ["--local"];
+function query(
+	sql: string,
+	target: "--local" | "--remote",
+): D1Result["results"] {
+	const targetArgs = target === "--remote" ? ["--remote", "-y"] : ["--local"];
 	const [statement] = runWrangler([...targetArgs, "--json", "--command", sql]);
 	if (!statement?.success) {
 		throw new Error(`Query failed: ${sql}`);
@@ -197,7 +196,9 @@ async function main(): Promise<number> {
 	const remote = argv.includes("--remote");
 	const local = argv.includes("--local");
 	if (!file) {
-		console.error("Usage: bun run kit:add -- --file <kit.json> --local|--remote");
+		console.error(
+			"Usage: bun run kit:add -- --file <kit.json> --local|--remote",
+		);
 		return 1;
 	}
 	if (remote === local) {
@@ -207,7 +208,9 @@ async function main(): Promise<number> {
 
 	const raw: unknown = await Bun.file(join(process.cwd(), file)).json();
 	const kit = normalizeKitInput(raw);
-	console.log(`Kit ${kit.slug} (SKU ${kit.sku}) target ${remote ? "remote" : "local"} D1`);
+	console.log(
+		`Kit ${kit.slug} (SKU ${kit.sku}) target ${remote ? "remote" : "local"} D1`,
+	);
 
 	const existing = query(
 		`SELECT id, slug, sku, status FROM products WHERE slug = ${escapeSql(kit.slug)} OR sku = ${escapeSql(kit.sku)}`,
@@ -216,12 +219,17 @@ async function main(): Promise<number> {
 	if (existing.length > 0) {
 		console.log("Already exists, skipping:");
 		for (const row of existing) {
-			console.log(`  id=${row.id} slug=${row.slug} sku=${row.sku} status=${row.status}`);
+			console.log(
+				`  id=${row.id} slug=${row.slug} sku=${row.sku} status=${row.status}`,
+			);
 		}
 		return 0;
 	}
 
-	query(buildInsertSql(kit, Math.floor(Date.now() / 1000)), remote ? "--remote" : "--local");
+	query(
+		buildInsertSql(kit, Math.floor(Date.now() / 1000)),
+		remote ? "--remote" : "--local",
+	);
 	const [inserted] = query(
 		`SELECT id, slug, sku, name_en, name_fr, price_cents, status FROM products WHERE id = ${escapeSql(kit.id)}`,
 		remote ? "--remote" : "--local",

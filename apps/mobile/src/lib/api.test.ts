@@ -14,7 +14,7 @@ const originalFetch = globalThis.fetch;
 function mockFetch(
 	handler: (init?: RequestInit) => Response | Promise<Response>,
 ): typeof fetch {
-	return ((input: RequestInfo | URL, init?: RequestInit) =>
+	return ((_input: RequestInfo | URL, init?: RequestInit) =>
 		handler(init)) as unknown as typeof fetch;
 }
 

@@ -1,5 +1,5 @@
 import { getContext } from "@next/action/context";
-import { commerceDb, requireAdmin } from "../../../lib/admin-auth.ts";
+import { commerceDb } from "../../../lib/admin-auth.ts";
 import { listShippingRates } from "../../../lib/commerce/admin-repository.ts";
 import {
 	easyshipOrigin,

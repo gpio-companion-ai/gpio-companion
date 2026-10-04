@@ -8,12 +8,12 @@ import { useDashboardMode } from "../lib/dashboard-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
 import { useT } from "../lib/locale.tsx";
 import Admin from "./Admin.tsx";
+import Code from "./Code.tsx";
 import Debug from "./Debug.tsx";
 import Docs from "./Docs.tsx";
 import Overview from "./Overview.tsx";
 import Pair from "./Pair.tsx";
 import Requests from "./Requests.tsx";
-import Code from "./Code.tsx";
 import Wifi from "./Wifi.tsx";
 
 export default function DevicesHub() {
@@ -53,8 +53,8 @@ export default function DevicesHub() {
 						{tab === "requests" ? <Requests /> : null}
 						{tab === "debug" ? <Debug /> : null}
 						{tab === "admin" && admin ? <Admin /> : null}
-				</>
-			)}
+					</>
+				)}
 			</View>
 		</View>
 	);

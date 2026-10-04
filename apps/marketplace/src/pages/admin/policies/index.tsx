@@ -22,6 +22,14 @@ export default function AdminPoliciesPage() {
 	const [bodyFr, setBodyFr] = useState("");
 	const [busy, setBusy] = useState(false);
 
+	const fill = useCallback((policy: Policy) => {
+		setSelectedId(policy.id);
+		setTitleEn(policy.titleEn);
+		setTitleFr(policy.titleFr);
+		setBodyEn(policy.bodyEn);
+		setBodyFr(policy.bodyFr);
+	}, []);
+
 	const reload = useCallback(async () => {
 		setLoading(true);
 		setError(null);
@@ -36,20 +44,11 @@ export default function AdminPoliciesPage() {
 		} finally {
 			setLoading(false);
 		}
-	}, [selectedId]);
-
-	function fill(policy: Policy) {
-		setSelectedId(policy.id);
-		setTitleEn(policy.titleEn);
-		setTitleFr(policy.titleFr);
-		setBodyEn(policy.bodyEn);
-		setBodyFr(policy.bodyFr);
-	}
+	}, [selectedId, fill]);
 
 	useEffect(() => {
 		void reload();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [reload]);
 
 	const selected = policies.find((policy) => policy.id === selectedId);
 

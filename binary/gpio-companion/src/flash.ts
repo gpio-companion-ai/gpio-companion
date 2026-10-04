@@ -166,21 +166,21 @@ export function createFlashController(
 							return cancelled;
 						},
 					});
-				if (!finalized) {
-					last = {
-						ok: result.ok,
-						fqbn: put.fqbn,
-						dir: put.dir,
-						port: put.port,
-						log: capFlashLog(result.log),
-						startedAt,
-						finishedAt: Date.now(),
-					};
-				}
-				await backend.afterUpload?.(put, result);
-			} catch (caught) {
-				if (!finalized) {
-					last = {
+					if (!finalized) {
+						last = {
+							ok: result.ok,
+							fqbn: put.fqbn,
+							dir: put.dir,
+							port: put.port,
+							log: capFlashLog(result.log),
+							startedAt,
+							finishedAt: Date.now(),
+						};
+					}
+					await backend.afterUpload?.(put, result);
+				} catch (caught) {
+					if (!finalized) {
+						last = {
 							ok: false,
 							fqbn: put.fqbn,
 							dir: put.dir,

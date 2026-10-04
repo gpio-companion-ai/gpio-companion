@@ -11,7 +11,9 @@ export type AndroidBlePermission =
 	| typeof ANDROID_BLE_CONNECT
 	| typeof ANDROID_FINE_LOCATION;
 
-export function androidBlePermissions(apiLevel: number): AndroidBlePermission[] {
+export function androidBlePermissions(
+	apiLevel: number,
+): AndroidBlePermission[] {
 	if (apiLevel >= ANDROID_BLE_API_31) {
 		return [ANDROID_BLE_SCAN, ANDROID_BLE_CONNECT, ANDROID_FINE_LOCATION];
 	}

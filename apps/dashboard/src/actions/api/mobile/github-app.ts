@@ -29,7 +29,11 @@ export async function onRequestPost(ctx: MobileContext) {
 			env(ctx),
 			identity.id,
 			{
-				installationId: asString(body.installationId) || body.installationId,
+				installationId:
+					asString(body.installationId) ||
+					(typeof body.installationId === "number"
+						? body.installationId
+						: undefined),
 				code: asString(body.code),
 				state: asString(body.state),
 				redirectUri: asString(body.redirectUri),

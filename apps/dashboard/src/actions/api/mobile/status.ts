@@ -1,10 +1,7 @@
 "no action";
 
+import { type MobileContext, runMobile } from "../../../lib/mobile-http.ts";
 import { publicPairing } from "../../../lib/pairing-store.ts";
-import {
-	type MobileContext,
-	runMobile,
-} from "../../../lib/mobile-http.ts";
 import { listDevicesWithStatus } from "../device.ts";
 
 export async function onRequestGet(ctx: MobileContext) {

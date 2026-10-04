@@ -1,6 +1,6 @@
+import Select from "@shpaw415/mui-lite/Select";
 import Skeleton from "@shpaw415/mui-lite/Skeleton";
 import TextField from "@shpaw415/mui-lite/TextField";
-import Select from "@shpaw415/mui-lite/Select";
 import { useMemo, useState } from "react";
 import { useLocale, useT } from "../hooks/useLocale.tsx";
 import type { PublicCatalogProduct } from "../lib/commerce/catalog-repository.ts";
@@ -69,7 +69,10 @@ export default function CatalogGrid({
 				</Select>
 			</div>
 			{filtered.length === 0 ? (
-				<EmptyState title={t("catalog.emptyTitle")} description={t("catalog.emptyBody")} />
+				<EmptyState
+					title={t("catalog.emptyTitle")}
+					description={t("catalog.emptyBody")}
+				/>
 			) : (
 				<div className="market-card-grid">
 					{filtered.map((item) => {
@@ -77,7 +80,11 @@ export default function CatalogGrid({
 						const description =
 							locale === "fr" ? item.descriptionFr : item.descriptionEn;
 						const image = item.images[0];
-						const alt = image ? (locale === "fr" ? image.altFr : image.altEn) : "";
+						const alt = image
+							? locale === "fr"
+								? image.altFr
+								: image.altEn
+							: "";
 						return (
 							<ProductCard
 								key={item.id}

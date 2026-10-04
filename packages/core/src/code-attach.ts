@@ -179,7 +179,9 @@ export function stageCodeAttach(input: {
 	if (kind === "text") {
 		let text = "";
 		try {
-			text = new TextDecoder("utf-8", { fatal: true }).decode(input.bytes);
+			text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+				input.bytes,
+			);
 		} catch {
 			throw new Error("file is not text");
 		}
@@ -219,7 +221,9 @@ export function stageExplorerFile(input: {
 	if (kind === "text") {
 		let text = "";
 		try {
-			text = new TextDecoder("utf-8", { fatal: true }).decode(input.bytes);
+			text = new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(
+				input.bytes,
+			);
 		} catch {
 			throw new Error("file is not text");
 		}
@@ -760,7 +764,8 @@ function extensionOf(name: string): string {
 }
 
 function newId(): string {
-	const cryptoRef = globalThis.crypto;
+	const cryptoRef = (globalThis as typeof globalThis & { crypto?: Crypto })
+		.crypto;
 	if (cryptoRef && typeof cryptoRef.randomUUID === "function") {
 		return cryptoRef.randomUUID();
 	}

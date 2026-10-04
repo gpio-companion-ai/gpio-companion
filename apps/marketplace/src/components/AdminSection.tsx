@@ -1,8 +1,7 @@
-import Button from "@shpaw415/mui-lite/Button";
 import { navigate } from "frame-master-plugin-apply-react/utils";
 import type { ReactNode } from "react";
-import { useSession } from "../hooks/useSession.tsx";
 import { useT } from "../hooks/useLocale.tsx";
+import { useSession } from "../hooks/useSession.tsx";
 import AdminGate from "./AdminGate.tsx";
 import AdminTabs from "./AdminTabs.tsx";
 

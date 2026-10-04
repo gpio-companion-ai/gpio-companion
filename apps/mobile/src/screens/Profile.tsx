@@ -60,7 +60,7 @@ export default function Profile() {
 		address: null,
 	});
 
-	function scrollToSection(section: ProfileSection) {
+	const scrollToSection = useCallback((section: ProfileSection) => {
 		const node = sectionRefs.current[section];
 		const scroll = scrollRef.current;
 		const handle = scroll ? findNodeHandle(scroll) : null;
@@ -74,12 +74,12 @@ export default function Profile() {
 			},
 			() => undefined,
 		);
-	}
+	}, []);
 
 	useEffect(() => {
 		registerProfileJump(scrollToSection);
 		return () => registerProfileJump(null);
-	}, [registerProfileJump]);
+	}, [registerProfileJump, scrollToSection]);
 
 	useFocusEffect(
 		useCallback(() => {
@@ -90,7 +90,7 @@ export default function Profile() {
 				}
 			}, 60);
 			return () => clearTimeout(timer);
-		}, [consumeProfileJump]),
+		}, [consumeProfileJump, scrollToSection]),
 	);
 
 	return (

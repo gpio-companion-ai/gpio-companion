@@ -1,10 +1,6 @@
 {
 	"compilerOptions": {
-		"lib": [
-			"ESNext",
-			"DOM",
-			"DOM.Iterable"
-		],
+		"lib": ["ESNext", "DOM", "DOM.Iterable"],
 		"target": "ESNext",
 		"module": "preserve",
 		"moduleDetection": "force",
@@ -30,24 +26,12 @@
 			"@cloudflare/workers-types"
 		],
 		"paths": {
-			"@images/*": [
-				"./images/*"
-			],
-			"@static/*": [
-				"./static/*"
-			],
-			"@api/*": [
-				"./src/actions/api/*"
-			],
-			"@components/*": [
-				"./src/components/*"
-			],
-			"@docs/*": [
-				"../../documentation/*"
-			],
-			"@skills/*": [
-				"../../opencode/skills/*"
-			],
+			"@images/*": ["./images/*"],
+			"@static/*": ["./static/*"],
+			"@api/*": ["./src/actions/api/*"],
+			"@components/*": ["./src/components/*"],
+			"@docs/*": ["../../documentation/*"],
+			"@skills/*": ["../../opencode/skills/*"],
 			"@next/ssr": [
 				"./node_modules/frame-master-plugin-cloudflare-pages-dynamic-ssr/src/server/index.ts"
 			],
@@ -63,15 +47,9 @@
 			"@next/client": [
 				"./node_modules/frame-master-plugin-apply-react/src/utils.ts"
 			],
-			"gpio-companion-i18n": [
-				"../../packages/core/src/i18n/index.ts"
-			],
-			"@hooks/*": [
-				"./src/hooks/*"
-			],
-			"@next/hooks/path": [
-				"./src/hooks/usePath.ts"
-			]
+			"gpio-companion-i18n": ["../../packages/core/src/i18n/index.ts"],
+			"@hooks/*": ["./src/hooks/*"],
+			"@next/hooks/path": ["./src/hooks/usePath.ts"]
 		}
 	},
 	"include": [
@@ -88,8 +66,5 @@
 		"./types.d.ts",
 		".frame-master/frame-master-custom-type.d.ts"
 	],
-	"exclude": [
-		".frame-master",
-		"**/node_modules"
-	]
+	"exclude": [".frame-master", "**/node_modules"]
 }

@@ -58,7 +58,9 @@ export async function publicKeyPemFromPrivateKey(
 		true,
 		["verify"],
 	);
-	const spki = new Uint8Array(await crypto.subtle.exportKey("spki", publicKey));
+	const spki = new Uint8Array(
+		(await crypto.subtle.exportKey("spki", publicKey)) as ArrayBuffer,
+	);
 	return bytesToPem(spki, "PUBLIC KEY");
 }
 
@@ -70,10 +72,10 @@ export async function generateDeviceKeyPair(
 		"verify",
 	])) as CryptoKeyPair;
 	const privateDer = new Uint8Array(
-		await crypto.subtle.exportKey("pkcs8", pair.privateKey),
+		(await crypto.subtle.exportKey("pkcs8", pair.privateKey)) as ArrayBuffer,
 	);
 	const publicDer = new Uint8Array(
-		await crypto.subtle.exportKey("spki", pair.publicKey),
+		(await crypto.subtle.exportKey("spki", pair.publicKey)) as ArrayBuffer,
 	);
 	return {
 		keyId,

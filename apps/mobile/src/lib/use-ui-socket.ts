@@ -1,6 +1,6 @@
 import type { UiCommand, UiSurface } from "gpio-companion-ui";
 import { parseUiCommand } from "gpio-companion-ui";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { AppState } from "react-native";
 import { connectUiLive } from "./api.ts";
 import { type ReconnectSocket, startReconnectSocket } from "./hub.ts";
@@ -26,9 +26,9 @@ export function useUiSocket(options: UiSocketOptions): UiSocketHandle {
 	isFocusedRef.current = options.isFocused;
 	onCommandRef.current = options.onCommand;
 
-	function send(json: string) {
+	const send = useCallback((json: string) => {
 		socketRef.current?.send(json);
-	}
+	}, []);
 
 	useEffect(() => {
 		const trimmed = uuid.trim();
@@ -77,7 +77,7 @@ export function useUiSocket(options: UiSocketOptions): UiSocketHandle {
 			socket.stop();
 			socketRef.current = null;
 		};
-	}, [authToken, enabled, surface, uuid]);
+	}, [authToken, enabled, surface, uuid, send]);
 
 	return {
 		reply(id: string, action: string) {

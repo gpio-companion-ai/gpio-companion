@@ -12,11 +12,11 @@ import {
 	bearerToken,
 	userIdForAiAuth,
 } from "../../../../lib/ai-credentials.ts";
+import { recordAiUsage } from "../../../../lib/ai-usage.ts";
 import {
 	consumeMicrodollars,
 	creditsBalance,
 } from "../../../../lib/credits.ts";
-import { recordAiUsage } from "../../../../lib/ai-usage.ts";
 
 type PagesEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;

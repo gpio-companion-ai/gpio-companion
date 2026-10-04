@@ -17,11 +17,7 @@ export type SshWsInput = { op: "input"; data: string };
 export type SshWsResize = { op: "resize"; cols: number; rows: number };
 export type SshWsClose = { op: "close" };
 
-export type SshWsCommand =
-	| SshWsOpen
-	| SshWsInput
-	| SshWsResize
-	| SshWsClose;
+export type SshWsCommand = SshWsOpen | SshWsInput | SshWsResize | SshWsClose;
 
 export type SshChunk = { chunk: string };
 export type SshStatusMessage = { status: SshStatus; message?: string };
@@ -83,7 +79,11 @@ export function parseSshWsCommand(input: unknown): SshWsCommand {
 		return { op: "input", data };
 	}
 	if (record.op === "resize") {
-		return { op: "resize", cols: sshDimension(record.cols, true), rows: sshDimension(record.rows, false) };
+		return {
+			op: "resize",
+			cols: sshDimension(record.cols, true),
+			rows: sshDimension(record.rows, false),
+		};
 	}
 	throw new SshError("unknown ssh command");
 }

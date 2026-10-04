@@ -1,44 +1,44 @@
 {
-  "expo": {
-    "name": "gpio-companion",
-    "slug": "gpio-companion",
-    "scheme": "gpio-companion",
-    "version": "0.0.0",
-    "orientation": "portrait",
-    "userInterfaceStyle": "automatic",
-    "plugins": [
-      "react-native-ble-plx",
-      "expo-router",
-      "expo-web-browser",
-      "expo-secure-store",
-      [
-        "expo-audio",
-        {
-          "microphonePermission": "gpio-companion uses the microphone to dictate a code prompt."
-        }
-      ]
-    ],
-    "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.gpiocompanion.app",
-      "infoPlist": {
-        "NSBluetoothAlwaysUsageDescription": "gpio-companion uses Bluetooth to pair a board and send signed WiFi credentials.",
-        "NSBluetoothPeripheralUsageDescription": "gpio-companion uses Bluetooth to pair a board and send signed WiFi credentials."
-      }
-    },
-    "android": {
-      "package": "com.gpiocompanion.app",
-      "permissions": [
-        "android.permission.BLUETOOTH_SCAN",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.ACCESS_FINE_LOCATION"
-      ]
-    },
-    "extra": {
-      "dashboardUrl": "https://gpio-companion.com",
-      "issuerUrl": "https://c138e26ec90148fd88735d42f445004c-auth.webcreas.com",
-      "authClientId": "__gpio_companion_927ffcf9",
-      "authRedirectUri": "gpio-companion://auth/callback"
-    }
-  }
+	"expo": {
+		"name": "gpio-companion",
+		"slug": "gpio-companion",
+		"scheme": "gpio-companion",
+		"version": "0.0.0",
+		"orientation": "portrait",
+		"userInterfaceStyle": "automatic",
+		"plugins": [
+			"react-native-ble-plx",
+			"expo-router",
+			"expo-web-browser",
+			"expo-secure-store",
+			[
+				"expo-audio",
+				{
+					"microphonePermission": "gpio-companion uses the microphone to dictate a code prompt."
+				}
+			]
+		],
+		"ios": {
+			"supportsTablet": true,
+			"bundleIdentifier": "com.gpiocompanion.app",
+			"infoPlist": {
+				"NSBluetoothAlwaysUsageDescription": "gpio-companion uses Bluetooth to pair a board and send signed WiFi credentials.",
+				"NSBluetoothPeripheralUsageDescription": "gpio-companion uses Bluetooth to pair a board and send signed WiFi credentials."
+			}
+		},
+		"android": {
+			"package": "com.gpiocompanion.app",
+			"permissions": [
+				"android.permission.BLUETOOTH_SCAN",
+				"android.permission.BLUETOOTH_CONNECT",
+				"android.permission.ACCESS_FINE_LOCATION"
+			]
+		},
+		"extra": {
+			"dashboardUrl": "https://gpio-companion.com",
+			"issuerUrl": "https://c138e26ec90148fd88735d42f445004c-auth.webcreas.com",
+			"authClientId": "__gpio_companion_927ffcf9",
+			"authRedirectUri": "gpio-companion://auth/callback"
+		}
+	}
 }

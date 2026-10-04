@@ -155,28 +155,28 @@ export function createGpioStream(options: {
 					await pushFull(ws);
 					return;
 				}
-			const hardware = await options.hardware();
-			if (target === "arduino-proxy") {
-				if (!options.proxy) {
-					throw new Error("arduino-proxy is unavailable");
-				}
-				if (options.sketchTarget?.() === "arduino-proxy") {
-					throw new Error("sketch is running — Live GPIO is read-only");
+				const hardware = await options.hardware();
+				if (target === "arduino-proxy") {
+					if (!options.proxy) {
+						throw new Error("arduino-proxy is unavailable");
+					}
+					if (options.sketchTarget?.() === "arduino-proxy") {
+						throw new Error("sketch is running — Live GPIO is read-only");
+					}
+					if (isGpioBusCommand(command)) {
+						options.proxy.bus(command);
+					} else {
+						options.proxy.apply(hardware, command);
+					}
+					await pushFull(ws);
+					return;
 				}
 				if (isGpioBusCommand(command)) {
-					options.proxy.bus(command);
-				} else {
-					options.proxy.apply(hardware, command);
+					throw new Error("bus ops need arduino-proxy");
 				}
-				await pushFull(ws);
-				return;
-			}
-			if (isGpioBusCommand(command)) {
-				throw new Error("bus ops need arduino-proxy");
-			}
-			if (options.sketchTarget?.() === "header") {
-				throw new Error("sketch is running — Live GPIO is read-only");
-			}
+				if (options.sketchTarget?.() === "header") {
+					throw new Error("sketch is running — Live GPIO is read-only");
+				}
 				await options.gpio.apply(hardware, command);
 				await broadcast(false);
 			} catch (error) {

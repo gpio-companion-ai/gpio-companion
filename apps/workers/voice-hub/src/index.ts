@@ -463,8 +463,8 @@ export class VoiceHub extends DurableObject<Env> {
 		} catch {
 			return Response.json({ error: "file is required" }, { status: 400 });
 		}
-		const file = form.get("file");
-		if (!(file instanceof Blob)) {
+		const file = form.get("file") as string | File | null;
+		if (!file || typeof file === "string" || !(file instanceof Blob)) {
 			return Response.json({ error: "file is required" }, { status: 400 });
 		}
 		const body = new FormData();

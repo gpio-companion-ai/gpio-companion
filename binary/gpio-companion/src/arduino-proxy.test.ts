@@ -111,9 +111,7 @@ describe("memory arduino proxy", () => {
 		proxy.setSketchStatus?.(() => null);
 		const snapshot = proxy.snapshot("raspberrypi");
 		expect(snapshot.sketch).toBeUndefined();
-		expect(
-			snapshot.pins.some((pin) => pin.sketch === true),
-		).toBe(false);
+		expect(snapshot.pins.some((pin) => pin.sketch === true)).toBe(false);
 	});
 });
 

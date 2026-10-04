@@ -22,7 +22,7 @@ export function timingSafeEqualString(left: string, right: string): boolean {
 	return diff === 0 && a.length === b.length && a.length > 0;
 }
 
-function derLength(length: number): Uint8Array {
+function derLength(length: number): Uint8Array<ArrayBuffer> {
 	if (length < 128) {
 		return Uint8Array.of(length);
 	}
@@ -32,7 +32,7 @@ function derLength(length: number): Uint8Array {
 	return Uint8Array.of(0x82, (length >> 8) & 0xff, length & 0xff);
 }
 
-function derSeq(tag: number, body: Uint8Array): Uint8Array {
+function derSeq(tag: number, body: Uint8Array): Uint8Array<ArrayBuffer> {
 	const len = derLength(body.length);
 	const out = new Uint8Array(1 + len.length + body.length);
 	out[0] = tag;
@@ -41,7 +41,7 @@ function derSeq(tag: number, body: Uint8Array): Uint8Array {
 	return out;
 }
 
-export function rsaPkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array {
+export function rsaPkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array<ArrayBuffer> {
 	const version = Uint8Array.of(0x02, 0x01, 0x00);
 	const alg = Uint8Array.of(
 		0x30,
@@ -68,7 +68,7 @@ export function rsaPkcs1ToPkcs8(pkcs1: Uint8Array): Uint8Array {
 	return derSeq(0x30, body);
 }
 
-function pemBody(pem: string): Uint8Array {
+function pemBody(pem: string): Uint8Array<ArrayBuffer> {
 	const body = pem
 		.replace(/-----BEGIN [^-]+-----/g, "")
 		.replace(/-----END [^-]+-----/g, "")

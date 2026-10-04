@@ -1,7 +1,7 @@
 "no action";
 
-import { finishCliLogin } from "../../../../lib/jlcpcb-cli.ts";
 import { jlcpcbResponse } from "../../../../lib/jlcpcb.ts";
+import { finishCliLogin } from "../../../../lib/jlcpcb-cli.ts";
 import { readJsonBody } from "../../../../lib/mobile-http.ts";
 import { requireIdentity } from "../../../../lib/session.ts";
 

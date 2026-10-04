@@ -2,7 +2,8 @@ import { connect } from "node:net";
 
 const home = Bun.env.HOME ?? "";
 const javaHome = Bun.env.JAVA_HOME || `${home}/.local/jdk`;
-const androidHome = Bun.env.ANDROID_HOME || Bun.env.ANDROID_SDK_ROOT || `${home}/Android/sdk`;
+const androidHome =
+	Bun.env.ANDROID_HOME || Bun.env.ANDROID_SDK_ROOT || `${home}/Android/sdk`;
 const adbBin = `${androidHome}/platform-tools/adb`;
 const root = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const expoBin = `${root}/node_modules/.bin/expo`;
@@ -50,7 +51,9 @@ async function devices(): Promise<Device[]> {
 	for (const line of out.split("\n")) {
 		const parts = line.trim().split(/\s+/);
 		if (parts.length < 2 || parts[0] === "List") continue;
-		const model = parts.find((part) => part.startsWith("model:"))?.slice("model:".length);
+		const model = parts
+			.find((part) => part.startsWith("model:"))
+			?.slice("model:".length);
 		rows.push({ serial: parts[0], state: parts[1], model });
 	}
 	return rows;
@@ -102,7 +105,9 @@ async function connectSpec(spec: string): Promise<Device | undefined> {
 	await capture(["timeout", "3", adbBin, "connect", spec]);
 	await Bun.sleep(400);
 	const list = await devices();
-	return list.find((device) => device.serial === spec && device.state === "device");
+	return list.find(
+		(device) => device.serial === spec && device.state === "device",
+	);
 }
 
 async function connectPhone(): Promise<Device | undefined> {
@@ -111,7 +116,11 @@ async function connectPhone(): Promise<Device | undefined> {
 		.text()
 		.then((text) => text.trim())
 		.catch(() => "");
-	const specs = [Bun.env.ADB_CONNECT, saved, ...knownPorts.map((port) => `${phoneHost}:${port}`)].filter(
+	const specs = [
+		Bun.env.ADB_CONNECT,
+		saved,
+		...knownPorts.map((port) => `${phoneHost}:${port}`),
+	].filter(
 		(spec): spec is string => !!spec && spec.startsWith(`${phoneHost}:`),
 	);
 	for (const spec of [...new Set(specs)]) {
@@ -141,8 +150,16 @@ async function connectPhone(): Promise<Device | undefined> {
 }
 
 async function warpHost(): Promise<string> {
-	if (Bun.env.REACT_NATIVE_PACKAGER_HOSTNAME) return Bun.env.REACT_NATIVE_PACKAGER_HOSTNAME;
-	const { out } = await capture(["ip", "-4", "-o", "addr", "show", "CloudflareWARP"]);
+	if (Bun.env.REACT_NATIVE_PACKAGER_HOSTNAME)
+		return Bun.env.REACT_NATIVE_PACKAGER_HOSTNAME;
+	const { out } = await capture([
+		"ip",
+		"-4",
+		"-o",
+		"addr",
+		"show",
+		"CloudflareWARP",
+	]);
 	const match = out.match(/inet (\d+\.\d+\.\d+\.\d+)/);
 	return match?.[1] ?? "100.96.0.3";
 }
@@ -188,7 +205,9 @@ if (!phone) {
 	console.error(`no device at ${phoneHost}; not opening emulator gpio_api36`);
 	if (args.connectOnly || args.run) process.exit(1);
 } else {
-	console.log(`android target ${phone.serial} (${phone.model ?? "phone"}), not gpio_api36`);
+	console.log(
+		`android target ${phone.serial} (${phone.model ?? "phone"}), not gpio_api36`,
+	);
 }
 if (args.connectOnly) process.exit(phone ? 0 : 1);
 
@@ -200,7 +219,14 @@ const env = {
 	...(phone ? { ANDROID_SERIAL: phone.serial } : {}),
 };
 const cmd = args.run
-	? [expoBin, "run:android", "--port", String(metroPort), "--device", phone?.model ?? phoneHost]
+	? [
+			expoBin,
+			"run:android",
+			"--port",
+			String(metroPort),
+			"--device",
+			phone?.model ?? phoneHost,
+		]
 	: [expoBin, "start", "--dev-client", "--port", String(metroPort)];
 
 if (args.run && !phone?.model) {

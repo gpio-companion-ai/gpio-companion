@@ -6,7 +6,8 @@ export { FLASH_PROXY_PATH };
 
 export const ARDUINO_PROXY_PATH = "/v1/arduino-proxy";
 export const ARDUINO_PROXY_SKETCH_PREFIX = "arduino-proxy-";
-export const ARDUINO_PROXY_LIB_DIR = "/usr/local/lib/gpio-companion/arduino-proxy";
+export const ARDUINO_PROXY_LIB_DIR =
+	"/usr/local/lib/gpio-companion/arduino-proxy";
 export const FIRMWARE_BAUD_AVR = 57600;
 export const FIRMWARE_BAUD_ESP32 = 115200;
 export const ESP32_BOARD_MANAGER_URL =
@@ -84,9 +85,7 @@ export class ArduinoProxyError extends Error {
 }
 
 const PWM_UNO = new Set([3, 5, 6, 9, 10, 11]);
-const PWM_MEGA = new Set([
-	2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 44, 45, 46,
-]);
+const PWM_MEGA = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 44, 45, 46]);
 const PWM_SAMD = new Set([2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
 
 function digitalPins(
@@ -106,7 +105,11 @@ function digitalPins(
 	return pins;
 }
 
-function analogPins(start: number, count: number, analogOnly = false): ArduinoProxyPinDef[] {
+function analogPins(
+	start: number,
+	count: number,
+	analogOnly = false,
+): ArduinoProxyPinDef[] {
 	const pins: ArduinoProxyPinDef[] = [];
 	for (let index = 0; index < count; index++) {
 		pins.push({
@@ -221,7 +224,10 @@ export const ARDUINO_PROXY_BOARDS: ArduinoProxyBoard[] = [
 		uart: ["Serial1"],
 		i2c: true,
 		spi: true,
-		pins: esp32Pins([0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48]),
+		pins: esp32Pins([
+			0, 1, 2, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 21, 38, 39,
+			40, 41, 42, 43, 44, 45, 46, 47, 48,
+		]),
 	},
 	{
 		id: "esp32c3",
@@ -237,9 +243,9 @@ export const ARDUINO_PROXY_BOARDS: ArduinoProxyBoard[] = [
 ];
 
 function esp32Pins(list?: number[]): ArduinoProxyPinDef[] {
-	const numbers =
-		list ??
-		[2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33];
+	const numbers = list ?? [
+		2, 4, 5, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23, 25, 26, 27, 32, 33,
+	];
 	const adc = new Set([32, 33, 34, 35, 36, 39, 0, 1, 2, 3, 4, 5]);
 	const inputOnly = new Set([34, 35, 36, 39]);
 	return numbers.map((pin) => ({
@@ -251,7 +257,9 @@ function esp32Pins(list?: number[]): ArduinoProxyPinDef[] {
 	}));
 }
 
-export const ARDUINO_PROXY_FQBNS = ARDUINO_PROXY_BOARDS.map((board) => board.fqbn);
+export const ARDUINO_PROXY_FQBNS = ARDUINO_PROXY_BOARDS.map(
+	(board) => board.fqbn,
+);
 
 export function isArduinoProxyPath(path: string): boolean {
 	return path === ARDUINO_PROXY_PATH || path === FLASH_PROXY_PATH;
@@ -317,7 +325,7 @@ export function arduinoProxyBoardFromProbe(input: {
 	analogMap?: number[];
 }): ArduinoProxyBoard | undefined {
 	const map = input.analogMap ?? [];
-	const a0 = map.findIndex((value) => value === 0);
+	const a0 = map.indexOf(0);
 	const count =
 		input.pinCount && input.pinCount > 0 ? input.pinCount : map.length;
 	if (a0 >= 54 || count >= 54) {
@@ -326,7 +334,9 @@ export function arduinoProxyBoardFromProbe(input: {
 	return undefined;
 }
 
-export function arduinoProxyBoard(fqbnOrId: string): ArduinoProxyBoard | undefined {
+export function arduinoProxyBoard(
+	fqbnOrId: string,
+): ArduinoProxyBoard | undefined {
 	const trimmed = fqbnOrId.trim();
 	return ARDUINO_PROXY_BOARDS.find(
 		(board) =>
@@ -341,7 +351,10 @@ export function arduinoProxyBaud(board: ArduinoProxyBoard): number {
 }
 
 export function isArduinoProxySketchName(name: string): boolean {
-	return name.startsWith(ARDUINO_PROXY_SKETCH_PREFIX) && name.length > ARDUINO_PROXY_SKETCH_PREFIX.length;
+	return (
+		name.startsWith(ARDUINO_PROXY_SKETCH_PREFIX) &&
+		name.length > ARDUINO_PROXY_SKETCH_PREFIX.length
+	);
 }
 
 export function arduinoProxySketchName(name: string): string {
@@ -443,8 +456,9 @@ export function parseArduinoProxyStatus(input: unknown): ArduinoProxyStatus {
 				: undefined,
 		fqbn: stringField(record.fqbn) || undefined,
 		name: stringField(record.name) || undefined,
-		board: arduinoProxyBoard(stringField(record.fqbn) || stringField(record.board) || "")
-			?.id,
+		board: arduinoProxyBoard(
+			stringField(record.fqbn) || stringField(record.board) || "",
+		)?.id,
 		voltage:
 			record.voltage === "5v" || record.voltage === "3v3"
 				? record.voltage
@@ -454,7 +468,9 @@ export function parseArduinoProxyStatus(input: unknown): ArduinoProxyStatus {
 			i2c: busesRaw.i2c === true,
 			spi: busesRaw.spi === true,
 			uart: Array.isArray(busesRaw.uart)
-				? busesRaw.uart.filter((item): item is string => typeof item === "string")
+				? busesRaw.uart.filter(
+						(item): item is string => typeof item === "string",
+					)
 				: [],
 		},
 	};

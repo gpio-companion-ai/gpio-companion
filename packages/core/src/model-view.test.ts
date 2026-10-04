@@ -93,7 +93,7 @@ describe("model embed", () => {
 		const payload = {
 			type: MODEL_EMBED_MESSAGE_TYPE,
 			glbBase64: "AAAA",
-		};
+		} as const;
 		expect(parseModelEmbedMessage(JSON.stringify(payload))).toEqual(payload);
 		expect(parseModelEmbedMessage({ type: "other" })).toBeNull();
 		const script = modelEmbedInjectSource(payload);

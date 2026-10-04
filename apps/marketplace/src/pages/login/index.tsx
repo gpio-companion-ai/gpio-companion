@@ -16,7 +16,9 @@ export default function LoginPage() {
 		try {
 			await createClient().login({ autoNavigate: true, provider: "github" });
 		} catch (caught) {
-			setError(caught instanceof Error ? caught.message : t("auth.unavailable"));
+			setError(
+				caught instanceof Error ? caught.message : t("auth.unavailable"),
+			);
 		}
 	}
 

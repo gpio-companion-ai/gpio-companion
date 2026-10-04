@@ -41,10 +41,12 @@ export default function DocsMarkdown({
 	}
 
 	return (
+		// biome-ignore lint/a11y/noStaticElementInteractions: delegates link clicks out to the OS browser
+		// biome-ignore lint/a11y/useKeyWithClickEvents: links inside the rendered docs remain keyboard focusable
 		<div
 			className="docs-markdown"
 			onClick={onClick}
-			// Official gpio-companion docs bundled at build time; not user HTML.
+			// biome-ignore lint/security/noDangerouslySetInnerHtml: official docs bundled at build time, not user HTML
 			dangerouslySetInnerHTML={{ __html: html }}
 		/>
 	);

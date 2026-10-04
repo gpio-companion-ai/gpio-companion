@@ -5,7 +5,8 @@
 <title>Marketplace — Variant C / Split Deck</title>
 <style>
 :root{--bg:#0c1413;--surface:#151f1d;--low:#1b2926;--high:#243531;--ink:#dce7e3;--mut:#a8b7b3;--line:#3c4d49;--teal:#65d9ca;--amber:#e6c34a;--sh:0 22px 60px rgb(0 0 0/.35)}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,system-ui,sans-serif;height:100vh;display:grid;grid-template-columns:64px 280px 1fr;grid-template-rows:56px 1fr 140px;grid-template-areas:"rail side stage" "rail side stage" "rail side dock"}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 Inter,system-ui,sans-serif;height:100vh;display:grid;grid-template-columns:64px 280px 1fr;grid-template-rows:56px 1fr 140px;grid-template-areas:"rail side stage" "rail side stage"
+"rail side dock"}
 .rail{grid-area:rail;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:.6rem;padding:.7rem 0;background:var(--surface)}.rail b{width:38px;height:38px;display:grid;place-items:center;border:1px solid var(--teal);border-radius:10px}.rail span{width:38px;height:38px;display:grid;place-items:center;border-radius:10px;color:var(--mut)}.rail span.on{background:var(--low);color:var(--teal)}
 .side{grid-area:side;border-right:1px solid var(--line);background:var(--surface);padding:1rem;overflow:auto}.side input{width:100%;background:var(--low);border:1px solid var(--line);border-radius:8px;color:var(--ink);padding:.55rem .7rem}
 .kit{border:1px solid var(--line);border-radius:12px;padding:.7rem;margin:.6rem 0;background:var(--low)}.kit.on{border-color:var(--teal)}.kit small{color:var(--mut)}
@@ -14,7 +15,10 @@
 .live{background:radial-gradient(circle at 30% 20%,color-mix(in srgb,var(--teal) 16%,transparent),transparent 22rem),var(--low);display:grid;place-items:center;padding:1.4rem}.board{width:100%;max-width:520px;background:#0e2624;border:1px solid var(--line);border-radius:18px;padding:1rem}svg{width:100%;height:auto;display:block}
 .dock{grid-area:dock;border-top:1px solid var(--line);background:var(--surface);display:grid;grid-template-columns:1fr 320px}.log{padding:.7rem 1rem;font-family:ui-monospace,monospace;font-size:.78rem;color:var(--mut);overflow:auto}.log b{color:var(--teal)}
 .order{border-left:1px solid var(--line);padding:.9rem;display:flex;flex-direction:column;gap:.6rem}.btn{background:var(--teal);color:#06201c;border:0;border-radius:99px;padding:.7rem 1rem;font-weight:800}.btn:disabled{opacity:.5}.kbd{border:1px solid var(--line);border-radius:6px;padding:.1rem .45rem;font-size:.75rem}
-@media(max-width:900px){body{grid-template-columns:1fr;grid-template-rows:56px auto auto auto;grid-template-areas:"rail" "side" "stage" "dock"}.rail{flex-direction:row}.stage{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}}
+@media (max-width:900px){body{grid-template-columns:1fr;grid-template-rows:56px auto auto auto;grid-template-areas:"rail"
+"side"
+"stage"
+"dock"}.rail{flex-direction:row}.stage{grid-template-columns:1fr}.side{border-right:0;border-bottom:1px solid var(--line)}}
 </style>
 </head>
 <body>
@@ -26,7 +30,7 @@ sku: GPIO-COMPANION-STARTER-KIT
 priceCents: null (TBD)
 inventory: null (TBD)
 images: [] (required)
-policies: draft ×5</div><p><button class="btn" disabled>Add to cart — disabled until published</button></p></div>
-<div class="live"><div class="board"><svg viewBox="0 0 560 360"><rect x="112" y="72" width="336" height="218" rx="27" fill="#193a36"/><rect x="238" y="143" width="90" height="70" rx="10" fill="#071815" stroke="#e6c34a" stroke-width="3"/><circle cx="166" cy="126" r="9" fill="#e6c34a"/><circle cx="384" cy="132" r="9" fill="#65d9ca"/></svg><p style="color:var(--mut);font-size:.8rem">Live stage: board visual + what's-in-the-box checklist. Same viewer language as Project breadboard view.</p></div></div></main>
-<footer class="dock"><div class="log"><b>console</b> · reservation → capture only · cart = ids+qty · price re-fetched server-side<br>$ checkout requires GitHub sign-in (openauthster __gpio_companion_927ffcf9)<br>$ webhook /api/webhooks/paypal reconciles approved→completed, denied, refunded</div><div class="order"><b>Order bar</b><span style="color:var(--mut);font-size:.85rem">Total — · shipping per admin table · taxes included</span><button class="btn" disabled>Checkout with PayPal</button></div></footer>
+policies: draft ×5</div><p><button type="button" class="btn" disabled>Add to cart — disabled until published</button></p></div>
+<div class="live"><div class="board"><svg aria-hidden="true" viewBox="0 0 560 360"><rect x="112" y="72" width="336" height="218" rx="27" fill="#193a36"/><rect x="238" y="143" width="90" height="70" rx="10" fill="#071815" stroke="#e6c34a" stroke-width="3"/><circle cx="166" cy="126" r="9" fill="#e6c34a"/><circle cx="384" cy="132" r="9" fill="#65d9ca"/></svg><p style="color:var(--mut);font-size:.8rem">Live stage: board visual + what's-in-the-box checklist. Same viewer language as Project breadboard view.</p></div></div></main>
+<footer class="dock"><div class="log"><b>console</b> · reservation → capture only · cart = ids+qty · price re-fetched server-side<br>$ checkout requires GitHub sign-in (openauthster __gpio_companion_927ffcf9)<br>$ webhook /api/webhooks/paypal reconciles approved→completed, denied, refunded</div><div class="order"><b>Order bar</b><span style="color:var(--mut);font-size:.85rem">Total — · shipping per admin table · taxes included</span><button type="button" class="btn" disabled>Checkout with PayPal</button></div></footer>
 </body></html>

@@ -21,6 +21,6 @@ interface Env {
 }
 
 declare module "@cf-process-env.json" {
-    const env: Record<string, string>;
-    export default env;
+	const env: Record<string, string>;
+	export default env;
 }

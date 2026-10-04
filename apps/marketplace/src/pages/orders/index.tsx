@@ -1,6 +1,11 @@
 import Button from "@shpaw415/mui-lite/Button";
 import Skeleton from "@shpaw415/mui-lite/Skeleton";
-import Table, { TableBody, TableCell, TableHead, TableRow } from "@shpaw415/mui-lite/Table";
+import Table, {
+	TableBody,
+	TableCell,
+	TableHead,
+	TableRow,
+} from "@shpaw415/mui-lite/Table";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { useEffect, useState } from "react";
 import { GET } from "../../actions/api/orders.ts";
@@ -73,13 +78,23 @@ export default function OrdersPage() {
 						{orders.map((order) => (
 							<TableRow key={order.id}>
 								<TableCell>{order.orderNumber}</TableCell>
-								<TableCell>{formatDate(order.createdAt * 1000, locale)}</TableCell>
-								<TableCell>{formatCents(order.totalCents, order.currency, locale)}</TableCell>
+								<TableCell>
+									{formatDate(order.createdAt * 1000, locale)}
+								</TableCell>
+								<TableCell>
+									{formatCents(order.totalCents, order.currency, locale)}
+								</TableCell>
 								<TableCell>{order.paymentStatus}</TableCell>
 								<TableCell>{order.fulfillmentStatus}</TableCell>
-								<TableCell>{order.trackingNumber ?? t("catalog.tbd")}</TableCell>
 								<TableCell>
-									<Button href={`/orders/${order.id}`} variant="text" size="small">
+									{order.trackingNumber ?? t("catalog.tbd")}
+								</TableCell>
+								<TableCell>
+									<Button
+										href={`/orders/${order.id}`}
+										variant="text"
+										size="small"
+									>
 										{t("action.viewKit")}
 									</Button>
 								</TableCell>

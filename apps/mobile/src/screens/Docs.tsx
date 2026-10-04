@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { findNodeHandle, ScrollView, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { findNodeHandle, type ScrollView, type View } from "react-native";
 import DocsMarkdown from "../components/DocsMarkdown.tsx";
 import {
 	Chip,
@@ -13,16 +13,16 @@ import {
 } from "../components/ui.tsx";
 import { useUserBoards } from "../lib/api-cache.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
+import { useDeckNav } from "../lib/deck-nav.tsx";
 import {
 	DOC_HARDWARE_LABELS,
 	type DocHardware,
-	docsForLocale,
 	docSections,
+	docsForLocale,
 	findDoc,
 	hardwareFromStatus,
 	searchDocs,
 } from "../lib/docs.ts";
-import { useDeckNav } from "../lib/deck-nav.tsx";
 import { useLocale, useT } from "../lib/locale.tsx";
 
 export default function Docs() {
@@ -67,7 +67,7 @@ export default function Docs() {
 		[doc],
 	);
 
-	function scrollToSection(id: string) {
+	const scrollToSection = useCallback((id: string) => {
 		const node = headingRefs.current[id];
 		const scroll = scrollRef.current;
 		const handle = scroll ? findNodeHandle(scroll) : null;
@@ -81,7 +81,7 @@ export default function Docs() {
 			},
 			() => undefined,
 		);
-	}
+	}, []);
 
 	useEffect(() => {
 		setDocsItems(
@@ -92,7 +92,7 @@ export default function Docs() {
 			})),
 		);
 		return () => setDocsItems([]);
-	}, [sections, setDocsItems]);
+	}, [sections, setDocsItems, scrollToSection]);
 
 	return (
 		<Screen scrollRef={scrollRef}>

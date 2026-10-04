@@ -109,7 +109,10 @@ export function encodeAnalogMappingQuery(): Uint8Array {
 	return encodeSysex(SYSEX_ANALOG_MAPPING_QUERY);
 }
 
-export function encodeSetPinMode(pin: number, mode: FirmataPinMode): Uint8Array {
+export function encodeSetPinMode(
+	pin: number,
+	mode: FirmataPinMode,
+): Uint8Array {
 	return Uint8Array.from([SET_PIN_MODE, pin & 0x7f, firmataModeCode(mode)]);
 }
 
@@ -126,7 +129,10 @@ export function encodeAnalogWrite(pin: number, value: number): Uint8Array {
 	]);
 }
 
-export function encodeReportDigital(port: number, enabled: boolean): Uint8Array {
+export function encodeReportDigital(
+	port: number,
+	enabled: boolean,
+): Uint8Array {
 	return Uint8Array.from([REPORT_DIGITAL | (port & 0x0f), enabled ? 1 : 0]);
 }
 
@@ -180,7 +186,7 @@ export function encodeSerialWrite(port: number, data: number[]): Uint8Array {
 
 export function encodeSerialListen(port: number, baud: number): Uint8Array {
 	return encodeSysex(SYSEX_SERIAL, [
-		(0x10) | (port & 0x0f),
+		0x10 | (port & 0x0f),
 		baud & 0x7f,
 		(baud >> 7) & 0x7f,
 		(baud >> 14) & 0x7f,
@@ -199,7 +205,9 @@ export function createFirmataParser(): {
 	};
 }
 
-export function parseFirmataBytes(bytes: Uint8Array | number[]): FirmataEvent[] {
+export function parseFirmataBytes(
+	bytes: Uint8Array | number[],
+): FirmataEvent[] {
 	return createFirmataParser().push(bytes);
 }
 

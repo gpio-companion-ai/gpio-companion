@@ -59,10 +59,14 @@ export const PATCH = wrapAction(async function PATCH(input: {
 }) {
 	const ctx = getContext<PagesEnv, never, never>(arguments);
 	requireAdmin(await requireIdentity(ctx));
-	const device = await updateDeviceFieldsByUuid(ctx.env.DYNAMIC_PAGE_KV, input.uuid, {
-		label: input.label,
-		bleMac: input.bleMac,
-	});
+	const device = await updateDeviceFieldsByUuid(
+		ctx.env.DYNAMIC_PAGE_KV,
+		input.uuid,
+		{
+			label: input.label,
+			bleMac: input.bleMac,
+		},
+	);
 	return { ok: true as const, device: publicPairing(device) };
 });
 

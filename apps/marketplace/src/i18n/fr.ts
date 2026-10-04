@@ -42,7 +42,8 @@ export const fr = {
 		title: "Votre bac à composants",
 		count: "{count} articles dans le panier",
 		emptyTitle: "Votre bac à composants est vide",
-		emptyBody: "Choisissez un kit et nous garderons ses composants regroupés ici.",
+		emptyBody:
+			"Choisissez un kit et nous garderons ses composants regroupés ici.",
 		summary: "Récapitulatif",
 		subtotal: "Sous-total",
 		shipping: "Livraison",
@@ -64,13 +65,17 @@ export const fr = {
 		browse: "Voir les kits",
 		pointsTitle: "Ce que l’atelier fait déjà",
 		agent: "Agent sur l’appareil",
-		agentBody: "OpenCode tourne sur la carte, à côté des broches, pas dans un onglet distant.",
+		agentBody:
+			"OpenCode tourne sur la carte, à côté des broches, pas dans un onglet distant.",
 		circuits: "Guidage visuel des circuits",
-		circuitsBody: "Les vues breadboard et PCB restent attachées au projet en cours.",
+		circuitsBody:
+			"Les vues breadboard et PCB restent attachées au projet en cours.",
 		github: "Projets GitHub",
-		githubBody: "Chaque design vit dans git, avec le même projet que le tableau de bord.",
+		githubBody:
+			"Chaque design vit dans git, avec le même projet que le tableau de bord.",
 		gpio: "Contrôle GPIO",
-		gpioBody: "Les broches du connecteur sont pilotées par l’hôte, y compris le proxy Arduino.",
+		gpioBody:
+			"Les broches du connecteur sont pilotées par l’hôte, y compris le proxy Arduino.",
 		arduino: "Arduino en C",
 		arduinoBody: "Le firmware est du C sur USB, flashé depuis le companion.",
 		featured: "Kits publiés",
@@ -86,7 +91,8 @@ export const fr = {
 		sortName: "Tri : nom A–Z",
 		sortPrice: "Tri : prix",
 		emptyTitle: "Aucun kit publié",
-		emptyBody: "Les kits publiés apparaissent ici. Les brouillons ne sont pas listés.",
+		emptyBody:
+			"Les kits publiés apparaissent ici. Les brouillons ne sont pas listés.",
 		kit: "Kit",
 		status: "Statut",
 		price: "Prix",
@@ -101,7 +107,8 @@ export const fr = {
 		stepsShipping: "Livraison",
 		stepsCapture: "Capture PayPal",
 		shippingTitle: "Adresse de livraison (envoyée à PayPal telle quelle)",
-		draftBlocked: "Le paiement reste fermé tant que le panier n’est pas entièrement disponible.",
+		draftBlocked:
+			"Le paiement reste fermé tant que le panier n’est pas entièrement disponible.",
 		fullName: "Nom complet",
 		country: "Pays",
 		address: "Adresse",
@@ -126,8 +133,10 @@ export const fr = {
 		selectShippingFirst: "Choisissez une option de livraison avant de payer.",
 		shippingDays: "{min}–{max} jours ouvrables",
 		pay: "Payer avec PayPal",
-		paypalMissing: "PayPal n’est pas configuré : le paiement ne peut pas être capturé.",
-		paypalConsent: "PayPal ne se charge qu’après autorisation des cookies tiers.",
+		paypalMissing:
+			"PayPal n’est pas configuré : le paiement ne peut pas être capturé.",
+		paypalConsent:
+			"PayPal ne se charge qu’après autorisation des cookies tiers.",
 		allowPaypal: "Autoriser PayPal",
 		signIn: "Connectez-vous avec GitHub avant de payer.",
 		success: "Paiement capturé. La commande est confirmée.",
@@ -137,7 +146,8 @@ export const fr = {
 		title: "Commandes",
 		emptyTitle: "Aucune commande",
 		emptyBody: "Vos commandes de kits apparaîtront ici.",
-		subtitle: "Connectez-vous pour voir vos commandes. Le paiement exige GitHub.",
+		subtitle:
+			"Connectez-vous pour voir vos commandes. Le paiement exige GitHub.",
 		orderId: "Commande",
 		date: "Date",
 		total: "Total",
@@ -148,7 +158,8 @@ export const fr = {
 		detailTitle: "Commande {id}",
 		detailNote: "Lignes, paiement et suivi de cette commande.",
 		signInTitle: "Connectez-vous pour voir les commandes",
-		signInBody: "La connexion GitHub est requise pour payer et voir l’historique.",
+		signInBody:
+			"La connexion GitHub est requise pour payer et voir l’historique.",
 		placed: "Passée",
 		address: "Livrer à",
 		carrier: "Transporteur",
@@ -178,11 +189,13 @@ export const fr = {
 		loadingBody: "Vérification des composants et des connexions…",
 		notFoundCode: "CIRCUIT OUVERT / 404",
 		notFoundTitle: "Cette piste ne mène nulle part",
-		notFoundBody: "La page a peut-être bougé, ou cette connexion n’a jamais été soudée.",
+		notFoundBody:
+			"La page a peut-être bougé, ou cette connexion n’a jamais été soudée.",
 	},
 	admin: {
 		restrictedTitle: "Accès atelier requis",
-		restrictedBody: "Connectez-vous avec un compte administrateur pour utiliser ces contrôles.",
+		restrictedBody:
+			"Connectez-vous avec un compte administrateur pour utiliser ces contrôles.",
 		tabsLabel: "Sections d’administration",
 		rowsPerPage: "Lignes par page :",
 		displayedRows: "{from}-{to} sur {count}",
@@ -217,7 +230,8 @@ export const fr = {
 		gates: "Conditions de publication",
 		history: "Historique des ajustements",
 		emptyOrders: "Aucune commande pour l’instant.",
-		policyBodies: "Les textes légaux sont rédigés par l’admin. Un corps vide bloque la publication.",
+		policyBodies:
+			"Les textes légaux sont rédigés par l’admin. Un corps vide bloque la publication.",
 		bodyEn: "Corps EN",
 		bodyFr: "Corps FR",
 		titleEn: "Titre EN",
@@ -272,7 +286,8 @@ export const fr = {
 	policies: {
 		title: "Politiques",
 		emptyTitle: "Aucune politique publiée",
-		emptyBody: "Livraison, retours et textes légaux apparaissent ici après publication.",
+		emptyBody:
+			"Livraison, retours et textes légaux apparaissent ici après publication.",
 		contactTitle: "Contact",
 		contactBody:
 			"Les questions de commande passent par l’historique connecté. L’identité du vendeur est publiée dans les politiques, jamais inventée ici.",

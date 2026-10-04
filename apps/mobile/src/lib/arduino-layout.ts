@@ -28,96 +28,98 @@ function range(start: number, end: number): ArduinoLayoutSeat[] {
 	return seats;
 }
 
-const LAYOUTS: Record<string, { left: ArduinoLayoutSeat[]; right: ArduinoLayoutSeat[] }> =
-	{
-		uno: {
-			left: [
-				label("IOREF"),
-				label("RESET"),
-				label("3V3"),
-				label("5V"),
-				label("GND"),
-				label("GND"),
-				label("VIN"),
-				...range(14, 19),
-			],
-			right: range(13, 0),
-		},
-		nano: {
-			left: [
-				gpio(13),
-				label("3V3"),
-				label("AREF"),
-				...range(14, 21),
-				label("5V"),
-				label("RST"),
-				label("GND"),
-				label("VIN"),
-			],
-			right: [
-				gpio(12),
-				gpio(11),
-				gpio(10),
-				gpio(9),
-				gpio(8),
-				gpio(7),
-				gpio(6),
-				gpio(5),
-				gpio(4),
-				gpio(3),
-				gpio(2),
-				label("GND"),
-				label("RST"),
-				gpio(0),
-				gpio(1),
-			],
-		},
-		nano_33_iot: {
-			left: [
-				gpio(13),
-				label("3V3"),
-				label("AREF"),
-				...range(14, 21),
-				label("5V"),
-				label("RST"),
-				label("GND"),
-				label("VIN"),
-			],
-			right: [
-				gpio(12),
-				gpio(11),
-				gpio(10),
-				gpio(9),
-				gpio(8),
-				gpio(7),
-				gpio(6),
-				gpio(5),
-				gpio(4),
-				gpio(3),
-				gpio(2),
-				label("GND"),
-				label("RST"),
-				gpio(0),
-				gpio(1),
-			],
-		},
-		mega: {
-			left: [...range(54, 69)],
-			right: range(13, 0),
-		},
-		mkrwifi1010: {
-			left: [label("AREF"), ...range(15, 21)],
-			right: range(0, 14),
-		},
-		mkrzero: {
-			left: [label("AREF"), ...range(15, 21)],
-			right: range(0, 14),
-		},
-		mzero: {
-			left: [...range(14, 19)],
-			right: range(13, 0),
-		},
-	};
+const LAYOUTS: Record<
+	string,
+	{ left: ArduinoLayoutSeat[]; right: ArduinoLayoutSeat[] }
+> = {
+	uno: {
+		left: [
+			label("IOREF"),
+			label("RESET"),
+			label("3V3"),
+			label("5V"),
+			label("GND"),
+			label("GND"),
+			label("VIN"),
+			...range(14, 19),
+		],
+		right: range(13, 0),
+	},
+	nano: {
+		left: [
+			gpio(13),
+			label("3V3"),
+			label("AREF"),
+			...range(14, 21),
+			label("5V"),
+			label("RST"),
+			label("GND"),
+			label("VIN"),
+		],
+		right: [
+			gpio(12),
+			gpio(11),
+			gpio(10),
+			gpio(9),
+			gpio(8),
+			gpio(7),
+			gpio(6),
+			gpio(5),
+			gpio(4),
+			gpio(3),
+			gpio(2),
+			label("GND"),
+			label("RST"),
+			gpio(0),
+			gpio(1),
+		],
+	},
+	nano_33_iot: {
+		left: [
+			gpio(13),
+			label("3V3"),
+			label("AREF"),
+			...range(14, 21),
+			label("5V"),
+			label("RST"),
+			label("GND"),
+			label("VIN"),
+		],
+		right: [
+			gpio(12),
+			gpio(11),
+			gpio(10),
+			gpio(9),
+			gpio(8),
+			gpio(7),
+			gpio(6),
+			gpio(5),
+			gpio(4),
+			gpio(3),
+			gpio(2),
+			label("GND"),
+			label("RST"),
+			gpio(0),
+			gpio(1),
+		],
+	},
+	mega: {
+		left: [...range(54, 69)],
+		right: range(13, 0),
+	},
+	mkrwifi1010: {
+		left: [label("AREF"), ...range(15, 21)],
+		right: range(0, 14),
+	},
+	mkrzero: {
+		left: [label("AREF"), ...range(15, 21)],
+		right: range(0, 14),
+	},
+	mzero: {
+		left: [...range(14, 19)],
+		right: range(13, 0),
+	},
+};
 
 function boardKey(board?: string): string | undefined {
 	const raw = (board ?? "").trim().toLowerCase();
@@ -127,7 +129,11 @@ function boardKey(board?: string): string | undefined {
 	if (raw.includes("mega")) {
 		return "mega";
 	}
-	if (raw.includes("nano_33") || raw.includes("nano-33") || raw.includes("nano33")) {
+	if (
+		raw.includes("nano_33") ||
+		raw.includes("nano-33") ||
+		raw.includes("nano33")
+	) {
 		return "nano_33_iot";
 	}
 	if (raw.includes("nano")) {
@@ -174,7 +180,10 @@ function padColumns(
 	const length = Math.max(left.length, right.length);
 	return {
 		left: [...left, ...Array.from({ length: length - left.length }, () => GAP)],
-		right: [...right, ...Array.from({ length: length - right.length }, () => GAP)],
+		right: [
+			...right,
+			...Array.from({ length: length - right.length }, () => GAP),
+		],
 	};
 }
 
@@ -220,7 +229,10 @@ export function arduinoProxyHeaderLayout(
 
 export function arduinoLayoutPhysicals(layout: ArduinoHeaderLayout): number[] {
 	return [...layout.left, ...layout.right]
-		.filter((seat): seat is { kind: "gpio"; physical: number } => seat.kind === "gpio")
+		.filter(
+			(seat): seat is { kind: "gpio"; physical: number } =>
+				seat.kind === "gpio",
+		)
 		.map((seat) => seat.physical)
 		.concat(layout.extra);
 }

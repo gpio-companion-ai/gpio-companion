@@ -1,21 +1,15 @@
 import { eq } from "drizzle-orm";
+import { validateShippingAddress } from "../../../../../packages/core/src/shipping-address.ts";
 import type { CommerceDatabase } from "../db/client";
 import { inventoryReservations } from "../db/schema";
-import {
-	priceCartWithShippingOptions,
-} from "./pricing";
+import { createPayPalOrder, paypalConfigured } from "../paypal.ts";
+import { unixNow } from "./identifiers";
+import { createOrder, getOrder, updateOrderStates } from "./order-repository";
+import { priceCartWithShippingOptions } from "./pricing";
 import {
 	createInventoryReservation,
 	releaseInventoryReservation,
 } from "./reservation-repository";
-import {
-	createOrder,
-	getOrder,
-	updateOrderStates,
-} from "./order-repository";
-import { createPayPalOrder, paypalConfigured } from "../paypal.ts";
-import { validateShippingAddress } from "../../../../../packages/core/src/shipping-address.ts";
-import { unixNow } from "./identifiers";
 
 const RESERVATION_SECONDS = 30 * 60;
 
@@ -45,7 +39,9 @@ function requireText(value: string, label: string): string {
 	return trimmed;
 }
 
-export function validateCheckoutAddress(input: CheckoutAddress): CheckoutAddress {
+export function validateCheckoutAddress(
+	input: CheckoutAddress,
+): CheckoutAddress {
 	const email = requireText(input.email, "Email").toLowerCase();
 	if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
 		throw new Error("Email is invalid");
@@ -182,7 +178,10 @@ export async function beginCheckout(
 	}
 }
 
-export async function reservationsForOrder(db: CommerceDatabase, orderId: string) {
+export async function reservationsForOrder(
+	db: CommerceDatabase,
+	orderId: string,
+) {
 	return db
 		.select()
 		.from(inventoryReservations)

@@ -22,6 +22,12 @@ const TONE_BG: Record<string, string> = {
 	idle: "bg-surface",
 };
 
+function seatKey(seat: ArduinoLayoutSeat): string {
+	if (seat.kind === "gpio") return `g${seat.physical}`;
+	if (seat.kind === "label") return `l${seat.name}`;
+	return "gap";
+}
+
 export default function ArduinoProxyPins({
 	pins,
 	busy = false,
@@ -57,9 +63,9 @@ export default function ArduinoProxyPins({
 			>
 				USB
 			</Typography>
-			{rows.map((row, index) => (
+			{rows.map((row) => (
 				<Stack
-					key={index}
+					key={`${seatKey(row.left)}/${seatKey(row.right)}`}
 					direction="row"
 					spacing={0.5}
 					className="min-w-0 items-stretch"

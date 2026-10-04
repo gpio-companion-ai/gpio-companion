@@ -176,16 +176,14 @@ export default function BoardCard({
 							/>
 						) : null}
 						{status ? (
-							<>
-								<Chip
-									label={
-										status.secrets?.githubReady
-											? t("devices.githubReady")
-											: t("devices.githubKeysPending")
-									}
-									tone={status.secrets?.githubReady ? "success" : "warning"}
-								/>
-							</>
+							<Chip
+								label={
+									status.secrets?.githubReady
+										? t("devices.githubReady")
+										: t("devices.githubKeysPending")
+								}
+								tone={status.secrets?.githubReady ? "success" : "warning"}
+							/>
 						) : null}
 					</Row>
 					{isEasy ? null : (

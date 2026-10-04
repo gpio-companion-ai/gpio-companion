@@ -23,8 +23,8 @@ export default function DockSsh({ uuid, token }: Props) {
 	const colors = useColorMode().colors;
 	const webRef = useRef<WebView>(null);
 	const socketRef = useRef<WebSocket | null>(null);
-	const sendRef = useRef<(data: string) => void>(() => undefined);
-	const resizeRef = useRef<(cols: number, rows: number) => void>(
+	const _sendRef = useRef<(data: string) => void>(() => undefined);
+	const _resizeRef = useRef<(cols: number, rows: number) => void>(
 		() => undefined,
 	);
 	const [status, setStatus] = useState<SshStatus>("idle");
@@ -122,13 +122,13 @@ export default function DockSsh({ uuid, token }: Props) {
 	const disconnect = useCallback(() => {
 		disconnectSocket();
 		setStatus("closed");
-	}, []);
+	}, [disconnectSocket]);
 
 	useEffect(() => {
 		disconnectSocket();
 		setStatus("idle");
 		setError("");
-	}, [disconnectSocket, uuid]);
+	}, [disconnectSocket]);
 
 	useEffect(() => {
 		return () => {

@@ -79,6 +79,12 @@ function pinStatus(pin: GpioPinState, t: Translate<Messages>): string {
 	return "—";
 }
 
+function seatKey(seat: ArduinoLayoutSeat): string {
+	if (seat.kind === "gpio") return `g${seat.physical}`;
+	if (seat.kind === "label") return `l${seat.name}`;
+	return "gap";
+}
+
 export default function ArduinoProxyPins({
 	pins,
 	busy = false,
@@ -109,9 +115,9 @@ export default function ArduinoProxyPins({
 			<Text style={{ color: colors.muted, textAlign: "center", fontSize: 12 }}>
 				USB
 			</Text>
-			{rows.map((row, index) => (
+			{rows.map((row) => (
 				<View
-					key={index}
+					key={`${seatKey(row.left)}/${seatKey(row.right)}`}
 					style={{ flexDirection: "row", alignItems: "stretch", gap: 4 }}
 				>
 					<LayoutSeat

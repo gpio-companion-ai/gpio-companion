@@ -1,4 +1,5 @@
 import { GITHUB_GIT_USER } from "gpio-companion";
+import type { FetchLike } from "./ai-credentials.ts";
 import type { SecretsStore } from "./secrets.ts";
 
 export const DEFAULT_DASHBOARD_URL = "https://gpio-companion.com";
@@ -15,16 +16,17 @@ export type GithubCredentialsOptions = {
 	origin?: string;
 	uuid: string;
 	key: string;
-	fetchImpl?: typeof fetch;
+	fetchImpl?: FetchLike;
 };
 
 const cache = new Map<string, GithubInstallationCreds>();
 
 export function dashboardOrigin(origin?: string): string {
-	return (origin || process.env.GPIO_COMPANION_DASHBOARD_URL || DEFAULT_DASHBOARD_URL).replace(
-		/\/+$/,
-		"",
-	);
+	return (
+		origin ||
+		process.env.GPIO_COMPANION_DASHBOARD_URL ||
+		DEFAULT_DASHBOARD_URL
+	).replace(/\/+$/, "");
 }
 
 export function credentialsCacheKey(uuid: string): string {
@@ -59,7 +61,7 @@ export function forgetGithubCredentials(uuid: string): void {
 
 export async function fetchGithubTokenLocal(
 	port = Number(process.env.GPIO_COMPANION_PORT ?? 4150),
-	fetchImpl: typeof fetch = fetch,
+	fetchImpl: FetchLike = fetch,
 ): Promise<GithubInstallationCreds> {
 	const response = await fetchImpl(`http://127.0.0.1:${port}/v1/github-token`);
 	if (!response.ok) {
@@ -72,7 +74,7 @@ export async function loadGithubCreds(
 	uuid: string,
 	key: string,
 	port?: number,
-	fetchImpl?: typeof fetch,
+	fetchImpl?: FetchLike,
 ): Promise<GithubInstallationCreds> {
 	try {
 		return await fetchGithubTokenLocal(port, fetchImpl);
@@ -157,7 +159,9 @@ export function parseGitCredentialInput(text: string): {
 	};
 }
 
-export function formatGitCredentialOutput(creds: GithubInstallationCreds): string {
+export function formatGitCredentialOutput(
+	creds: GithubInstallationCreds,
+): string {
 	return `username=${creds.username}\npassword=${creds.token}\n`;
 }
 

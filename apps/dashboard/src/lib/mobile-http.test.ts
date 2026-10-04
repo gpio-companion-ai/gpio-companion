@@ -5,7 +5,10 @@ describe("mobile-http", () => {
 	it("wraps ok payloads", async () => {
 		const response = jsonOk({ id: "u1" });
 		expect(response.status).toBe(200);
-		expect(await response.json()).toEqual({ ok: true, data: { id: "u1" } });
+		expect<unknown>(await response.json()).toEqual({
+			ok: true,
+			data: { id: "u1" },
+		});
 	});
 
 	it("maps sign-in errors to 401", () => {
@@ -32,7 +35,7 @@ describe("mobile-http", () => {
 	it("returns fail envelopes", async () => {
 		const response = jsonFail("sign in first", 401);
 		expect(response.status).toBe(401);
-		expect(await response.json()).toEqual({
+		expect<unknown>(await response.json()).toEqual({
 			ok: false,
 			error: "sign in first",
 		});

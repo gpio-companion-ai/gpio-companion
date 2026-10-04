@@ -1,4 +1,11 @@
-import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
+import {
+	createContext,
+	type ReactNode,
+	useCallback,
+	useContext,
+	useEffect,
+	useState,
+} from "react";
 import { GET } from "../actions/api/session.ts";
 import type { PublicSession } from "../lib/auth.ts";
 
@@ -14,7 +21,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 	const [session, setSession] = useState<PublicSession | null>(null);
 	const [ready, setReady] = useState(false);
 
-	async function refresh() {
+	const refresh = useCallback(async () => {
 		try {
 			setSession(await GET());
 		} catch {
@@ -22,11 +29,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 		} finally {
 			setReady(true);
 		}
-	}
+	}, []);
 
 	useEffect(() => {
 		void refresh();
-	}, []);
+	}, [refresh]);
 
 	return (
 		<SessionContext.Provider value={{ session, ready, refresh }}>

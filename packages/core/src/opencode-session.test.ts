@@ -7,6 +7,7 @@ import {
 	emptyOpencodeView,
 	holdOpencodePromptEvent,
 	noteOpencodePrompt,
+	type OpencodeView,
 	opencodeClientRequest,
 	opencodeEventFrame,
 	opencodeEventLastId,
@@ -769,16 +770,16 @@ describe("opencode session client", () => {
 				},
 			],
 		};
-		expect(opencodeQuestions([asked])[0]).toEqual({
+		expect(opencodeQuestions([asked])?.[0]).toEqual({
 			id: "que_1",
 			sessionID: "ses_1",
 			prompts: [
 				{ header: "LED", question: "Which pin?", options: ["7", "11"] },
 			],
 		});
-		expect(opencodeQuestions({ data: [asked] }).map((item) => item.id)).toEqual(
-			["que_1"],
-		);
+		expect(
+			opencodeQuestions({ data: [asked] })?.map((item) => item.id),
+		).toEqual(["que_1"]);
 		expect(
 			opencodePermissions([
 				{
@@ -787,7 +788,7 @@ describe("opencode session client", () => {
 					permission: "bash",
 					patterns: ["git push"],
 				},
-			])[0],
+			])?.[0],
 		).toEqual({
 			id: "per_1",
 			sessionID: "ses_1",
@@ -802,9 +803,9 @@ describe("opencode session client", () => {
 					action: "edit",
 					resources: ["src/main.c"],
 				},
-			])[0]?.title,
+			])?.[0]?.title,
 		).toBe("edit");
-		const current = {
+		const current: OpencodeView = {
 			...emptyOpencodeView(),
 			sessionID: "ses_1",
 			questions: [
@@ -843,7 +844,7 @@ describe("opencode session client", () => {
 		const store = new Map<string, string>();
 		const previousSession = globalThis.sessionStorage;
 		const previousLocal = globalThis.localStorage;
-		const mock = {
+		const mock: Storage = {
 			getItem: (key) => store.get(key) ?? null,
 			setItem: (key, value) => {
 				store.set(key, value);
@@ -884,7 +885,7 @@ describe("opencode session client", () => {
 		expect(
 			restoreOpencodePrompts(
 				current.questions,
-				opencodeQuestions([asked]),
+				opencodeQuestions([asked]) ?? [],
 				"ses_1",
 				true,
 				epoch.dropped,

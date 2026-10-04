@@ -17,10 +17,11 @@ const DEFAULT_LOOPBACK = "http://127.0.0.1:4150";
 
 function baseUrl(io: CliIo, extra: string[]): string {
 	for (let i = 0; i < extra.length; i += 1) {
-		if (extra[i] === "--url" && extra[i + 1])
-			return extra[i + 1].replace(/\/+$/, "");
+		const next = extra[i + 1];
+		if (extra[i] === "--url" && next) return next.replace(/\/+$/, "");
 		const m = /^--url=(.+)$/.exec(extra[i] ?? "");
-		if (m) return m[1].replace(/\/+$/, "");
+		const matched = m?.[1];
+		if (matched) return matched.replace(/\/+$/, "");
 	}
 	const env = io.env ?? process.env;
 	const fromEnv = (env.GPIO_COMPANION_URL ?? "").trim().replace(/\/+$/, "");
@@ -63,7 +64,8 @@ function repeatFlag(args: string[], ...names: string[]): string[] {
 				out.push(args[i + 1] as string);
 			} else {
 				const m = new RegExp(`^${escapeReg(name)}=(.+)$`).exec(args[i] ?? "");
-				if (m) out.push(m[1]);
+				const matched = m?.[1];
+				if (matched) out.push(matched);
 			}
 		}
 	}

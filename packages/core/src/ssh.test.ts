@@ -62,9 +62,9 @@ describe("parseSshWsCommand", () => {
 			cols: 120,
 			rows: 40,
 		});
-		expect(() => parseSshWsCommand({ op: "resize", cols: 1, rows: 40 })).toThrow(
-			SshError,
-		);
+		expect(() =>
+			parseSshWsCommand({ op: "resize", cols: 1, rows: 40 }),
+		).toThrow(SshError);
 		expect(() =>
 			parseSshWsCommand({ op: "resize", cols: 80, rows: 201 }),
 		).toThrow(SshError);

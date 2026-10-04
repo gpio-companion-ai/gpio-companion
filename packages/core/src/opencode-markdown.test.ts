@@ -215,7 +215,7 @@ describe("htmlAttrValue", () => {
 			'<board-note title="tip">x</board-note>',
 		);
 		const block = blocks[0];
-		if (block.type !== "html") {
+		if (block?.type !== "html") {
 			throw new Error("expected html block");
 		}
 		expect(htmlAttrValue(block.attrs, "title")).toBe("tip");

@@ -18,9 +18,7 @@ const MIME_TO_EXT: Record<string, string> = {
 	"image/gif": "gif",
 };
 
-function mediaBucket(ctx: {
-	env: Env;
-}): R2Bucket {
+function mediaBucket(ctx: { env: Env }): R2Bucket {
 	const bucket = (ctx.env as Env).MARKETPLACE_MEDIA;
 	if (!bucket) throw new Error("MARKETPLACE_MEDIA binding is missing");
 	return bucket;

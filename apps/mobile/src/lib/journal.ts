@@ -10,7 +10,9 @@ export const JOURNAL_WINDOWS = [
 export type JournalWindowId = (typeof JOURNAL_WINDOWS)[number]["id"];
 
 export function journalWindowMs(id: JournalWindowId): number {
-	return JOURNAL_WINDOWS.find((item) => item.id === id)?.ms ?? 24 * 60 * 60 * 1000;
+	return (
+		JOURNAL_WINDOWS.find((item) => item.id === id)?.ms ?? 24 * 60 * 60 * 1000
+	);
 }
 
 export function parseJournalTimestamp(line: string): number | null {

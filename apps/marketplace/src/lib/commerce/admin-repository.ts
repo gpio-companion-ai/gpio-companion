@@ -431,7 +431,10 @@ export async function listInventoryAdjustments(
 	return db
 		.select()
 		.from(inventoryAdjustments)
-		.orderBy(desc(inventoryAdjustments.createdAt), desc(inventoryAdjustments.id))
+		.orderBy(
+			desc(inventoryAdjustments.createdAt),
+			desc(inventoryAdjustments.id),
+		)
 		.limit(100);
 }
 

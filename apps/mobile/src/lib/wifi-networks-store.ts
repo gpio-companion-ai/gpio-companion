@@ -1,8 +1,8 @@
 import {
 	parseSavedNetworks,
+	type SavedNetwork,
 	serializeSavedNetworks,
 	upsertSavedNetwork,
-	type SavedNetwork,
 } from "./wifi-networks.ts";
 
 const KEY = "gpio-companion-wifi-networks";

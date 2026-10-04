@@ -1,10 +1,10 @@
-import { GET, PATCH, POST, PUT } from "@api/admin/products";
 import {
 	DELETE as deleteImage,
 	GET as listImages,
 	PATCH as updateImage,
 	POST as uploadImage,
 } from "@api/admin/product-images";
+import { GET, PATCH, POST, PUT } from "@api/admin/products";
 import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
@@ -56,13 +56,47 @@ export default function AdminProductsPage() {
 	const [page, setPage] = useState(0);
 	const [rowsPerPage, setRowsPerPage] = useState<RowsPerPage>(10);
 
-	async function loadImages(productId: string) {
+	const loadImages = useCallback(async (productId: string) => {
 		try {
 			setImages(await listImages(productId));
 		} catch (err) {
 			setError(err instanceof Error ? err.message : String(err));
 		}
-	}
+	}, []);
+
+	const select = useCallback(
+		(item: AdminProduct) => {
+			setSelectedId(item.id);
+			setNameEn(item.nameEn);
+			setNameFr(item.nameFr);
+			setDescriptionEn(item.descriptionEn);
+			setDescriptionFr(item.descriptionFr);
+			setPrice(item.priceCents === null ? "" : String(item.priceCents));
+			setWeight(
+				item.weightGrams === null || item.weightGrams === undefined
+					? ""
+					: String(item.weightGrams),
+			);
+			setLengthCm(
+				item.lengthCm === null || item.lengthCm === undefined
+					? ""
+					: String(item.lengthCm),
+			);
+			setWidthCm(
+				item.widthCm === null || item.widthCm === undefined
+					? ""
+					: String(item.widthCm),
+			);
+			setHeightCm(
+				item.heightCm === null || item.heightCm === undefined
+					? ""
+					: String(item.heightCm),
+			);
+			setError(null);
+			void loadImages(item.id);
+		},
+		[loadImages],
+	);
 
 	const reload = useCallback(async () => {
 		setLoading(true);
@@ -76,27 +110,11 @@ export default function AdminProductsPage() {
 		} finally {
 			setLoading(false);
 		}
-	}, [selectedId]);
-
-	function select(item: AdminProduct) {
-		setSelectedId(item.id);
-		setNameEn(item.nameEn);
-		setNameFr(item.nameFr);
-		setDescriptionEn(item.descriptionEn);
-		setDescriptionFr(item.descriptionFr);
-		setPrice(item.priceCents === null ? "" : String(item.priceCents));
-		setWeight(item.weightGrams === null || item.weightGrams === undefined ? "" : String(item.weightGrams));
-		setLengthCm(item.lengthCm === null || item.lengthCm === undefined ? "" : String(item.lengthCm));
-		setWidthCm(item.widthCm === null || item.widthCm === undefined ? "" : String(item.widthCm));
-		setHeightCm(item.heightCm === null || item.heightCm === undefined ? "" : String(item.heightCm));
-		setError(null);
-		void loadImages(item.id);
-	}
+	}, [selectedId, select]);
 
 	useEffect(() => {
 		void reload();
-		// eslint-disable-next-line react-hooks/exhaustive-deps
-	}, []);
+	}, [reload]);
 
 	const selected = rows.find((item) => item.id === selectedId);
 
@@ -136,9 +154,13 @@ export default function AdminProductsPage() {
 	const filtered = rows.filter((item) =>
 		statusFilter === "all" ? true : item.status === statusFilter,
 	);
-	const visible = filtered.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
+	const visible = filtered.slice(
+		page * rowsPerPage,
+		page * rowsPerPage + rowsPerPage,
+	);
 	const priceNumber = Number.parseInt(price, 10);
-	const weightNumber = weight.trim() === "" ? null : Number.parseInt(weight, 10);
+	const weightNumber =
+		weight.trim() === "" ? null : Number.parseInt(weight, 10);
 	const gates = selected
 		? validateProductPublication({
 				slug: selected.slug,
@@ -298,40 +320,40 @@ export default function AdminProductsPage() {
 												})
 											}
 										>
-										{t("admin.delete")}
-									</Button>
-									<Button
-										variant="text"
-										size="small"
-										onClick={() =>
-											run(async () => {
-												await updateImage(image.id, {
-													sortOrder: Math.max(0, image.sortOrder - 1),
-													altEn: image.altEn,
-													altFr: image.altFr,
-												});
-												await loadImages(selectedId);
-											})
-										}
-									>
-										{t("admin.moveUp")}
-									</Button>
-									<Button
-										variant="text"
-										size="small"
-										onClick={() =>
-											run(async () => {
-												await updateImage(image.id, {
-													sortOrder: image.sortOrder + 1,
-													altEn: image.altEn,
-													altFr: image.altFr,
-												});
-												await loadImages(selectedId);
-											})
-										}
-									>
-										{t("admin.moveDown")}
-									</Button>
+											{t("admin.delete")}
+										</Button>
+										<Button
+											variant="text"
+											size="small"
+											onClick={() =>
+												run(async () => {
+													await updateImage(image.id, {
+														sortOrder: Math.max(0, image.sortOrder - 1),
+														altEn: image.altEn,
+														altFr: image.altFr,
+													});
+													await loadImages(selectedId);
+												})
+											}
+										>
+											{t("admin.moveUp")}
+										</Button>
+										<Button
+											variant="text"
+											size="small"
+											onClick={() =>
+												run(async () => {
+													await updateImage(image.id, {
+														sortOrder: image.sortOrder + 1,
+														altEn: image.altEn,
+														altFr: image.altFr,
+													});
+													await loadImages(selectedId);
+												})
+											}
+										>
+											{t("admin.moveDown")}
+										</Button>
 									</TableCell>
 								</TableRow>
 							))}
@@ -465,7 +487,9 @@ export default function AdminProductsPage() {
 									<TableCell>
 										<Chip
 											size="small"
-											color={item.status === "published" ? "success" : "warning"}
+											color={
+												item.status === "published" ? "success" : "warning"
+											}
 										>
 											{item.status}
 										</Chip>
@@ -578,7 +602,11 @@ function CreateProductForm({
 				onChange={(event) => setDescriptionFr(event.target.value)}
 			/>
 			<div className="bar">
-					<Button variant="contained" disabled={disabled || busy} onClick={create}>
+				<Button
+					variant="contained"
+					disabled={disabled || busy}
+					onClick={create}
+				>
 					{t("admin.createDraft")}
 				</Button>
 			</div>

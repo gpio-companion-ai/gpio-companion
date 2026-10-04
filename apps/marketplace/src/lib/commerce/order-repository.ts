@@ -68,7 +68,12 @@ export async function createOrder(
 	const idempotencyKey = input.idempotencyKey?.trim() || null;
 	if (idempotencyKey) {
 		const existing = await getOrderByIdempotencyKey(db, idempotencyKey);
-		if (existing) return { order: existing, items: existing.items, replayed: true as const };
+		if (existing)
+			return {
+				order: existing,
+				items: existing.items,
+				replayed: true as const,
+			};
 	}
 	const now = unixNow();
 	const identity = generateOrderIdentity();

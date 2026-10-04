@@ -7,9 +7,9 @@ import {
 } from "./device-api.ts";
 import {
 	deleteGpioCompanionRepo,
+	type GithubAccount,
 	githubAccountForUser,
 	githubConfigured,
-	type GithubAccount,
 	unindexProject,
 } from "./github.ts";
 import type { GithubAppEnv } from "./github-app.ts";

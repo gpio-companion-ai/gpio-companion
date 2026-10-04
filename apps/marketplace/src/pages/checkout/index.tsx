@@ -5,7 +5,11 @@ import Radio from "@shpaw415/mui-lite/Radio";
 import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { useEffect, useState } from "react";
-import { GET as paypalConfig, POST as quote, PUT as startCheckout } from "../../actions/api/checkout.ts";
+import {
+	GET as paypalConfig,
+	POST as quote,
+	PUT as startCheckout,
+} from "../../actions/api/checkout.ts";
 import { POST as captureOrder } from "../../actions/api/orders.ts";
 import { useCart } from "../../hooks/useCart.tsx";
 import { useLocale, useT } from "../../hooks/useLocale.tsx";
@@ -104,15 +108,17 @@ export default function CheckoutPage() {
 				if (cancelled || !paypal) return;
 				const host = document.getElementById("paypal-buttons");
 				if (!host || host.childElementCount > 0) return;
-				return paypal.Buttons({
-					createOrder: async () => paypalOrderId,
-					onApprove: async () => {
-						await captureOrder(orderId);
-						cart.clear();
-						window.sessionStorage.removeItem(IDEMPOTENCY_KEY);
-						setDone(true);
-					},
-				}).render("#paypal-buttons");
+				return paypal
+					.Buttons({
+						createOrder: async () => paypalOrderId,
+						onApprove: async () => {
+							await captureOrder(orderId);
+							cart.clear();
+							window.sessionStorage.removeItem(IDEMPOTENCY_KEY);
+							setDone(true);
+						},
+					})
+					.render("#paypal-buttons");
 			})
 			.catch((err: unknown) =>
 				setError(err instanceof Error ? err.message : String(err)),
@@ -122,17 +128,19 @@ export default function CheckoutPage() {
 		};
 	}, [paypalOrderId, clientId, consent, orderId, cart]);
 
-	const selectedOption = shippingOptions.find(
-		(option) => option.id === selectedOptionId,
-	) ?? null;
-	const shippingCents = selectedShipping?.shippingCents ?? selectedOption?.totalCents ?? null;
+	const selectedOption =
+		shippingOptions.find((option) => option.id === selectedOptionId) ?? null;
+	const shippingCents =
+		selectedShipping?.shippingCents ?? selectedOption?.totalCents ?? null;
 	const totalCents =
 		subtotalCents !== null && shippingCents !== null
 			? subtotalCents + shippingCents
 			: null;
 
 	function destinationFilled(): boolean {
-		return Boolean(line1.trim() && city.trim() && postal.trim() && country.trim());
+		return Boolean(
+			line1.trim() && city.trim() && postal.trim() && country.trim(),
+		);
 	}
 
 	function destination() {
@@ -157,7 +165,10 @@ export default function CheckoutPage() {
 		setQuoting(true);
 		try {
 			const priced = await quote(
-				cart.items.map((item) => ({ productId: item.id, quantity: item.quantity })),
+				cart.items.map((item) => ({
+					productId: item.id,
+					quantity: item.quantity,
+				})),
 				destination(),
 			);
 			setSubtotalCents(priced.subtotalCents);
@@ -241,17 +252,46 @@ export default function CheckoutPage() {
 					{t("checkout.shippingTitle")}
 				</Typography>
 				{error ? <Alert severity="error">{error}</Alert> : null}
-				<TextField label={t("checkout.fullName")} value={name} onChange={(event) => setName(event.target.value)} />
+				<TextField
+					label={t("checkout.fullName")}
+					value={name}
+					onChange={(event) => setName(event.target.value)}
+				/>
 				<TextField label={t("checkout.email")} value={email} disabled />
 				<div className="market-form-row">
-					<TextField label={t("checkout.countryCode")} value={country} placeholder="US" onChange={(event) => setCountry(event.target.value)} />
-					<TextField label={t("checkout.region")} value={region} onChange={(event) => setRegion(event.target.value)} />
+					<TextField
+						label={t("checkout.countryCode")}
+						value={country}
+						placeholder="US"
+						onChange={(event) => setCountry(event.target.value)}
+					/>
+					<TextField
+						label={t("checkout.region")}
+						value={region}
+						onChange={(event) => setRegion(event.target.value)}
+					/>
 				</div>
-				<TextField label={t("checkout.address")} value={line1} onChange={(event) => setLine1(event.target.value)} />
-				<TextField label={t("checkout.line2")} value={line2} onChange={(event) => setLine2(event.target.value)} />
+				<TextField
+					label={t("checkout.address")}
+					value={line1}
+					onChange={(event) => setLine1(event.target.value)}
+				/>
+				<TextField
+					label={t("checkout.line2")}
+					value={line2}
+					onChange={(event) => setLine2(event.target.value)}
+				/>
 				<div className="market-form-row">
-					<TextField label={t("checkout.cityPostal")} value={city} onChange={(event) => setCity(event.target.value)} />
-					<TextField label={t("checkout.postal")} value={postal} onChange={(event) => setPostal(event.target.value)} />
+					<TextField
+						label={t("checkout.cityPostal")}
+						value={city}
+						onChange={(event) => setCity(event.target.value)}
+					/>
+					<TextField
+						label={t("checkout.postal")}
+						value={postal}
+						onChange={(event) => setPostal(event.target.value)}
+					/>
 				</div>
 				<div className="bar">
 					<Button
@@ -264,7 +304,9 @@ export default function CheckoutPage() {
 					<Button
 						variant="contained"
 						onClick={() => void prepare()}
-						disabled={!paypalEnabled || cart.items.length === 0 || !selectedOptionId}
+						disabled={
+							!paypalEnabled || cart.items.length === 0 || !selectedOptionId
+						}
 					>
 						{t("checkout.pay")}
 					</Button>
@@ -272,11 +314,18 @@ export default function CheckoutPage() {
 				{shippingOptions.length > 0 ? (
 					<fieldset className="market-shipping-options">
 						<legend>
-							<Typography variant="subtitle1">{t("checkout.shippingOptions")}</Typography>
+							<Typography variant="subtitle1">
+								{t("checkout.shippingOptions")}
+							</Typography>
 						</legend>
 						{shippingOptions.map((option) => (
-							<label key={option.id} className="market-shipping-option">
+							<label
+								key={option.id}
+								className="market-shipping-option"
+								htmlFor={`shipping-option-${option.id}`}
+							>
 								<Radio
+									id={`shipping-option-${option.id}`}
 									name="shipping-option"
 									checked={selectedOptionId === option.id}
 									onChange={() => {
@@ -285,7 +334,9 @@ export default function CheckoutPage() {
 									}}
 								/>
 								<span className="market-shipping-option-body">
-									<span className="market-shipping-option-name">{option.courierName}</span>
+									<span className="market-shipping-option-name">
+										{option.courierName}
+									</span>
 									{option.minDays !== null || option.maxDays !== null ? (
 										<span className="market-shipping-option-days">
 											{t("checkout.shippingDays", {
@@ -295,7 +346,9 @@ export default function CheckoutPage() {
 										</span>
 									) : null}
 									{option.description ? (
-										<span className="market-shipping-option-description">{option.description}</span>
+										<span className="market-shipping-option-description">
+											{option.description}
+										</span>
 									) : null}
 								</span>
 								<span className="market-shipping-option-price">
@@ -305,7 +358,9 @@ export default function CheckoutPage() {
 						))}
 					</fieldset>
 				) : null}
-				{!paypalEnabled ? <Alert severity="warning">{t("checkout.paypalMissing")}</Alert> : null}
+				{!paypalEnabled ? (
+					<Alert severity="warning">{t("checkout.paypalMissing")}</Alert>
+				) : null}
 				{!consent ? (
 					<Alert severity="info" title={t("cookies.title")}>
 						<p>{t("checkout.paypalConsent")}</p>
@@ -327,19 +382,25 @@ export default function CheckoutPage() {
 				<div className="row">
 					<span>{t("cart.subtotal")}</span>
 					<span>
-						{subtotalCents !== null ? formatCents(subtotalCents, "USD", locale) : t("catalog.tbd")}
+						{subtotalCents !== null
+							? formatCents(subtotalCents, "USD", locale)
+							: t("catalog.tbd")}
 					</span>
 				</div>
 				<div className="row">
 					<span>{t("cart.shipping")}</span>
 					<span>
-						{shippingCents !== null ? formatCents(shippingCents, "USD", locale) : t("catalog.tbd")}
+						{shippingCents !== null
+							? formatCents(shippingCents, "USD", locale)
+							: t("catalog.tbd")}
 					</span>
 				</div>
 				<div className="row grand">
 					<span>{t("cart.total")}</span>
 					<span>
-						{totalCents !== null ? formatCents(totalCents, "USD", locale) : t("catalog.tbd")}
+						{totalCents !== null
+							? formatCents(totalCents, "USD", locale)
+							: t("catalog.tbd")}
 					</span>
 				</div>
 				{selectedShipping?.courierName ? (

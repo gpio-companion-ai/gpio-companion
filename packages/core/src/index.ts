@@ -1018,11 +1018,9 @@ export {
 	SSH_PATH,
 	SSH_ROWS_MAX,
 	SSH_ROWS_MIN,
-	SshError,
 	type SshChunk,
-	sshWsConnectUrl,
+	SshError,
 	type SshFrame,
-	sshWsUrl,
 	type SshStatus,
 	type SshStatusMessage,
 	type SshWsClose,
@@ -1031,6 +1029,8 @@ export {
 	type SshWsInput,
 	type SshWsOpen,
 	type SshWsResize,
+	sshWsConnectUrl,
+	sshWsUrl,
 } from "./ssh.ts";
 export {
 	cloudflareTunnelName,

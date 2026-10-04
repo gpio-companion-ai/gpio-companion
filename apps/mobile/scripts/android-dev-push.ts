@@ -1,6 +1,7 @@
 const home = Bun.env.HOME ?? "";
 const javaHome = Bun.env.JAVA_HOME || `${home}/.local/jdk`;
-const androidHome = Bun.env.ANDROID_HOME || Bun.env.ANDROID_SDK_ROOT || `${home}/Android/sdk`;
+const androidHome =
+	Bun.env.ANDROID_HOME || Bun.env.ANDROID_SDK_ROOT || `${home}/Android/sdk`;
 const adbBin = `${androidHome}/platform-tools/adb`;
 const root = new URL("..", import.meta.url).pathname.replace(/\/$/, "");
 const apk = `${root}/android/app/build/outputs/apk/debug/app-debug.apk`;
@@ -48,7 +49,10 @@ function usage(): string {
 	].join("\n");
 }
 
-async function run(cmd: string[], opts: { allowFail?: boolean } = {}): Promise<number> {
+async function run(
+	cmd: string[],
+	opts: { allowFail?: boolean } = {},
+): Promise<number> {
 	const proc = Bun.spawn(cmd, {
 		cwd: root,
 		stdout: "inherit",
@@ -62,7 +66,8 @@ async function run(cmd: string[], opts: { allowFail?: boolean } = {}): Promise<n
 		},
 	});
 	const code = await proc.exited;
-	if (code !== 0 && !opts.allowFail) throw new Error(`${cmd.join(" ")} exited ${code}`);
+	if (code !== 0 && !opts.allowFail)
+		throw new Error(`${cmd.join(" ")} exited ${code}`);
 	return code;
 }
 
@@ -81,7 +86,8 @@ async function capture(cmd: string[]): Promise<string> {
 		new Response(proc.stderr).text(),
 		proc.exited,
 	]);
-	if (code !== 0) throw new Error(`${cmd.join(" ")}: ${err.trim() || out.trim() || code}`);
+	if (code !== 0)
+		throw new Error(`${cmd.join(" ")}: ${err.trim() || out.trim() || code}`);
 	return out;
 }
 
@@ -126,7 +132,8 @@ if (args.help) {
 }
 
 if (args.pair) {
-	if (!args.pairCode) throw new Error("--pair needs host:port and a 6-digit code");
+	if (!args.pairCode)
+		throw new Error("--pair needs host:port and a 6-digit code");
 	await run([adbBin, "pair", args.pair, args.pairCode]);
 }
 if (args.connect) {
@@ -137,7 +144,13 @@ const device = await waitForDevice(args.connect);
 console.log(`using ${device.serial}`);
 
 if (!args.skipBuild) {
-	await run([`${root}/android/gradlew`, "-p", "android", ":app:assembleDebug", "--no-daemon"]);
+	await run([
+		`${root}/android/gradlew`,
+		"-p",
+		"android",
+		":app:assembleDebug",
+		"--no-daemon",
+	]);
 }
 
 if (!(await Bun.file(apk).exists())) {
@@ -155,7 +168,15 @@ async function install(): Promise<void> {
 		await run([adbBin, "connect", args.connect], { allowFail: true });
 		await waitForDevice(args.connect, 15);
 	}
-	await run([adbBin, "-s", device.serial, "install", "-r", "--no-incremental", apk]);
+	await run([
+		adbBin,
+		"-s",
+		device.serial,
+		"install",
+		"-r",
+		"--no-incremental",
+		apk,
+	]);
 }
 
 await install();

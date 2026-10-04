@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { nearbyBoardLabel, type NearbyBoard } from "../api";
+import { type NearbyBoard, nearbyBoardLabel } from "../api";
 
-function board(partial: Partial<NearbyBoard> & Pick<NearbyBoard, "id">): NearbyBoard {
+function board(
+	partial: Partial<NearbyBoard> & Pick<NearbyBoard, "id">,
+): NearbyBoard {
 	return {
 		name: "",
 		rssi: null,

@@ -5,6 +5,11 @@ export type AuthRefreshClient = {
 	triggerRefresh(): Promise<boolean>;
 };
 
+export type FetchLike = (
+	input: RequestInfo | URL,
+	init?: RequestInit,
+) => Promise<Response>;
+
 const RETRY_HEADER = "x-gpio-auth-retry";
 export const LOGIN_REQUIRED_EVENT = "gpio-login-required";
 
@@ -47,6 +52,7 @@ export function clearAccessCookie(): void {
 	if (typeof document === "undefined") {
 		return;
 	}
+	// biome-ignore lint/suspicious/noDocumentCookie: client-side logout must clear the non-HttpOnly access cookie
 	document.cookie = "access_token=; Max-Age=0; path=/";
 }
 
@@ -74,11 +80,11 @@ export function attachAccessCookieSync(auth: AuthRefreshClient): void {
 }
 
 export function createAuthAwareFetch(
-	baseFetch: typeof fetch,
+	baseFetch: FetchLike,
 	auth: AuthRefreshClient,
 	origin = typeof window === "undefined" ? "" : window.location.origin,
 	onLoginRequired: () => void = () => requireLogin(auth),
-): typeof fetch {
+): FetchLike {
 	let refreshPromise: Promise<boolean> | null = null;
 
 	async function refreshOnce(): Promise<boolean> {
@@ -116,7 +122,7 @@ export function createAuthAwareFetch(
 		}
 		const headers = new Headers(retryable.headers);
 		headers.set(RETRY_HEADER, "1");
-		const retried = await baseFetch(new Request(retryable, { headers }));
+		const retried = await baseFetch(retryable as RequestInfo, { headers });
 		if (await responseNeedsRefresh(retried)) {
 			onLoginRequired();
 		}
@@ -129,7 +135,7 @@ export function installAuthAwareFetch(auth: AuthRefreshClient): () => void {
 		return () => undefined;
 	}
 	const original = window.fetch.bind(window);
-	window.fetch = createAuthAwareFetch(original, auth);
+	window.fetch = createAuthAwareFetch(original, auth) as typeof window.fetch;
 	return () => {
 		window.fetch = original;
 	};

@@ -21,11 +21,11 @@ export function jsonOk(
 	status = 200,
 	headers?: HeadersInit,
 ): Response {
-	return Response.json({ ok: true, data }, { status, headers });
+	return Response.json({ ok: true, data }, { status, headers }) as Response;
 }
 
 export function jsonFail(error: string, status = 400): Response {
-	return Response.json({ ok: false, error }, { status });
+	return Response.json({ ok: false, error }, { status }) as Response;
 }
 
 export function errorStatus(caught: unknown): number {

@@ -671,6 +671,7 @@ export default function Code() {
 		return () => sub.remove();
 	}, [mode]);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: sessionsSeq is a manual refresh signal
 	useEffect(() => {
 		if (!token || !selected || !repo) {
 			setSessionsLoading(false);

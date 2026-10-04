@@ -202,11 +202,7 @@ export function parseVoiceClientMessage(
 	input: unknown,
 ): VoiceClientMessage | null {
 	const record = asRecord(input);
-	if (
-		!record ||
-		record.v !== 1 ||
-		!CLIENT_TYPES.has(record.type as VoiceClientType)
-	) {
+	if (record?.v !== 1 || !CLIENT_TYPES.has(record.type as VoiceClientType)) {
 		return null;
 	}
 	const message: VoiceClientMessage = {
@@ -235,11 +231,7 @@ export function parseVoiceServerMessage(
 	input: unknown,
 ): VoiceServerMessage | null {
 	const record = asRecord(input);
-	if (
-		!record ||
-		record.v !== 1 ||
-		!SERVER_TYPES.has(record.type as VoiceServerType)
-	) {
+	if (record?.v !== 1 || !SERVER_TYPES.has(record.type as VoiceServerType)) {
 		return null;
 	}
 	const message: VoiceServerMessage = {

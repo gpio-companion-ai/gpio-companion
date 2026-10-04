@@ -7,7 +7,7 @@ import {
 	rememberGithubCredentials,
 	runGitCredentialHelper,
 } from "./github-credentials.ts";
-import { gitconfigContents, gitCredentialLine } from "./secrets.ts";
+import { gitCredentialLine, gitconfigContents } from "./secrets.ts";
 
 describe("git credential helper", () => {
 	test("parses git credential input", () => {

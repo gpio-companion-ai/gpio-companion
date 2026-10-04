@@ -8,7 +8,9 @@ import { useLocale, useT } from "../../hooks/useLocale.tsx";
 export default function PoliciesPage() {
 	const t = useT();
 	const { locale } = useLocale();
-	const [policies, setPolicies] = useState<Awaited<ReturnType<typeof listPolicies>>>([]);
+	const [policies, setPolicies] = useState<
+		Awaited<ReturnType<typeof listPolicies>>
+	>([]);
 	const [loading, setLoading] = useState(true);
 
 	useEffect(() => {
@@ -20,7 +22,10 @@ export default function PoliciesPage() {
 
 	if (!loading && policies.length === 0) {
 		return (
-			<EmptyState title={t("policies.emptyTitle")} description={t("policies.emptyBody")} />
+			<EmptyState
+				title={t("policies.emptyTitle")}
+				description={t("policies.emptyBody")}
+			/>
 		);
 	}
 	return (

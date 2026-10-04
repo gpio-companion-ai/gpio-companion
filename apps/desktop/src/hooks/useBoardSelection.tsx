@@ -110,15 +110,7 @@ export function BoardSelectionProvider({
 			dockOpen,
 			setDockOpen,
 		}),
-		[
-			uuid,
-			setUuid,
-			openCode,
-			flashSketch,
-			setFlashSketch,
-			dockTab,
-			dockOpen,
-		],
+		[uuid, setUuid, openCode, flashSketch, setFlashSketch, dockTab, dockOpen],
 	);
 	return (
 		<BoardSelectionCtx.Provider value={value}>

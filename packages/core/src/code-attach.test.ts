@@ -7,13 +7,13 @@ import {
 	codeMentionAt,
 	codeSttLanguage,
 	codeSttMicros,
+	explorerCreateDir,
 	filterCodeMentions,
 	hasBoardSelectionDraft,
-	replaceBoardContext,
 	renameContextDrafts,
+	replaceBoardContext,
 	stageBoardContext,
 	stageCodeAttach,
-	explorerCreateDir,
 	stageExplorerFile,
 } from "./code-attach.ts";
 

@@ -1,482 +1,455 @@
 {
-  "version": "6",
-  "dialect": "sqlite",
-  "id": "b1facca4-3662-4289-b18e-9403848594fd",
-  "prevId": "da64cc14-2cbe-4961-97aa-95fe765d800a",
-  "tables": {
-    "ai_usage": {
-      "name": "ai_usage",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "model": {
-          "name": "model",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "prompt_tokens": {
-          "name": "prompt_tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "completion_tokens": {
-          "name": "completion_tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "cached_tokens": {
-          "name": "cached_tokens",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": 0
-        },
-        "audio_seconds": {
-          "name": "audio_seconds",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "chars": {
-          "name": "chars",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "micros": {
-          "name": "micros",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "ai_usage_user_created_idx": {
-          "name": "ai_usage_user_created_idx",
-          "columns": [
-            "user_id",
-            "created_at"
-          ],
-          "isUnique": false
-        },
-        "ai_usage_user_model_idx": {
-          "name": "ai_usage_user_model_idx",
-          "columns": [
-            "user_id",
-            "model"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "ai_usage_micros_check": {
-          "name": "ai_usage_micros_check",
-          "value": "\"ai_usage\".\"micros\" >= 0"
-        },
-        "ai_usage_kind_check": {
-          "name": "ai_usage_kind_check",
-          "value": "\"ai_usage\".\"kind\" in ('chat', 'embedding', 'stt', 'tts')"
-        }
-      }
-    },
-    "jlcpcb_draft_assembly_lines": {
-      "name": "jlcpcb_draft_assembly_lines",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sort": {
-          "name": "sort",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "component_code": {
-          "name": "component_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "qty": {
-          "name": "qty",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "ref": {
-          "name": "ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "jlcpcb_draft_assembly_user_idx": {
-          "name": "jlcpcb_draft_assembly_user_idx",
-          "columns": [
-            "user_id",
-            "sort"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "jlcpcb_draft_assembly_lines_user_id_jlcpcb_drafts_user_id_fk": {
-          "name": "jlcpcb_draft_assembly_lines_user_id_jlcpcb_drafts_user_id_fk",
-          "tableFrom": "jlcpcb_draft_assembly_lines",
-          "tableTo": "jlcpcb_drafts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "jlcpcb_draft_assembly_qty_check": {
-          "name": "jlcpcb_draft_assembly_qty_check",
-          "value": "\"jlcpcb_draft_assembly_lines\".\"qty\" >= 1"
-        }
-      }
-    },
-    "jlcpcb_draft_parts": {
-      "name": "jlcpcb_draft_parts",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sort": {
-          "name": "sort",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "component_code": {
-          "name": "component_code",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "qty": {
-          "name": "qty",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "package": {
-          "name": "package",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "stock": {
-          "name": "stock",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "price": {
-          "name": "price",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "jlcpcb_draft_parts_user_idx": {
-          "name": "jlcpcb_draft_parts_user_idx",
-          "columns": [
-            "user_id",
-            "sort"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "jlcpcb_draft_parts_user_id_jlcpcb_drafts_user_id_fk": {
-          "name": "jlcpcb_draft_parts_user_id_jlcpcb_drafts_user_id_fk",
-          "tableFrom": "jlcpcb_draft_parts",
-          "tableTo": "jlcpcb_drafts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "jlcpcb_draft_parts_qty_check": {
-          "name": "jlcpcb_draft_parts_qty_check",
-          "value": "\"jlcpcb_draft_parts\".\"qty\" >= 1"
-        }
-      }
-    },
-    "jlcpcb_draft_prints": {
-      "name": "jlcpcb_draft_prints",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "integer",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": true
-        },
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "sort": {
-          "name": "sort",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "file": {
-          "name": "file",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "file_access_id": {
-          "name": "file_access_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "item_count": {
-          "name": "item_count",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        }
-      },
-      "indexes": {
-        "jlcpcb_draft_prints_user_idx": {
-          "name": "jlcpcb_draft_prints_user_idx",
-          "columns": [
-            "user_id",
-            "sort"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "jlcpcb_draft_prints_user_id_jlcpcb_drafts_user_id_fk": {
-          "name": "jlcpcb_draft_prints_user_id_jlcpcb_drafts_user_id_fk",
-          "tableFrom": "jlcpcb_draft_prints",
-          "tableTo": "jlcpcb_drafts",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "user_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "jlcpcb_drafts": {
-      "name": "jlcpcb_drafts",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "repo": {
-          "name": "repo",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "pcb_file": {
-          "name": "pcb_file",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "pcb_file_key": {
-          "name": "pcb_file_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "pcb_layer": {
-          "name": "pcb_layer",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "pcb_qty": {
-          "name": "pcb_qty",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "pcb_thickness": {
-          "name": "pcb_thickness",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "pcb_order_type": {
-          "name": "pcb_order_type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "assembly_note": {
-          "name": "assembly_note",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {
-        "jlcpcb_drafts_repo_check": {
-          "name": "jlcpcb_drafts_repo_check",
-          "value": "length(\"jlcpcb_drafts\".\"repo\") > 0"
-        }
-      }
-    }
-  },
-  "views": {},
-  "enums": {},
-  "_meta": {
-    "schemas": {},
-    "tables": {},
-    "columns": {}
-  },
-  "internal": {
-    "indexes": {}
-  }
+	"version": "6",
+	"dialect": "sqlite",
+	"id": "b1facca4-3662-4289-b18e-9403848594fd",
+	"prevId": "da64cc14-2cbe-4961-97aa-95fe765d800a",
+	"tables": {
+		"ai_usage": {
+			"name": "ai_usage",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "integer",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": true
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"created_at": {
+					"name": "created_at",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"kind": {
+					"name": "kind",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"model": {
+					"name": "model",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"prompt_tokens": {
+					"name": "prompt_tokens",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
+				"completion_tokens": {
+					"name": "completion_tokens",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
+				"cached_tokens": {
+					"name": "cached_tokens",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false,
+					"default": 0
+				},
+				"audio_seconds": {
+					"name": "audio_seconds",
+					"type": "real",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"chars": {
+					"name": "chars",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"micros": {
+					"name": "micros",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"ai_usage_user_created_idx": {
+					"name": "ai_usage_user_created_idx",
+					"columns": ["user_id", "created_at"],
+					"isUnique": false
+				},
+				"ai_usage_user_model_idx": {
+					"name": "ai_usage_user_model_idx",
+					"columns": ["user_id", "model"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {
+				"ai_usage_micros_check": {
+					"name": "ai_usage_micros_check",
+					"value": "\"ai_usage\".\"micros\" >= 0"
+				},
+				"ai_usage_kind_check": {
+					"name": "ai_usage_kind_check",
+					"value": "\"ai_usage\".\"kind\" in ('chat', 'embedding', 'stt', 'tts')"
+				}
+			}
+		},
+		"jlcpcb_draft_assembly_lines": {
+			"name": "jlcpcb_draft_assembly_lines",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "integer",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": true
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"sort": {
+					"name": "sort",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"component_code": {
+					"name": "component_code",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"qty": {
+					"name": "qty",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"ref": {
+					"name": "ref",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"jlcpcb_draft_assembly_user_idx": {
+					"name": "jlcpcb_draft_assembly_user_idx",
+					"columns": ["user_id", "sort"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"jlcpcb_draft_assembly_lines_user_id_jlcpcb_drafts_user_id_fk": {
+					"name": "jlcpcb_draft_assembly_lines_user_id_jlcpcb_drafts_user_id_fk",
+					"tableFrom": "jlcpcb_draft_assembly_lines",
+					"tableTo": "jlcpcb_drafts",
+					"columnsFrom": ["user_id"],
+					"columnsTo": ["user_id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {
+				"jlcpcb_draft_assembly_qty_check": {
+					"name": "jlcpcb_draft_assembly_qty_check",
+					"value": "\"jlcpcb_draft_assembly_lines\".\"qty\" >= 1"
+				}
+			}
+		},
+		"jlcpcb_draft_parts": {
+			"name": "jlcpcb_draft_parts",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "integer",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": true
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"sort": {
+					"name": "sort",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"component_code": {
+					"name": "component_code",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"qty": {
+					"name": "qty",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"package": {
+					"name": "package",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"stock": {
+					"name": "stock",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"price": {
+					"name": "price",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"jlcpcb_draft_parts_user_idx": {
+					"name": "jlcpcb_draft_parts_user_idx",
+					"columns": ["user_id", "sort"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"jlcpcb_draft_parts_user_id_jlcpcb_drafts_user_id_fk": {
+					"name": "jlcpcb_draft_parts_user_id_jlcpcb_drafts_user_id_fk",
+					"tableFrom": "jlcpcb_draft_parts",
+					"tableTo": "jlcpcb_drafts",
+					"columnsFrom": ["user_id"],
+					"columnsTo": ["user_id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {
+				"jlcpcb_draft_parts_qty_check": {
+					"name": "jlcpcb_draft_parts_qty_check",
+					"value": "\"jlcpcb_draft_parts\".\"qty\" >= 1"
+				}
+			}
+		},
+		"jlcpcb_draft_prints": {
+			"name": "jlcpcb_draft_prints",
+			"columns": {
+				"id": {
+					"name": "id",
+					"type": "integer",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": true
+				},
+				"user_id": {
+					"name": "user_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"sort": {
+					"name": "sort",
+					"type": "integer",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"name": {
+					"name": "name",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"file": {
+					"name": "file",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"file_access_id": {
+					"name": "file_access_id",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"item_count": {
+					"name": "item_count",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				}
+			},
+			"indexes": {
+				"jlcpcb_draft_prints_user_idx": {
+					"name": "jlcpcb_draft_prints_user_idx",
+					"columns": ["user_id", "sort"],
+					"isUnique": false
+				}
+			},
+			"foreignKeys": {
+				"jlcpcb_draft_prints_user_id_jlcpcb_drafts_user_id_fk": {
+					"name": "jlcpcb_draft_prints_user_id_jlcpcb_drafts_user_id_fk",
+					"tableFrom": "jlcpcb_draft_prints",
+					"tableTo": "jlcpcb_drafts",
+					"columnsFrom": ["user_id"],
+					"columnsTo": ["user_id"],
+					"onDelete": "cascade",
+					"onUpdate": "no action"
+				}
+			},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {}
+		},
+		"jlcpcb_drafts": {
+			"name": "jlcpcb_drafts",
+			"columns": {
+				"user_id": {
+					"name": "user_id",
+					"type": "text",
+					"primaryKey": true,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"repo": {
+					"name": "repo",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				},
+				"pcb_file": {
+					"name": "pcb_file",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pcb_file_key": {
+					"name": "pcb_file_key",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pcb_layer": {
+					"name": "pcb_layer",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pcb_qty": {
+					"name": "pcb_qty",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pcb_thickness": {
+					"name": "pcb_thickness",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"pcb_order_type": {
+					"name": "pcb_order_type",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"assembly_note": {
+					"name": "assembly_note",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": false,
+					"autoincrement": false
+				},
+				"updated_at": {
+					"name": "updated_at",
+					"type": "text",
+					"primaryKey": false,
+					"notNull": true,
+					"autoincrement": false
+				}
+			},
+			"indexes": {},
+			"foreignKeys": {},
+			"compositePrimaryKeys": {},
+			"uniqueConstraints": {},
+			"checkConstraints": {
+				"jlcpcb_drafts_repo_check": {
+					"name": "jlcpcb_drafts_repo_check",
+					"value": "length(\"jlcpcb_drafts\".\"repo\") > 0"
+				}
+			}
+		}
+	},
+	"views": {},
+	"enums": {},
+	"_meta": {
+		"schemas": {},
+		"tables": {},
+		"columns": {}
+	},
+	"internal": {
+		"indexes": {}
+	}
 }

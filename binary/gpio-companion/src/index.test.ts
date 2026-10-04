@@ -196,7 +196,8 @@ describe("gpio-companion-bin", () => {
 				token: "tunnel-token",
 				hostname: "t3.gpio.example",
 			}),
-		});		expect(response.status).toBe(200);
+		});
+		expect(response.status).toBe(200);
 		const body = (await response.json()) as {
 			hardware: string;
 			tunnel: { token: string; hostname: string };
@@ -235,7 +236,7 @@ describe("gpio-companion-bin", () => {
 			interface: "wlan0",
 			connection: "bench",
 		});
-	}	);
+	});
 
 	test("rejects unsigned profile write", async () => {
 		const response = await deviceFetch(

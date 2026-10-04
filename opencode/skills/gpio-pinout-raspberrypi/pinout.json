@@ -6,43 +6,157 @@
 	"pins": [
 		{ "physical": 1, "name": "3V3", "bcm": null, "type": "power" },
 		{ "physical": 2, "name": "5V", "bcm": null, "type": "power" },
-		{ "physical": 3, "name": "GPIO2", "bcm": 2, "type": "gpio", "alt": ["I2C1_SDA"] },
+		{
+			"physical": 3,
+			"name": "GPIO2",
+			"bcm": 2,
+			"type": "gpio",
+			"alt": ["I2C1_SDA"]
+		},
 		{ "physical": 4, "name": "5V", "bcm": null, "type": "power" },
-		{ "physical": 5, "name": "GPIO3", "bcm": 3, "type": "gpio", "alt": ["I2C1_SCL"] },
+		{
+			"physical": 5,
+			"name": "GPIO3",
+			"bcm": 3,
+			"type": "gpio",
+			"alt": ["I2C1_SCL"]
+		},
 		{ "physical": 6, "name": "GND", "bcm": null, "type": "gnd" },
-		{ "physical": 7, "name": "GPIO4", "bcm": 4, "type": "gpio", "alt": ["GPCLK0"] },
-		{ "physical": 8, "name": "GPIO14", "bcm": 14, "type": "gpio", "alt": ["UART0_TXD"] },
+		{
+			"physical": 7,
+			"name": "GPIO4",
+			"bcm": 4,
+			"type": "gpio",
+			"alt": ["GPCLK0"]
+		},
+		{
+			"physical": 8,
+			"name": "GPIO14",
+			"bcm": 14,
+			"type": "gpio",
+			"alt": ["UART0_TXD"]
+		},
 		{ "physical": 9, "name": "GND", "bcm": null, "type": "gnd" },
-		{ "physical": 10, "name": "GPIO15", "bcm": 15, "type": "gpio", "alt": ["UART0_RXD"] },
+		{
+			"physical": 10,
+			"name": "GPIO15",
+			"bcm": 15,
+			"type": "gpio",
+			"alt": ["UART0_RXD"]
+		},
 		{ "physical": 11, "name": "GPIO17", "bcm": 17, "type": "gpio" },
-		{ "physical": 12, "name": "GPIO18", "bcm": 18, "type": "gpio", "alt": ["PCM_CLK", "PWM0"] },
+		{
+			"physical": 12,
+			"name": "GPIO18",
+			"bcm": 18,
+			"type": "gpio",
+			"alt": ["PCM_CLK", "PWM0"]
+		},
 		{ "physical": 13, "name": "GPIO27", "bcm": 27, "type": "gpio" },
 		{ "physical": 14, "name": "GND", "bcm": null, "type": "gnd" },
 		{ "physical": 15, "name": "GPIO22", "bcm": 22, "type": "gpio" },
 		{ "physical": 16, "name": "GPIO23", "bcm": 23, "type": "gpio" },
 		{ "physical": 17, "name": "3V3", "bcm": null, "type": "power" },
 		{ "physical": 18, "name": "GPIO24", "bcm": 24, "type": "gpio" },
-		{ "physical": 19, "name": "GPIO10", "bcm": 10, "type": "gpio", "alt": ["SPI0_MOSI"] },
+		{
+			"physical": 19,
+			"name": "GPIO10",
+			"bcm": 10,
+			"type": "gpio",
+			"alt": ["SPI0_MOSI"]
+		},
 		{ "physical": 20, "name": "GND", "bcm": null, "type": "gnd" },
-		{ "physical": 21, "name": "GPIO9", "bcm": 9, "type": "gpio", "alt": ["SPI0_MISO"] },
+		{
+			"physical": 21,
+			"name": "GPIO9",
+			"bcm": 9,
+			"type": "gpio",
+			"alt": ["SPI0_MISO"]
+		},
 		{ "physical": 22, "name": "GPIO25", "bcm": 25, "type": "gpio" },
-		{ "physical": 23, "name": "GPIO11", "bcm": 11, "type": "gpio", "alt": ["SPI0_SCLK"] },
-		{ "physical": 24, "name": "GPIO8", "bcm": 8, "type": "gpio", "alt": ["SPI0_CE0"] },
+		{
+			"physical": 23,
+			"name": "GPIO11",
+			"bcm": 11,
+			"type": "gpio",
+			"alt": ["SPI0_SCLK"]
+		},
+		{
+			"physical": 24,
+			"name": "GPIO8",
+			"bcm": 8,
+			"type": "gpio",
+			"alt": ["SPI0_CE0"]
+		},
 		{ "physical": 25, "name": "GND", "bcm": null, "type": "gnd" },
-		{ "physical": 26, "name": "GPIO7", "bcm": 7, "type": "gpio", "alt": ["SPI0_CE1"] },
-		{ "physical": 27, "name": "GPIO0", "bcm": 0, "type": "gpio", "alt": ["ID_SD", "EEPROM_SDA"] },
-		{ "physical": 28, "name": "GPIO1", "bcm": 1, "type": "gpio", "alt": ["ID_SC", "EEPROM_SCL"] },
+		{
+			"physical": 26,
+			"name": "GPIO7",
+			"bcm": 7,
+			"type": "gpio",
+			"alt": ["SPI0_CE1"]
+		},
+		{
+			"physical": 27,
+			"name": "GPIO0",
+			"bcm": 0,
+			"type": "gpio",
+			"alt": ["ID_SD", "EEPROM_SDA"]
+		},
+		{
+			"physical": 28,
+			"name": "GPIO1",
+			"bcm": 1,
+			"type": "gpio",
+			"alt": ["ID_SC", "EEPROM_SCL"]
+		},
 		{ "physical": 29, "name": "GPIO5", "bcm": 5, "type": "gpio" },
 		{ "physical": 30, "name": "GND", "bcm": null, "type": "gnd" },
 		{ "physical": 31, "name": "GPIO6", "bcm": 6, "type": "gpio" },
-		{ "physical": 32, "name": "GPIO12", "bcm": 12, "type": "gpio", "alt": ["PWM0"] },
-		{ "physical": 33, "name": "GPIO13", "bcm": 13, "type": "gpio", "alt": ["PWM1"] },
+		{
+			"physical": 32,
+			"name": "GPIO12",
+			"bcm": 12,
+			"type": "gpio",
+			"alt": ["PWM0"]
+		},
+		{
+			"physical": 33,
+			"name": "GPIO13",
+			"bcm": 13,
+			"type": "gpio",
+			"alt": ["PWM1"]
+		},
 		{ "physical": 34, "name": "GND", "bcm": null, "type": "gnd" },
-		{ "physical": 35, "name": "GPIO19", "bcm": 19, "type": "gpio", "alt": ["PCM_FS", "SPI1_MISO"] },
-		{ "physical": 36, "name": "GPIO16", "bcm": 16, "type": "gpio", "alt": ["SPI1_CE2"] },
+		{
+			"physical": 35,
+			"name": "GPIO19",
+			"bcm": 19,
+			"type": "gpio",
+			"alt": ["PCM_FS", "SPI1_MISO"]
+		},
+		{
+			"physical": 36,
+			"name": "GPIO16",
+			"bcm": 16,
+			"type": "gpio",
+			"alt": ["SPI1_CE2"]
+		},
 		{ "physical": 37, "name": "GPIO26", "bcm": 26, "type": "gpio" },
-		{ "physical": 38, "name": "GPIO20", "bcm": 20, "type": "gpio", "alt": ["PCM_DIN", "SPI1_MOSI"] },
+		{
+			"physical": 38,
+			"name": "GPIO20",
+			"bcm": 20,
+			"type": "gpio",
+			"alt": ["PCM_DIN", "SPI1_MOSI"]
+		},
 		{ "physical": 39, "name": "GND", "bcm": null, "type": "gnd" },
-		{ "physical": 40, "name": "GPIO21", "bcm": 21, "type": "gpio", "alt": ["PCM_DOUT", "SPI1_SCLK"] }
+		{
+			"physical": 40,
+			"name": "GPIO21",
+			"bcm": 21,
+			"type": "gpio",
+			"alt": ["PCM_DOUT", "SPI1_SCLK"]
+		}
 	]
 }

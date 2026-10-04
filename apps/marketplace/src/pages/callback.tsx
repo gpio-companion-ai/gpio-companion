@@ -19,7 +19,9 @@ export default function CallbackPage() {
 				window.location.assign("/orders");
 			})
 			.catch((caught: unknown) => {
-				setError(caught instanceof Error ? caught.message : t("auth.unavailable"));
+				setError(
+					caught instanceof Error ? caught.message : t("auth.unavailable"),
+				);
 			});
 	}, [t]);
 

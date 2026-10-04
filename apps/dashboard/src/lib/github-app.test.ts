@@ -129,7 +129,7 @@ describe("github app kv", () => {
 					expires_at: "2026-08-31T01:00:00.000Z",
 				}),
 				{ status: 201 },
-			)) as typeof fetch;
+			)) as unknown as typeof fetch;
 		try {
 			const creds = await issueGithubCredentials(
 				{

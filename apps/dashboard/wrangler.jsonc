@@ -3,9 +3,7 @@
 	"name": "gpio-companion-dashboard",
 	"pages_build_output_dir": ".frame-master/build",
 	"compatibility_date": "2026-02-17",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	"vars": {
 		"BUN_VERSION": "1.4.2",
 		"SKIP_DEPENDENCY_INSTALL": "true",
@@ -19,7 +17,7 @@
 		"PAYPAL_ENV": "live",
 		"PUBLIC_PAYPAL_CLIENT_ID": "BAABxmBqK6EERDGyRgTKlhLfu_RX3xOfuSJJj1i4QcrdUgfe4MR_LgAVC59uVJonileGPQJk0RLwkoGPbc",
 		"JLCPCB_APP_ID": "626910717980270593",
-		"CLOUDFLARE_ACCOUNT_ID": "17b0a92da13df078f38bcd297ee71f81",
+		"CLOUDFLARE_ACCOUNT_ID": "17b0a92da13df078f38bcd297ee71f81"
 	},
 	"d1_databases": [
 		{

@@ -33,10 +33,12 @@ export function authRedirectURI(): string {
 	);
 }
 
-export function createClient(
-	ctx?: EventContext<Env, string, unknown> | null,
-) {
-	return createOpenAuthsterClient<PublicSession, Record<string, never>, UserRole>({
+export function createClient(ctx?: EventContext<Env, string, unknown> | null) {
+	return createOpenAuthsterClient<
+		PublicSession,
+		Record<string, never>,
+		UserRole
+	>({
 		issuerURI: process.env.PUBLIC_AUTH_ISSUER as string,
 		clientID: process.env.PUBLIC_AUTH_CLIENT_ID as string,
 		redirectURI: authRedirectURI(),
@@ -52,9 +54,16 @@ export function createClient(
 					memoryCache.set(key, value);
 					return;
 				}
-				await ctx.env.DYNAMIC_PAGE_KV.put(truncateKey(key), JSON.stringify(value), {
-					expirationTtl: Math.max(60, Math.floor((ttl.getTime() - Date.now()) / 1000)),
-				});
+				await ctx.env.DYNAMIC_PAGE_KV.put(
+					truncateKey(key),
+					JSON.stringify(value),
+					{
+						expirationTtl: Math.max(
+							60,
+							Math.floor((ttl.getTime() - Date.now()) / 1000),
+						),
+					},
+				);
 			},
 			async delete(key) {
 				if (!ctx) {
@@ -68,7 +77,9 @@ export function createClient(
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-	return value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+	return value && typeof value === "object"
+		? (value as Record<string, unknown>)
+		: null;
 }
 
 function pickString(...values: unknown[]): string | undefined {
@@ -86,7 +97,9 @@ function parseRole(...values: unknown[]): UserRole {
 }
 
 export function authConfigured(): boolean {
-	return Boolean(process.env.PUBLIC_AUTH_ISSUER && process.env.PUBLIC_AUTH_CLIENT_ID);
+	return Boolean(
+		process.env.PUBLIC_AUTH_ISSUER && process.env.PUBLIC_AUTH_CLIENT_ID,
+	);
 }
 
 export async function readSession(

@@ -44,24 +44,55 @@ export function codeNavHref(current: string, nav: CodeNav): string {
 	return `${url.pathname}${url.search}${url.hash}`;
 }
 
-function browserHistory(): History | null {
+type BrowserLocationLike = {
+	href: string;
+	pathname: string;
+	search: string;
+	hash: string;
+};
+
+type BrowserHistoryLike = {
+	pushState: (data: unknown, unused: string, url?: string) => void;
+	replaceState: (data: unknown, unused: string, url?: string) => void;
+	back: () => void;
+	state: unknown;
+};
+
+type BrowserWindowLike = {
+	location?: BrowserLocationLike;
+	history?: BrowserHistoryLike;
+};
+
+function browserScope(): typeof globalThis & {
+	window?: BrowserWindowLike | undefined;
+} {
+	return globalThis as typeof globalThis & {
+		window?: BrowserWindowLike | undefined;
+	};
+}
+
+function browserHistory(): BrowserHistoryLike | null {
+	const scope = browserScope();
+	const history = scope.window?.history;
 	if (
-		typeof window === "undefined" ||
-		typeof window.addEventListener !== "function" ||
-		typeof window.history?.pushState !== "function"
+		!history ||
+		typeof scope.window?.location?.href !== "string" ||
+		typeof history.pushState !== "function" ||
+		typeof history.replaceState !== "function"
 	) {
 		return null;
 	}
-	return window.history;
+	return history;
 }
 
 export function pushCodeNav(nav: CodeNav): void {
 	const history = browserHistory();
-	if (!history) {
+	const location = browserScope().window?.location;
+	if (!history || !location) {
 		return;
 	}
-	const href = codeNavHref(window.location.href, nav);
-	const here = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+	const href = codeNavHref(location.href, nav);
+	const here = `${location.pathname}${location.search}${location.hash}`;
 	if (href === here) {
 		return;
 	}
@@ -70,13 +101,14 @@ export function pushCodeNav(nav: CodeNav): void {
 
 export function replaceCodeNav(nav: CodeNav): void {
 	const history = browserHistory();
-	if (!history) {
+	const location = browserScope().window?.location;
+	if (!history || !location) {
 		return;
 	}
 	history.replaceState(
 		nav.mode === "home" ? null : { [CODE_NAV_STATE]: true },
 		"",
-		codeNavHref(window.location.href, nav),
+		codeNavHref(location.href, nav),
 	);
 }
 
@@ -1606,9 +1638,20 @@ type StoredPromptBook = Record<
 	{ questions: OpencodeQuestion[]; permissions: OpencodePermission[] }
 >;
 
-function promptStores(): Storage[] {
-	const stores: Storage[] = [];
-	for (const storage of [globalThis.localStorage, globalThis.sessionStorage]) {
+type WebStorageLike = {
+	getItem: (key: string) => string | null;
+	setItem: (key: string, value: string) => void;
+	removeItem: (key: string) => void;
+	clear: () => void;
+};
+
+function promptStores(): WebStorageLike[] {
+	const scope = globalThis as typeof globalThis & {
+		localStorage?: WebStorageLike | null;
+		sessionStorage?: WebStorageLike | null;
+	};
+	const stores: WebStorageLike[] = [];
+	for (const storage of [scope.sessionStorage, scope.localStorage]) {
 		try {
 			if (storage) {
 				stores.push(storage);

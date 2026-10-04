@@ -1342,7 +1342,7 @@ function FileContextMenu({
 			{items.map((item, index) => (
 				<Fragment key={item.key}>
 					{item.separatorBefore && index > 0 ? (
-						<div className="oc-context-menu-sep" role="separator" />
+						<hr className="oc-context-menu-sep" />
 					) : null}
 					<button
 						type="button"
@@ -1394,6 +1394,7 @@ function NameRow({
 				className="oc-tree-name-input"
 				value={value}
 				aria-label={label}
+				// biome-ignore lint/a11y/noAutofocus: focus is the point of the inline rename input
 				autoFocus
 				onChange={(event) => onChange(event.target.value)}
 				onKeyDown={(event) => {

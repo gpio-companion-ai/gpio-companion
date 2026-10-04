@@ -106,11 +106,7 @@ describe("hub credentials", () => {
 			JSON.stringify([{ ...pairing, userId: "user-2", uuid: "other-uuid" }]),
 		);
 		await expect(
-			issueDashboardHubTicket(
-				env,
-				{ id: "user-2", role: "user" },
-				"pair-uuid",
-			),
+			issueDashboardHubTicket(env, { id: "user-2", role: "user" }, "pair-uuid"),
 		).rejects.toThrow("device is not paired with this account");
 	});
 });

@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import type { SshClientLike, SshController, SshSocket, SshStreamLike } from "./ssh.ts";
+import type {
+	SshClientLike,
+	SshController,
+	SshSocket,
+	SshStreamLike,
+} from "./ssh.ts";
 import { createSshController } from "./ssh.ts";
 
 type Handler = (...args: unknown[]) => void;
@@ -29,7 +34,10 @@ function mockClient(): MockClient {
 		},
 		shell(
 			options: { cols: number; rows: number; term: string },
-			callback: (error: Error | undefined, stream: SshStreamLike | null) => void,
+			callback: (
+				error: Error | undefined,
+				stream: SshStreamLike | null,
+			) => void,
 		) {
 			shellCalls.push({ options, callback });
 		},
@@ -186,7 +194,10 @@ describe("ssh controller", () => {
 			.filter((item) => item.status)
 			.map((item) => item.status);
 		expect(statuses).toEqual(["auth", "connected"]);
-		controller.handle(ws, JSON.stringify({ op: "resize", cols: 100, rows: 30 }));
+		controller.handle(
+			ws,
+			JSON.stringify({ op: "resize", cols: 100, rows: 30 }),
+		);
 		expect(stream.windows).toEqual([[30, 100]]);
 		controller.handle(ws, JSON.stringify({ op: "input", data: "ls\n" }));
 		expect(stream.writes).toEqual(["ls\n"]);
@@ -222,7 +233,7 @@ describe("ssh controller", () => {
 	});
 
 	test("rejects a second open while a session is active", async () => {
-		const { controller, ws, mock } = await keySession();
+		const { controller, mock } = await keySession();
 		const second = testSocket();
 		controller.handle(second, JSON.stringify({ op: "open" }));
 		expect(frame(second)).toEqual({ error: "ssh session is already open" });
@@ -267,8 +278,13 @@ describe("ssh controller", () => {
 
 	test("keyboard-interactive prompts still render with echo control", async () => {
 		const { controller, ws, mock } = await passwordSession("");
-		mock.emit("keyboard-interactive", "ssh", "", "en-US", [{ prompt: "OTP:", echo: true }], () =>
-			undefined,
+		mock.emit(
+			"keyboard-interactive",
+			"ssh",
+			"",
+			"en-US",
+			[{ prompt: "OTP:", echo: true }],
+			() => undefined,
 		);
 		controller.handle(ws, JSON.stringify({ op: "input", data: "pi\r" }));
 		const echoed = promptText(ws);
@@ -311,7 +327,10 @@ describe("ssh controller", () => {
 		shellCall.callback(undefined, stream.stream);
 		const stranger = testSocket();
 		controller.handle(stranger, JSON.stringify({ op: "input", data: "nope" }));
-		controller.handle(stranger, JSON.stringify({ op: "resize", cols: 80, rows: 24 }));
+		controller.handle(
+			stranger,
+			JSON.stringify({ op: "resize", cols: 80, rows: 24 }),
+		);
 		expect(stranger.frames).toEqual([]);
 		controller.handle(ws, JSON.stringify({ op: "input", data: "ls\n" }));
 		expect(stream.writes).toEqual(["ls\n"]);

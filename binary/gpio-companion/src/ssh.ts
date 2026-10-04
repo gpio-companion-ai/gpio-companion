@@ -1,10 +1,17 @@
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	mkdirSync,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import {
 	parseSshWsCommand,
 	SSH_DEFAULT_COLS,
 	SSH_DEFAULT_ROWS,
+	type SshWsCommand,
 } from "gpio-companion";
 import { Client, utils } from "ssh2";
 
@@ -30,13 +37,15 @@ export type SshConnectAuth = {
 };
 
 export type SshClientLike = {
-	connect(config: {
-		host: string;
-		port: number;
-		username: string;
-		tryKeyboard: boolean;
-		readyTimeout: number;
-	} & SshConnectAuth): void;
+	connect(
+		config: {
+			host: string;
+			port: number;
+			username: string;
+			tryKeyboard: boolean;
+			readyTimeout: number;
+		} & SshConnectAuth,
+	): void;
 	end(): void;
 	shell(
 		options: { cols: number; rows: number; term: string },
@@ -202,21 +211,28 @@ export function createSshController(options?: {
 		}
 		const conn = createClient();
 		client = conn;
-		conn.on("keyboard-interactive", (_name, _instructions, _lang, prompts, finish) => {
-			const text = prompts
-				.map((item) => item.prompt)
-				.join(" ")
-				.trim();
-			send(ws, { chunk: `\r\n${text || "Password:"} ` });
-			collecting = {
-				echo: prompts.some((item) => item.echo),
-				finish,
-			};
-			answer = "";
-		});
+		conn.on(
+			"keyboard-interactive",
+			(_name, _instructions, _lang, prompts, finish) => {
+				const text = prompts
+					.map((item) => item.prompt)
+					.join(" ")
+					.trim();
+				send(ws, { chunk: `\r\n${text || "Password:"} ` });
+				collecting = {
+					echo: prompts.some((item) => item.echo),
+					finish,
+				};
+				answer = "";
+			},
+		);
 		conn.on("ready", () => {
 			conn.shell(
-				{ cols: SSH_DEFAULT_COLS, rows: SSH_DEFAULT_ROWS, term: "xterm-256color" },
+				{
+					cols: SSH_DEFAULT_COLS,
+					rows: SSH_DEFAULT_ROWS,
+					term: "xterm-256color",
+				},
 				(error, opened) => {
 					if (error || !opened) {
 						fail(ws, error?.message ?? "ssh shell failed");
@@ -312,7 +328,7 @@ export function createSshController(options?: {
 
 	return {
 		handle(ws, data) {
-			let command;
+			let command: SshWsCommand;
 			try {
 				command = parseSshWsCommand(JSON.parse(data));
 			} catch (error) {
@@ -369,10 +385,7 @@ function runtimeUsername(): string {
 			return "root";
 		}
 		return (
-			process.env.GPIO_USER ||
-			process.env.USER ||
-			process.env.LOGNAME ||
-			"root"
+			process.env.GPIO_USER || process.env.USER || process.env.LOGNAME || "root"
 		);
 	} catch {
 		return "root";

@@ -7,8 +7,8 @@ import {
 	decodeBase64,
 	parseMarkup,
 } from "gpio-companion";
-import { consumeMicrodollars, creditsBalance } from "./credits.ts";
 import { recordAiUsage } from "./ai-usage.ts";
+import { consumeMicrodollars, creditsBalance } from "./credits.ts";
 
 type SttEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;

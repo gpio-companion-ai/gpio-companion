@@ -3,8 +3,8 @@ import {
 	ANDROID_BLE_CONNECT,
 	ANDROID_BLE_SCAN,
 	ANDROID_FINE_LOCATION,
-	BLE_PERMISSION_DENIED,
 	androidBlePermissions,
+	BLE_PERMISSION_DENIED,
 	mapBleUnauthorized,
 } from "./ble-permissions.ts";
 

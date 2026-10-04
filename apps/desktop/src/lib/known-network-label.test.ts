@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { knownNetworkLabel, type KnownNetwork } from "../api";
+import { type KnownNetwork, knownNetworkLabel } from "../api";
 
-function network(partial: Partial<KnownNetwork> & Pick<KnownNetwork, "ssid">): KnownNetwork {
+function network(
+	partial: Partial<KnownNetwork> & Pick<KnownNetwork, "ssid">,
+): KnownNetwork {
 	return {
 		psk: "",
 		source: "os",
@@ -18,9 +20,9 @@ describe("knownNetworkLabel", () => {
 	});
 
 	test("marks remembered networks", () => {
-		expect(
-			knownNetworkLabel(network({ ssid: "Cafe", source: "saved" })),
-		).toBe("Cafe (saved)");
+		expect(knownNetworkLabel(network({ ssid: "Cafe", source: "saved" }))).toBe(
+			"Cafe (saved)",
+		);
 	});
 
 	test("os networks are ssid only", () => {

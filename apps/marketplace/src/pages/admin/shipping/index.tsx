@@ -71,14 +71,26 @@ export default function AdminShippingPage() {
 						) : (
 							<Alert severity="warning">{t("admin.easyshipOff")}</Alert>
 						)}
-						<div className="row" style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}>
-							<Chip size="small" color={status.easyship.configured ? "success" : "warning"}>
+						<div
+							className="row"
+							style={{ display: "flex", gap: "0.6rem", alignItems: "center" }}
+						>
+							<Chip
+								size="small"
+								color={status.easyship.configured ? "success" : "warning"}
+							>
 								{t("admin.easyshipMode", { mode: status.easyship.mode })}
 							</Chip>
-							<Chip size="small" color={status.easyship.tokenConfigured ? "success" : "warning"}>
+							<Chip
+								size="small"
+								color={status.easyship.tokenConfigured ? "success" : "warning"}
+							>
 								EASYSHIP_API_TOKEN
 							</Chip>
-							<Chip size="small" color={status.easyship.originConfigured ? "success" : "warning"}>
+							<Chip
+								size="small"
+								color={status.easyship.originConfigured ? "success" : "warning"}
+							>
 								EASYSHIP_ORIGIN_*
 							</Chip>
 						</div>
@@ -89,8 +101,8 @@ export default function AdminShippingPage() {
 								: "—"}
 						</Typography>
 						<Typography variant="body2" color="textSecondary">
-							item category: {status.easyship.itemCategory} · output currency: USD ·
-							weights: g · dimensions: cm
+							item category: {status.easyship.itemCategory} · output currency:
+							USD · weights: g · dimensions: cm
 						</Typography>
 					</>
 				) : null}
@@ -116,7 +128,10 @@ export default function AdminShippingPage() {
 						<TableBody>
 							{(status?.legacyRates ?? []).length === 0 ? (
 								<TableRow>
-									<TableCell colSpan={4} style={{ color: "var(--market-muted)" }}>
+									<TableCell
+										colSpan={4}
+										style={{ color: "var(--market-muted)" }}
+									>
 										{t("admin.emptyRates")}
 									</TableCell>
 								</TableRow>
@@ -125,9 +140,14 @@ export default function AdminShippingPage() {
 									<TableRow key={rate.id}>
 										<TableCell>{rate.country}</TableCell>
 										<TableCell>{rate.region ?? "—"}</TableCell>
-										<TableCell>{formatCents(rate.flatCents, "USD", locale)}</TableCell>
 										<TableCell>
-											<Chip size="small" color={rate.active ? "success" : undefined}>
+											{formatCents(rate.flatCents, "USD", locale)}
+										</TableCell>
+										<TableCell>
+											<Chip
+												size="small"
+												color={rate.active ? "success" : undefined}
+											>
 												{rate.active ? t("admin.active") : t("admin.inactive")}
 											</Chip>
 										</TableCell>

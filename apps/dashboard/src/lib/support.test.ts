@@ -4,10 +4,10 @@ import {
 	SUPPORT_FROM,
 	SUPPORT_RATE_MAX,
 	SUPPORT_TO,
+	type SupportEnv,
 	stripSecrets,
 	supportAccepted,
 	supportResponse,
-	type SupportEnv,
 } from "./support.ts";
 
 class MemoryKv {
@@ -54,9 +54,10 @@ function delivery(to: string, queued = false) {
 	};
 }
 
-function mockFetch(
-	handler: (call: number) => Response,
-): { fetch: typeof fetch; calls: SentCall[] } {
+function mockFetch(handler: (call: number) => Response): {
+	fetch: typeof fetch;
+	calls: SentCall[];
+} {
 	const calls: SentCall[] = [];
 	const fetchImpl = (async (
 		input: Parameters<typeof fetch>[0],

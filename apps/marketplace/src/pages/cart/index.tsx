@@ -54,7 +54,9 @@ export default function CartPage() {
 			<Typography variant="h4" component="h1">
 				{t("cart.title")}
 			</Typography>
-			{blocked ? <Alert severity="warning">{t("cart.stockChanged")}</Alert> : null}
+			{blocked ? (
+				<Alert severity="warning">{t("cart.stockChanged")}</Alert>
+			) : null}
 			<div className="market-cart-list">
 				{rows.map(({ item, product }) => {
 					const unavailable = !product || product.available < item.quantity;
@@ -74,7 +76,11 @@ export default function CartPage() {
 									<Typography color="error">{t("cart.unavailable")}</Typography>
 								) : (
 									<Typography>
-										{formatCents(product.priceCents * item.quantity, "USD", locale)}
+										{formatCents(
+											product.priceCents * item.quantity,
+											"USD",
+											locale,
+										)}
 									</Typography>
 								)}
 							</div>

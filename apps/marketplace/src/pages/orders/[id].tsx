@@ -2,7 +2,12 @@ import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Skeleton from "@shpaw415/mui-lite/Skeleton";
-import Table, { TableBody, TableCell, TableHead, TableRow } from "@shpaw415/mui-lite/Table";
+import Table, {
+	TableBody,
+	TableCell,
+	TableHead,
+	TableRow,
+} from "@shpaw415/mui-lite/Table";
 import Typography from "@shpaw415/mui-lite/Typography";
 import { ThrowNotFound } from "frame-master-plugin-apply-react/utils";
 import { useEffect, useState } from "react";
@@ -20,7 +25,9 @@ export default function OrderDetailPage() {
 	const t = useT();
 	const { locale } = useLocale();
 	const id = idFromPath(usePath() ?? "");
-	const [order, setOrder] = useState<Awaited<ReturnType<typeof GET>> | undefined>(undefined);
+	const [order, setOrder] = useState<
+		Awaited<ReturnType<typeof GET>> | undefined
+	>(undefined);
 
 	useEffect(() => {
 		if (!id) return;
@@ -55,7 +62,8 @@ export default function OrderDetailPage() {
 						{order.carrier ??
 							(order.shippingCourierName
 								? `${order.shippingCourierName}${
-										order.shippingMinDays !== null || order.shippingMaxDays !== null
+										order.shippingMinDays !== null ||
+										order.shippingMaxDays !== null
 											? ` (${order.shippingMinDays ?? "—"}–${order.shippingMaxDays ?? "—"} ${locale === "fr" ? "jours ouvrables" : "working days"})`
 											: ""
 									}`
@@ -90,9 +98,13 @@ export default function OrderDetailPage() {
 					<TableBody>
 						{order.items.map((item) => (
 							<TableRow key={item.id}>
-								<TableCell>{locale === "fr" ? item.nameFr : item.nameEn}</TableCell>
+								<TableCell>
+									{locale === "fr" ? item.nameFr : item.nameEn}
+								</TableCell>
 								<TableCell>{item.quantity}</TableCell>
-								<TableCell>{formatCents(item.lineTotalCents, "USD", locale)}</TableCell>
+								<TableCell>
+									{formatCents(item.lineTotalCents, "USD", locale)}
+								</TableCell>
 							</TableRow>
 						))}
 					</TableBody>

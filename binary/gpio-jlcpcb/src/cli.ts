@@ -55,9 +55,7 @@ type LoginExchange = {
 export async function startCliLogin(options: {
 	redirectURI?: string;
 	readCode: () => Promise<string>;
-	authorize?: (
-		redirectURI: string,
-	) => Promise<{
+	authorize?: (redirectURI: string) => Promise<{
 		url: string;
 		challenge: { verifier?: string; state?: string };
 	}>;
@@ -421,7 +419,12 @@ async function fetchJson(
 }
 
 function printFile(file: string | undefined): string | null {
-	if (!file || file.includes("/") || file.includes("\\") || file.startsWith(".")) {
+	if (
+		!file ||
+		file.includes("/") ||
+		file.includes("\\") ||
+		file.startsWith(".")
+	) {
 		return null;
 	}
 	if (file.endsWith(".glb")) return `model/${file.slice(0, -4)}.stl`;

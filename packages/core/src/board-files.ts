@@ -401,7 +401,7 @@ export function isUtf8Text(bytes: Uint8Array): boolean {
 		return false;
 	}
 	try {
-		new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+		new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes);
 		return true;
 	} catch {
 		return false;

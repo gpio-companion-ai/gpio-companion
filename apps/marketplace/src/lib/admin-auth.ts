@@ -1,6 +1,6 @@
 import type { EventContext } from "@cloudflare/workers-types";
+import { type PublicSession, readSession } from "./auth.ts";
 import { createCommerceDatabase } from "./db/client.ts";
-import { readSession, type PublicSession } from "./auth.ts";
 
 export function commerceDb(ctx: EventContext<Env, string, unknown>) {
 	const db = (ctx.env as Env).MARKETPLACE_DB;
@@ -8,7 +8,9 @@ export function commerceDb(ctx: EventContext<Env, string, unknown>) {
 	return createCommerceDatabase(db);
 }
 
-export function assertSameOrigin(ctx: EventContext<Env, string, unknown>): void {
+export function assertSameOrigin(
+	ctx: EventContext<Env, string, unknown>,
+): void {
 	const origin = ctx.request.headers.get("origin");
 	if (!origin) return;
 	if (origin !== new URL(ctx.request.url).origin) {

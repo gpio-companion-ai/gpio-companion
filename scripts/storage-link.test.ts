@@ -1,5 +1,12 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { lstat, mkdir, mkdtemp, readlink, rm, writeFile } from "node:fs/promises";
+import {
+	lstat,
+	mkdir,
+	mkdtemp,
+	readlink,
+	rm,
+	writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -105,7 +112,7 @@ if storage_is_system sda1; then echo yes; else echo no; fi
 		const dir = await tempDir();
 		const result = await bash(
 			`
-${sourcePrelude(dir, 'GPIO_STORAGE_LABEL=BACKUP')}
+${sourcePrelude(dir, "GPIO_STORAGE_LABEL=BACKUP")}
 storage_add sda1
 readlink -f "${dir}/home/storage/BACKUP"
 test -f "${dir}/state/sda1"
@@ -126,7 +133,7 @@ test -f "${dir}/state/sda1"
 		await writeFile(join(dir, "home/storage/BACKUP"), "taken");
 		const result = await bash(
 			`
-${sourcePrelude(dir, 'GPIO_STORAGE_LABEL=BACKUP')}
+${sourcePrelude(dir, "GPIO_STORAGE_LABEL=BACKUP")}
 storage_add sda1
 readlink "${dir}/home/storage/BACKUP-2"
 `,
@@ -139,7 +146,7 @@ readlink "${dir}/home/storage/BACKUP-2"
 		const dir = await tempDir();
 		const result = await bash(
 			`
-${sourcePrelude(dir, 'GPIO_STORAGE_LABEL=USB-KEY')}
+${sourcePrelude(dir, "GPIO_STORAGE_LABEL=USB-KEY")}
 storage_add sda1
 storage_remove sda1
 if [[ -e "${dir}/home/storage/USB-KEY" ]]; then echo still; else echo gone; fi
@@ -158,7 +165,7 @@ if [[ -d "${dir}/media/USB-KEY" ]]; then echo media; else echo no-media; fi
 		await writeFile(join(dir, "mounts"), "/dev/mmcblk0p2 / ext4 rw 0 0\n");
 		const result = await bash(
 			`
-${sourcePrelude(dir, 'GPIO_STORAGE_LABEL=ROOT')}
+${sourcePrelude(dir, "GPIO_STORAGE_LABEL=ROOT")}
 storage_add mmcblk0p2
 if [[ -e "${dir}/home/storage/ROOT" ]]; then echo linked; else echo skipped; fi
 `,

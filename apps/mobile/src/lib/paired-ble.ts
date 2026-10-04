@@ -1,5 +1,4 @@
 import { patchDeviceBleMac } from "./api.ts";
-import { loadLocalBleId, saveLocalBleId } from "./ble-ids.ts";
 import {
 	type BleInfo,
 	type BoardLoss,
@@ -11,6 +10,7 @@ import {
 	scanBoard,
 } from "./ble.ts";
 import { looksLikeMac } from "./ble-frame.ts";
+import { loadLocalBleId, saveLocalBleId } from "./ble-ids.ts";
 
 function normalizeBleMac(value: string): string {
 	const trimmed = value.trim();

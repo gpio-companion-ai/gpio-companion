@@ -10,8 +10,8 @@ import { useBoardSelection } from "../hooks/useBoardSelection";
 import {
 	DOC_HARDWARE_LABELS,
 	type DocHardware,
-	docsForLocale,
 	docSections,
+	docsForLocale,
 	findDoc,
 	hardwareFromStatus,
 	searchDocs,
@@ -36,19 +36,21 @@ export default function Docs() {
 	);
 
 	const catalog = useMemo(() => {
-		return docs.filter((entry) => {
-			if (entry.group !== "hardware") {
-				return true;
-			}
-			if (family === "all") {
-				return true;
-			}
-			return entry.hardware === family;
-		}).map((entry) => ({
-			...entry,
-			title: t(entry.titleKey),
-			description: t(entry.descriptionKey),
-		}));
+		return docs
+			.filter((entry) => {
+				if (entry.group !== "hardware") {
+					return true;
+				}
+				if (family === "all") {
+					return true;
+				}
+				return entry.hardware === family;
+			})
+			.map((entry) => ({
+				...entry,
+				title: t(entry.titleKey),
+				description: t(entry.descriptionKey),
+			}));
 	}, [docs, family, t]);
 
 	const hits = useMemo(() => searchDocs(query, catalog), [query, catalog]);

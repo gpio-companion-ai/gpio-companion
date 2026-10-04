@@ -99,8 +99,8 @@ export default function CreditsPage() {
 			if (cancelled || !paypalMountRef.current) {
 				return;
 			}
-		buttons = sdk.Buttons({
-			style: paypalButtonsStyle(),
+			buttons = sdk.Buttons({
+				style: paypalButtonsStyle(),
 				createOrder: async () => {
 					const created = unwrapAction(await createPaypalOrder(pack));
 					return created.orderId;

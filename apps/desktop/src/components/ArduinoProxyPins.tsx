@@ -46,6 +46,12 @@ function gpioPinTone(pin: GpioPinState): string {
 	return "idle";
 }
 
+function seatKey(seat: ArduinoLayoutSeat): string {
+	if (seat.kind === "gpio") return `g${seat.physical}`;
+	if (seat.kind === "label") return `l${seat.name}`;
+	return "gap";
+}
+
 export default function ArduinoProxyPins({
 	pins,
 	busy = false,
@@ -81,9 +87,9 @@ export default function ArduinoProxyPins({
 			>
 				{t("gpio.usb")}
 			</Typography>
-			{rows.map((row, index) => (
+			{rows.map((row) => (
 				<Stack
-					key={index}
+					key={`${seatKey(row.left)}/${seatKey(row.right)}`}
 					direction="row"
 					spacing={0.5}
 					sx={{ minWidth: 0, alignItems: "stretch" }}

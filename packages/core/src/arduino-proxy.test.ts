@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
+	ArduinoProxyError,
 	arduinoCoreForFqbn,
 	arduinoProxyBoard,
 	arduinoProxyBoardFromProbe,
 	arduinoProxyPins,
 	arduinoProxySketchName,
-	ArduinoProxyError,
 	emptyArduinoProxyStatus,
 	isArduinoProxyFqbn,
 	isArduinoProxyPath,
@@ -15,7 +15,6 @@ import {
 	parseFlashProxyPut,
 } from "./arduino-proxy.ts";
 import { arduinoProxyHeaderLayout } from "./arduino-proxy-layout.ts";
-import { FLASH_PROXY_PATH } from "./flash.ts";
 import {
 	encodeAnalogMappingQuery,
 	encodeAnalogWrite,
@@ -30,6 +29,7 @@ import {
 	SYSEX_CAPABILITY_RESPONSE,
 	SYSEX_REPORT_FIRMWARE,
 } from "./firmata.ts";
+import { FLASH_PROXY_PATH } from "./flash.ts";
 import { parseGpioPut, parseGpioWsCommand } from "./gpio.ts";
 
 describe("arduino proxy boards", () => {
@@ -48,9 +48,9 @@ describe("arduino proxy boards", () => {
 		expect(arduinoCoreForFqbn("arduino:avr:uno")).toBe("arduino:avr");
 		expect(arduinoCoreForFqbn("arduino:samd:nano_33_iot")).toBe("arduino:samd");
 		expect(arduinoCoreForFqbn("esp32:esp32:esp32s3")).toBe("esp32:esp32");
-		expect(parseArduinoCoreList({ platforms: [{ id: "arduino:avr" }] })).toEqual(
-			["arduino:avr"],
-		);
+		expect(
+			parseArduinoCoreList({ platforms: [{ id: "arduino:avr" }] }),
+		).toEqual(["arduino:avr"]);
 	});
 
 	test("capability pin count identifies a mega mislabeled as uno", () => {
@@ -82,9 +82,9 @@ describe("arduino proxy boards", () => {
 		const layout = arduinoProxyHeaderLayout(arduinoProxyPins(uno), "uno");
 		expect(layout.right[0]).toEqual({ kind: "gpio", physical: 13 });
 		expect(layout.right[13]).toEqual({ kind: "gpio", physical: 0 });
-		expect(layout.left.some((seat) => seat.kind === "gpio" && seat.physical === 14)).toBe(
-			true,
-		);
+		expect(
+			layout.left.some((seat) => seat.kind === "gpio" && seat.physical === 14),
+		).toBe(true);
 		expect(layout.extra).toEqual([]);
 	});
 });
@@ -138,19 +138,13 @@ describe("firmata", () => {
 	});
 
 	test("parses firmware and capability sysex", () => {
-		const name = encodeSysex(SYSEX_REPORT_FIRMWARE, [
-			2,
-			5,
-			0x43,
-			0,
-			0x46,
-			0,
-		]);
+		const name = encodeSysex(SYSEX_REPORT_FIRMWARE, [2, 5, 0x43, 0, 0x46, 0]);
 		const events = parseFirmataBytes(name);
 		expect(events[0]).toMatchObject({ type: "firmware", major: 2, minor: 5 });
-		const capability = encodeSysex(SYSEX_CAPABILITY_RESPONSE, [
-			0, 1, 1, 1, 0x7f, 0, 1, 1, 1, 0x7f,
-		]);
+		const capability = encodeSysex(
+			SYSEX_CAPABILITY_RESPONSE,
+			[0, 1, 1, 1, 0x7f, 0, 1, 1, 1, 0x7f],
+		);
 		expect(parseFirmataBytes(capability)[0]).toMatchObject({
 			type: "capability",
 		});

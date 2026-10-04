@@ -1006,6 +1006,7 @@ export default function OpenCodeSession({
 		return () => window.removeEventListener("popstate", applyNav);
 	}, []);
 
+	// biome-ignore lint/correctness/useExhaustiveDependencies: sessionsSeq is a manual refresh signal
 	useEffect(() => {
 		if (!uuid || !repo) {
 			setSessionsLoading(false);
@@ -1584,7 +1585,6 @@ export default function OpenCodeSession({
 	finishVoiceRef.current = finishVoice;
 	stopVoiceEngineRef.current = stopVoiceEngine;
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: tears the mic engine down on unmount through refs
 	useEffect(() => {
 		return () => {
 			stopVoiceEngineRef.current();
@@ -2214,324 +2214,332 @@ export default function OpenCodeSession({
 							? t("code.voiceReady")
 							: t("code.voiceAgent");
 		return (
-			<div
-				className="oc-compose"
-				onDragOver={(event) => {
-					event.preventDefault();
-				}}
-				onDrop={(event) => {
-					event.preventDefault();
-					if (toolsDisabled) {
-						return;
-					}
-					void addFiles([...event.dataTransfer.files]);
-				}}
-			>
-				{mentionLive ? (
-					<div
-						className="oc-mention"
-						role="listbox"
-						aria-label={t("code.files")}
-					>
-						{matches.length === 0 ? (
-							<p className="oc-editor-note">{t("code.mentionEmpty")}</p>
-						) : (
-							matches.map((path, index) => (
-								<button
-									key={path}
-									type="button"
-									role="option"
-									aria-selected={index === active}
-									className={index === active ? "is-on" : undefined}
-									onMouseDown={(event) => {
-										event.preventDefault();
-										void pickMention(path);
-									}}
-								>
-									<span>{path.split("/").pop()}</span>
-									<span className="oc-model-provider">{path}</span>
-								</button>
-							))
-						)}
-					</div>
-				) : null}
-				{files.length > 0 ? (
-					<div className="oc-file-row">
-						{files.map((file) => (
-							<span key={file.id} className="oc-file-chip">
-								<span title={file.path}>
-									{file.source === "board" ? file.path : file.name}
-									{file.source === "board" &&
-									typeof file.startLine === "number" &&
-									typeof file.endLine === "number"
-										? ` L${file.startLine}–${file.endLine}`
-										: ""}
-								</span>
-								{file.source === "board" ? null : (
+			<>
+				{/* biome-ignore lint/a11y/noStaticElementInteractions: file drag-and-drop target */}
+				<div
+					className="oc-compose"
+					onDragOver={(event) => {
+						event.preventDefault();
+					}}
+					onDrop={(event) => {
+						event.preventDefault();
+						if (toolsDisabled) {
+							return;
+						}
+						void addFiles([...event.dataTransfer.files]);
+					}}
+				>
+					{mentionLive ? (
+						<div
+							className="oc-mention"
+							role="listbox"
+							aria-label={t("code.files")}
+						>
+							{matches.length === 0 ? (
+								<p className="oc-editor-note">{t("code.mentionEmpty")}</p>
+							) : (
+								matches.map((path, index) => (
+									<button
+										key={path}
+										type="button"
+										role="option"
+										aria-selected={index === active}
+										className={index === active ? "is-on" : undefined}
+										onMouseDown={(event) => {
+											event.preventDefault();
+											void pickMention(path);
+										}}
+									>
+										<span>{path.split("/").pop()}</span>
+										<span className="oc-model-provider">{path}</span>
+									</button>
+								))
+							)}
+						</div>
+					) : null}
+					{files.length > 0 ? (
+						<div className="oc-file-row">
+							{files.map((file) => (
+								<span key={file.id} className="oc-file-chip">
+									<span title={file.path}>
+										{file.source === "board" ? file.path : file.name}
+										{file.source === "board" &&
+										typeof file.startLine === "number" &&
+										typeof file.endLine === "number"
+											? ` L${file.startLine}–${file.endLine}`
+											: ""}
+									</span>
+									{file.source === "board" ? null : (
+										<button
+											type="button"
+											className="oc-file-use"
+											aria-label={
+												file.use === "context"
+													? t("code.attachUseBoard", { name: file.name })
+													: t("code.attachUseContext", { name: file.name })
+											}
+											disabled={uploading}
+											onClick={() =>
+												setFiles((current) =>
+													current.map((item) =>
+														item.id === file.id
+															? {
+																	...item,
+																	use:
+																		item.use === "context"
+																			? "project"
+																			: "context",
+																}
+															: item,
+													),
+												)
+											}
+										>
+											{file.use === "context"
+												? t("code.attachContext")
+												: t("code.attachBoard")}
+										</button>
+									)}
 									<button
 										type="button"
-										className="oc-file-use"
-										aria-label={
-											file.use === "context"
-												? t("code.attachUseBoard", { name: file.name })
-												: t("code.attachUseContext", { name: file.name })
-										}
+										aria-label={t("code.removeFile", { name: file.name })}
 										disabled={uploading}
 										onClick={() =>
 											setFiles((current) =>
-												current.map((item) =>
-													item.id === file.id
-														? {
-																...item,
-																use:
-																	item.use === "context"
-																		? "project"
-																		: "context",
-															}
-														: item,
-												),
+												current.filter((item) => item.id !== file.id),
 											)
 										}
 									>
-										{file.use === "context"
-											? t("code.attachContext")
-											: t("code.attachBoard")}
+										×
 									</button>
-								)}
-								<button
-									type="button"
-									aria-label={t("code.removeFile", { name: file.name })}
-									disabled={uploading}
-									onClick={() =>
-										setFiles((current) =>
-											current.filter((item) => item.id !== file.id),
-										)
-									}
-								>
-									×
-								</button>
-							</span>
-						))}
-					</div>
-				) : null}
-				<div className="oc-audio-toolbar">
-					<button
-						type="button"
-						className="oc-read-aloud"
-						role="switch"
-						aria-checked={readAloud}
-						title={t("code.readAloudHint")}
-						disabled={disabled}
-						onClick={toggleReadAloud}
-					>
-						<span className="oc-audio-switch" aria-hidden="true" />
-						{t("code.readAloud")}
-					</button>
-					{speechStatus.canReplay ? (
-						<div className="oc-audio-controls">
-							{speechStatus.paused ||
-							speechStatus.speaking ||
-							speechStatus.preparing ? (
+								</span>
+							))}
+						</div>
+					) : null}
+					<div className="oc-audio-toolbar">
+						<button
+							type="button"
+							className="oc-read-aloud"
+							role="switch"
+							aria-checked={readAloud}
+							title={t("code.readAloudHint")}
+							disabled={disabled}
+							onClick={toggleReadAloud}
+						>
+							<span className="oc-audio-switch" aria-hidden="true" />
+							{t("code.readAloud")}
+						</button>
+						{speechStatus.canReplay ? (
+							<div className="oc-audio-controls">
+								{speechStatus.paused ||
+								speechStatus.speaking ||
+								speechStatus.preparing ? (
+									<button
+										type="button"
+										disabled={pttHeld || voiceTranscribing}
+										onClick={() =>
+											speechStatus.paused
+												? speechQueue.current?.resume()
+												: speechQueue.current?.pause()
+										}
+									>
+										{t(
+											speechStatus.paused
+												? "code.voiceResume"
+												: "code.voicePause",
+										)}
+									</button>
+								) : null}
 								<button
 									type="button"
 									disabled={pttHeld || voiceTranscribing}
-									onClick={() =>
-										speechStatus.paused
-											? speechQueue.current?.resume()
-											: speechQueue.current?.pause()
-									}
+									onClick={() => speechQueue.current?.replay()}
 								>
-									{t(
-										speechStatus.paused
-											? "code.voiceResume"
-											: "code.voicePause",
-									)}
+									{t("code.voiceReplay")}
 								</button>
-							) : null}
-							<button
-								type="button"
-								disabled={pttHeld || voiceTranscribing}
-								onClick={() => speechQueue.current?.replay()}
+							</div>
+						) : null}
+					</div>
+					{readAloud ||
+					voiceTranscribing ||
+					pttHeld ||
+					speechStatus.canReplay ? (
+						<div className="oc-voice oc-audio-strip" aria-live="polite">
+							<span
+								className={`oc-voice-bars oc-user-wave is-${voicePhase}`}
+								aria-hidden="true"
 							>
-								{t("code.voiceReplay")}
-							</button>
+								{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
+									<i
+										key={bar}
+										style={
+											voiceTranscribing
+												? undefined
+												: {
+														transform: `scaleY(${(
+															0.2 +
+																(pttHeld ? voiceLevel : 0) *
+																	(1 - Math.abs(bar - 3) / 4) *
+																	0.8
+														).toFixed(2)})`,
+													}
+										}
+									/>
+								))}
+							</span>
+							<span className="oc-voice-label">
+								{voiceQueued > 0
+									? `${t("code.voiceQueued", { n: voiceQueued })} · `
+									: ""}
+								{voiceLabel}
+							</span>
+							<span className="oc-voice-label oc-agent-label">
+								{agentLabel}
+							</span>
+							<span
+								className={`oc-voice-bars oc-agent-wave${voiceSpeakingNow ? " is-playing" : ""}${speechStatus.paused ? " is-paused" : ""}`}
+								aria-hidden="true"
+							>
+								{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
+									<i key={bar} style={{ animationDelay: `${bar * -0.13}s` }} />
+								))}
+							</span>
 						</div>
 					) : null}
-				</div>
-				{readAloud || voiceTranscribing || pttHeld || speechStatus.canReplay ? (
-					<div className="oc-voice oc-audio-strip" aria-live="polite">
-						<span
-							className={`oc-voice-bars oc-user-wave is-${voicePhase}`}
-							aria-hidden="true"
+					<div className="oc-composer">
+						<input
+							ref={picker}
+							type="file"
+							multiple
+							hidden
+							accept={CODE_ATTACH_ACCEPT}
+							onChange={(event) => {
+								const picked = [...(event.target.files ?? [])];
+								event.target.value = "";
+								void addFiles(picked);
+							}}
+						/>
+						<button
+							type="button"
+							className="oc-tool"
+							aria-label={t("code.attach")}
+							disabled={toolsDisabled}
+							onClick={() => picker.current?.click()}
 						>
-							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
-								<i
-									key={bar}
-									style={
-										voiceTranscribing
-											? undefined
-											: {
-													transform: `scaleY(${(
-														0.2 +
-															(pttHeld ? voiceLevel : 0) *
-																(1 - Math.abs(bar - 3) / 4) *
-																0.8
-													).toFixed(2)})`,
-												}
-									}
-								/>
-							))}
-						</span>
-						<span className="oc-voice-label">
-							{voiceQueued > 0
-								? `${t("code.voiceQueued", { n: voiceQueued })} · `
-								: ""}
-							{voiceLabel}
-						</span>
-						<span className="oc-voice-label oc-agent-label">{agentLabel}</span>
-						<span
-							className={`oc-voice-bars oc-agent-wave${voiceSpeakingNow ? " is-playing" : ""}${speechStatus.paused ? " is-paused" : ""}`}
-							aria-hidden="true"
-						>
-							{[0, 1, 2, 3, 4, 5, 6].map((bar) => (
-								<i key={bar} style={{ animationDelay: `${bar * -0.13}s` }} />
-							))}
-						</span>
-					</div>
-				) : null}
-				<div className="oc-composer">
-					<input
-						ref={picker}
-						type="file"
-						multiple
-						hidden
-						accept={CODE_ATTACH_ACCEPT}
-						onChange={(event) => {
-							const picked = [...(event.target.files ?? [])];
-							event.target.value = "";
-							void addFiles(picked);
-						}}
-					/>
-					<button
-						type="button"
-						className="oc-tool"
-						aria-label={t("code.attach")}
-						disabled={toolsDisabled}
-						onClick={() => picker.current?.click()}
-					>
-						<AttachIcon />
-					</button>
-					<textarea
-						ref={field}
-						rows={1}
-						value={prompt}
-						placeholder={t("code.placeholder")}
-						disabled={disabled}
-						aria-label={t("code.prompt")}
-						onChange={(event) => {
-							setPrompt(event.target.value);
-							setCaret(
-								event.target.selectionStart ?? event.target.value.length,
-							);
-							event.target.style.height = "0px";
-							event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
-						}}
-						onSelect={(event) =>
-							setCaret(event.currentTarget.selectionStart ?? 0)
-						}
-						onKeyDown={(event) => {
-							if (mentionLive && event.key === "Escape") {
-								event.preventDefault();
-								setMentionOff(mentionKey);
-								return;
+							<AttachIcon />
+						</button>
+						<textarea
+							ref={field}
+							rows={1}
+							value={prompt}
+							placeholder={t("code.placeholder")}
+							disabled={disabled}
+							aria-label={t("code.prompt")}
+							onChange={(event) => {
+								setPrompt(event.target.value);
+								setCaret(
+									event.target.selectionStart ?? event.target.value.length,
+								);
+								event.target.style.height = "0px";
+								event.target.style.height = `${Math.min(160, event.target.scrollHeight)}px`;
+							}}
+							onSelect={(event) =>
+								setCaret(event.currentTarget.selectionStart ?? 0)
 							}
-							if (
-								mentionLive &&
-								matches.length > 0 &&
-								(event.key === "ArrowDown" || event.key === "ArrowUp")
-							) {
-								event.preventDefault();
-								setMentionIndex((index) => {
-									const next =
-										event.key === "ArrowDown" ? index + 1 : index - 1;
-									return (next + matches.length) % matches.length;
-								});
-								return;
-							}
-							if (
-								mentionLive &&
-								matches.length > 0 &&
-								(event.key === "Enter" || event.key === "Tab") &&
-								!event.shiftKey
-							) {
-								event.preventDefault();
-								const picked = matches[active];
-								if (picked) {
-									void pickMention(picked);
+							onKeyDown={(event) => {
+								if (mentionLive && event.key === "Escape") {
+									event.preventDefault();
+									setMentionOff(mentionKey);
+									return;
 								}
-								return;
+								if (
+									mentionLive &&
+									matches.length > 0 &&
+									(event.key === "ArrowDown" || event.key === "ArrowUp")
+								) {
+									event.preventDefault();
+									setMentionIndex((index) => {
+										const next =
+											event.key === "ArrowDown" ? index + 1 : index - 1;
+										return (next + matches.length) % matches.length;
+									});
+									return;
+								}
+								if (
+									mentionLive &&
+									matches.length > 0 &&
+									(event.key === "Enter" || event.key === "Tab") &&
+									!event.shiftKey
+								) {
+									event.preventDefault();
+									const picked = matches[active];
+									if (picked) {
+										void pickMention(picked);
+									}
+									return;
+								}
+								if (event.key === "Escape" && blocked) {
+									event.currentTarget.blur();
+									return;
+								}
+								if (
+									event.key === "Enter" &&
+									!event.shiftKey &&
+									!event.nativeEvent.isComposing
+								) {
+									event.preventDefault();
+									if (!view.busy && !blocked) {
+										void send();
+									}
+								}
+							}}
+						/>
+						<button
+							type="button"
+							className={`oc-send${view.busy ? " is-stop" : ""}${micEmpty ? " is-mic" : ""}`}
+							aria-label={
+								view.busy
+									? t("code.stop")
+									: micEmpty
+										? t("code.ptt")
+										: t("code.send")
 							}
-							if (event.key === "Escape" && blocked) {
-								event.currentTarget.blur();
-								return;
+							disabled={
+								view.busy ? false : micEmpty ? toolsDisabled : sendDisabled
 							}
-							if (
-								event.key === "Enter" &&
-								!event.shiftKey &&
-								!event.nativeEvent.isComposing
-							) {
-								event.preventDefault();
-								if (!view.busy && !blocked) {
+							title={
+								micEmpty
+									? t("code.pttHint")
+									: blocked
+										? t("code.blockedComposer")
+										: undefined
+							}
+							onPointerDown={
+								micEmpty
+									? (event) => {
+											event.preventDefault();
+											beginPttRef.current();
+										}
+									: undefined
+							}
+							onClick={() => {
+								if (view.busy) {
+									void abort();
+									return;
+								}
+								// Mic release is handled by the global pointerup listener
+								// (endPtt auto-sends); a plain click does nothing.
+								if (!micEmpty) {
 									void send();
 								}
-							}
-						}}
-					/>
-					<button
-						type="button"
-						className={`oc-send${view.busy ? " is-stop" : ""}${micEmpty ? " is-mic" : ""}`}
-						aria-label={
-							view.busy
-								? t("code.stop")
-								: micEmpty
-									? t("code.ptt")
-									: t("code.send")
-						}
-						disabled={
-							view.busy ? false : micEmpty ? toolsDisabled : sendDisabled
-						}
-						title={
-							micEmpty
-								? t("code.pttHint")
-								: blocked
-									? t("code.blockedComposer")
-									: undefined
-						}
-						onPointerDown={
-							micEmpty
-								? (event) => {
-										event.preventDefault();
-										beginPttRef.current();
-									}
-								: undefined
-						}
-						onClick={() => {
-							if (view.busy) {
-								void abort();
-								return;
-							}
-							// Mic release is handled by the global pointerup listener
-							// (endPtt auto-sends); a plain click does nothing.
-							if (!micEmpty) {
-								void send();
-							}
-						}}
-					>
-						{view.busy ? <StopIcon /> : micEmpty ? <MicIcon /> : <SendIcon />}
-					</button>
+							}}
+						>
+							{view.busy ? <StopIcon /> : micEmpty ? <MicIcon /> : <SendIcon />}
+						</button>
+					</div>
+					{micEmpty ? <p className="oc-ptt-hint">{t("code.pttHint")}</p> : null}
 				</div>
-				{micEmpty ? <p className="oc-ptt-hint">{t("code.pttHint")}</p> : null}
-			</div>
+			</>
 		);
 	}
 

@@ -1,3 +1,4 @@
+import { ARDUINO_PROXY_PATH } from "./arduino-proxy.ts";
 import {
 	createSignedEnvelope,
 	parseSignedEnvelope,
@@ -17,7 +18,6 @@ import {
 	verifyEd25519Message,
 } from "./device-auth.ts";
 import { INFO_PATH } from "./device-info.ts";
-import { ARDUINO_PROXY_PATH } from "./arduino-proxy.ts";
 import {
 	FLASH_PATH,
 	FLASH_PORTS_PATH,

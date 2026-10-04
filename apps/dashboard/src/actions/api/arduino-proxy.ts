@@ -1,8 +1,5 @@
 import { getContext } from "frame-master-plugin-cloudflare-pages-functions-action/context";
-import {
-	ARDUINO_PROXY_PATH,
-	type ArduinoProxyStatus,
-} from "gpio-companion";
+import { ARDUINO_PROXY_PATH, type ArduinoProxyStatus } from "gpio-companion";
 import { wrapAction } from "../../lib/action.ts";
 import { resolveAccessibleDeviceUrl } from "../../lib/debug-live.ts";
 import { readDeviceJson, signedDeviceFetch } from "../../lib/device-api.ts";

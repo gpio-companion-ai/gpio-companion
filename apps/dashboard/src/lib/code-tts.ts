@@ -6,13 +6,12 @@ import {
 	codeSttLanguage,
 	codeTtsMicros,
 	codeTtsXaiMicros,
-	codeVoiceSettings,
 	decodeBase64,
 	encodeBase64,
 	parseMarkup,
 } from "gpio-companion";
-import { consumeMicrodollars, creditsBalance } from "./credits.ts";
 import { recordAiUsage } from "./ai-usage.ts";
+import { consumeMicrodollars, creditsBalance } from "./credits.ts";
 import { getVoiceSettings } from "./voice-settings.ts";
 
 type TtsEnv = {

@@ -16,13 +16,11 @@ import { filePairingStore } from "./pairing.ts";
 import { fileSecretsStore } from "./secrets.ts";
 import { startDeviceApi } from "./serve.ts";
 import { fileConfigStore } from "./store.ts";
-import { createUiHub, type UiHub, type UiSocket } from "./ui.ts";
+import { createUiHub, type UiSocket } from "./ui.ts";
 
 type FakeSocket = {
 	sent: string[];
 	closed: number;
-	send(data: string): void;
-	close(code?: number, reason?: string): void;
 };
 
 function fakeSocket(): FakeSocket & UiSocket {
@@ -62,7 +60,10 @@ describe("ui hub", () => {
 		expect(result).toEqual({ delivered: 1, fallback: false });
 		expect(web.sent).toHaveLength(1);
 		expect(desktop.sent).toHaveLength(0);
-		expect(JSON.parse(web.sent[0])).toEqual({ type: "toast", text: "hi" });
+		expect(JSON.parse(web.sent[0] ?? "")).toEqual({
+			type: "toast",
+			text: "hi",
+		});
 	});
 
 	test("falls back to every socket when none focused", () => {
@@ -138,7 +139,7 @@ describe("ui hub", () => {
 			path: "host/blink/main.c",
 		});
 		expect(result).toEqual({ delivered: 1, fallback: false });
-		expect(JSON.parse(web.sent[0])).toEqual({
+		expect(JSON.parse(web.sent[0] ?? "")).toEqual({
 			type: "preview",
 			repo: "blink-led",
 			path: "host/blink/main.c",
@@ -182,7 +183,9 @@ describe("ui hub", () => {
 		const ws = fakeSocket();
 		hub.add(ws);
 		hub.handle(ws, JSON.stringify({ op: "refresh" }));
-		expect(JSON.parse(ws.sent[0])).toEqual({ error: "unknown ui message" });
+		expect(JSON.parse(ws.sent[0] ?? "")).toEqual({
+			error: "unknown ui message",
+		});
 	});
 
 	test("wait times out with no reply", async () => {
