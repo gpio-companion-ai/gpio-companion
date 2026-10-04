@@ -20,7 +20,11 @@ type BoardSelectionValue = {
 	setFlashSketch: (sketch: FlashSketchPreselect | null) => void;
 };
 
-export type FlashSketchPreselect = { dir: string; project: string };
+export type FlashSketchPreselect = {
+	dir: string;
+	project: string;
+	autoStart?: boolean;
+};
 
 const BoardSelectionCtx = createContext<BoardSelectionValue | null>(null);
 

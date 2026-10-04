@@ -34,19 +34,68 @@ Create the app inside the project checkout:
   `index.ts`.
 
 ```ts
-// ~/projects/<repo>/app/led-panel/server.ts
+// ~/projects/<repo>/app/thermostat/server.ts
+const state = { targetC: 21, currentC: 20.5 };
+const sockets = new Set<WebSocket>();
+
+function broadcast() {
+	const message = JSON.stringify(state);
+	for (const socket of sockets) {
+		socket.send(message);
+	}
+}
+
+function html() {
+	return `<!doctype html>
+<html>
+<body>
+	<pre id="out"></pre>
+	<script>
+		const url = new URL("ws", location.href);
+		url.protocol = location.protocol === "https:" ? "wss:" : "ws:";
+		const socket = new WebSocket(url);
+		socket.onmessage = (event) => {
+			document.getElementById("out").textContent = event.data;
+		};
+		async function setTarget(targetC) {
+			await fetch("api/target", {
+				method: "POST",
+				headers: { "content-type": "application/json" },
+				body: JSON.stringify({ targetC }),
+			});
+		}
+	</script>
+</body>
+</html>`;
+}
+
 const port = Number(process.env.GPIO_APP_PORT ?? 0);
 Bun.serve({
 	port,
 	hostname: "127.0.0.1",
-	fetch(req) {
+	websocket: {
+		open(ws) {
+			sockets.add(ws);
+			ws.send(JSON.stringify(state));
+		},
+		close(ws) {
+			sockets.delete(ws);
+		},
+	},
+	async fetch(req, server) {
 		const url = new URL(req.url);
 		if (url.pathname === "/") {
-			return new Response("<h1>LED panel</h1>", {
+			return new Response(html(), {
 				headers: { "content-type": "text/html" },
 			});
 		}
-		if (url.pathname === "/api/state") {
+		if (url.pathname === "/ws" && server.upgrade(req)) {
+			return;
+		}
+		if (url.pathname === "/api/target" && req.method === "POST") {
+			const body = (await req.json()) as { targetC?: number };
+			if (typeof body.targetC === "number") state.targetC = body.targetC;
+			broadcast();
 			return Response.json({ ok: true });
 		}
 		return new Response("not found", { status: 404 });
@@ -55,15 +104,29 @@ Bun.serve({
 console.log(`app listening on ${port}`);
 ```
 
+The page connects document-relative and never polls: `new URL("ws",
+location.href)` lands inside the frame path (the access token rides it), then
+only the protocol is swapped to `wss:`/`ws:`. State arrives on connect and on
+every change; the only other request is the one-shot `POST api/target`.
+
 Rules:
 
 - **Bind `127.0.0.1` on `GPIO_APP_PORT`** — the companion server picks the
   port and probes it. Listening on `0.0.0.0` or a fixed port breaks the proxy.
-- Serve HTML at `/`; extra paths, POST actions, SSE, and websockets all pass
-  through the proxy (path prefix carries the auth token automatically — use
-  relative URLs in the page).
+- **Live state is WebSocket push, never polling.** Anything that changes over
+  time (sensor reads, pin state, counters, progress) is served by a
+  `websocket` handler on the same `Bun.serve`: send the full state on open and
+  broadcast again on every change; the page renders pushed messages. The proxy
+  bridges websocket upgrades browser⇄app end-to-end. Do not `setInterval`
+  `fetch` a state endpoint — that is blocked by design. The initial page load
+  and one-shot actions are the only HTTP.
+- **HTTP is the page + one-shot actions.** Buttons/sliders POST to relative
+  paths (`fetch("api/target", …)`). The frame is sandboxed (origin `null`), so
+  the proxy answers CORS for you (`Access-Control-Allow-Origin: *`, OPTIONS
+  preflight) — do not set your own CORS headers and never use
+  `credentials: "include"`; the access token rides the URL path.
 - Keep state server-side or in the URL; the frame reloads when its access
-  token renews (about every 10 minutes idle).
+  token renews (about every 10 minutes idle) and the socket reconnects.
 - The app runs as this GPIO user. Reading project files is fine; do not touch
   `/etc`, pairing, or secrets. Hardware still goes through the board CLI /
   sketches — this channel is UI, not pin control.
@@ -75,7 +138,7 @@ You run board commands yourself. Never tell the user board commands.
 
 ```sh
 gpio-companion app list
-gpio-companion app start --repo blink-led --dir led-panel
+gpio-companion app start --repo blink-led --dir thermostat
 ```
 
 - `--dir` is the folder name under `app/` in that repo.
@@ -93,7 +156,7 @@ Then open it for the user (skill `gpio-ui`; check `ui list` first — when no
 app is open, say so once and move on):
 
 ```sh
-gpio-companion ui app --id led-panel --view split --title "LED panel"
+gpio-companion ui app --id thermostat --view split --title "Thermostat"
 ```
 
 | View | Opens where |

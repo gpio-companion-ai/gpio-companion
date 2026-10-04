@@ -74,8 +74,9 @@ type FileMenu = {
 	y: number;
 };
 
-type SketchAction = {
-	kind: "run" | "flash";
+type SketchProbe = {
+	kind: "run" | "flash" | null;
+	phase: "loading" | "ready" | "unavailable";
 	dir: string;
 	running: boolean;
 };
@@ -84,6 +85,7 @@ type ContextMenuItem = {
 	key: string;
 	label: string;
 	danger?: boolean;
+	disabled?: boolean;
 	separatorBefore?: boolean;
 	icon: ReactNode;
 	onSelect: () => void;
@@ -130,7 +132,7 @@ export default function ProjectFiles({
 	type MobilePane = "chat" | "files" | "preview";
 	const [mobilePane, setMobilePane] = useState<MobilePane>("chat");
 	const { boards } = useUserBoards();
-	const { setDockOpen, setDockTab, setFlashSketch } = useBoardSelection();
+	const { requestAction, setFlashSketch } = useBoardSelection();
 	const boardModel =
 		boards.find((board) => board.device.uuid === uuid)?.status?.model ?? null;
 	const [entries, setEntries] = useState<BoardFileEntry[]>([]);
@@ -152,7 +154,7 @@ export default function ProjectFiles({
 	const [fileFilter, setFileFilter] = useState("");
 	const [fileMenu, setFileMenu] = useState<FileMenu | null>(null);
 	const fileMenuRef = useRef<HTMLDivElement | null>(null);
-	const [sketchAction, setSketchAction] = useState<SketchAction | null>(null);
+	const [sketchProbe, setSketchProbe] = useState<SketchProbe | null>(null);
 	const sketchActionId = useRef(0);
 	const [dropDir, setDropDir] = useState<string | null>(null);
 	const [picked, setPicked] = useState<ExplorerPick | null>(null);
@@ -539,15 +541,20 @@ export default function ProjectFiles({
 		const runName = sketchNameFromPath("host", path);
 		const flashName = sketchNameFromPath("firmware", path);
 		if (!runName && !flashName) {
-			setSketchAction(null);
+			setSketchProbe({
+				kind: null,
+				phase: "unavailable",
+				dir: "",
+				running: false,
+			});
 			return;
 		}
-		setSketchAction(null);
 		const kind = runName ? "run" : "flash";
-		void loadSketchAction(id, kind, runName ?? flashName ?? "");
+		setSketchProbe({ kind, phase: "loading", dir: "", running: false });
+		void loadSketchProbe(id, kind, runName ?? flashName ?? "");
 	}
 
-	async function loadSketchAction(
+	async function loadSketchProbe(
 		id: number,
 		kind: "run" | "flash",
 		sketchName: string,
@@ -556,21 +563,32 @@ export default function ProjectFiles({
 			const list = await (kind === "run"
 				? loadRunSketches(uuid)
 				: loadFlashSketches(uuid));
+			if (sketchActionId.current !== id) {
+				return;
+			}
 			const sketch = findSketchByName(list.sketches, name, sketchName);
 			if (!sketch) {
-				if (sketchActionId.current === id) {
-					setSketchAction(null);
-				}
+				setSketchProbe({
+					kind,
+					phase: "unavailable",
+					dir: "",
+					running: false,
+				});
 				return;
 			}
 			const running = kind === "run" ? (await loadRun(uuid)).running : false;
 			if (sketchActionId.current !== id) {
 				return;
 			}
-			setSketchAction({ kind, dir: sketch.dir, running });
+			setSketchProbe({ kind, phase: "ready", dir: sketch.dir, running });
 		} catch {
 			if (sketchActionId.current === id) {
-				setSketchAction(null);
+				setSketchProbe({
+					kind,
+					phase: "unavailable",
+					dir: "",
+					running: false,
+				});
 			}
 		}
 	}
@@ -614,8 +632,7 @@ export default function ProjectFiles({
 	function flashSketchFromMenu(dir: string) {
 		setFileMenu(null);
 		setFlashSketch({ dir, project: name });
-		setDockOpen(true);
-		setDockTab("flash");
+		requestAction("flash");
 	}
 
 	async function textFor(path: string) {
@@ -1242,29 +1259,42 @@ export default function ProjectFiles({
 
 	function fileMenuItems(path: string): ContextMenuItem[] {
 		const items: ContextMenuItem[] = [];
-		if (sketchAction) {
-			if (sketchAction.kind === "run") {
-				items.push({
-					key: sketchAction.running ? "stop-sketch" : "run-sketch",
-					label: t(sketchAction.running ? "code.stopSketch" : "code.runSketch"),
-					icon: sketchAction.running ? <StopSketchIcon /> : <PlayIcon />,
-					onSelect: () => {
-						if (sketchAction.running) {
-							void stopSketch();
-						} else {
-							void startSketch(sketchAction.dir);
-						}
-					},
-				});
-			} else {
-				items.push({
-					key: "flash-sketch",
-					label: t("code.flashSketch"),
-					icon: <FlashSketchIcon />,
-					onSelect: () => flashSketchFromMenu(sketchAction.dir),
-				});
-			}
-		}
+		const probe = sketchProbe;
+		const runReady = probe?.kind === "run" && probe.phase === "ready";
+		const flashReady = probe?.kind === "flash" && probe.phase === "ready";
+		items.push(
+			{
+				key: "run-sketch",
+				label:
+					runReady && probe.running
+						? t("code.stopSketch")
+						: t("code.runSketch"),
+				icon: runReady && probe.running ? <StopSketchIcon /> : <PlayIcon />,
+				disabled: !runReady,
+				onSelect: () => {
+					if (probe?.kind !== "run" || probe.phase !== "ready") {
+						return;
+					}
+					if (probe.running) {
+						void stopSketch();
+					} else {
+						void startSketch(probe.dir);
+					}
+				},
+			},
+			{
+				key: "flash-sketch",
+				label: t("code.flashSketch"),
+				icon: <FlashSketchIcon />,
+				disabled: !flashReady,
+				onSelect: () => {
+					if (probe?.kind !== "flash" || probe.phase !== "ready") {
+						return;
+					}
+					flashSketchFromMenu(probe.dir);
+				},
+			},
+		);
 		items.push(
 			{
 				key: "context",
@@ -1321,6 +1351,7 @@ function FileContextMenu({
 						type="button"
 						role="menuitem"
 						className={`oc-context-menu-item${item.danger ? " is-danger" : ""}`}
+						disabled={item.disabled}
 						onMouseDown={(event) => event.preventDefault()}
 						onClick={() => {
 							onClose();

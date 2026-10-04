@@ -102,6 +102,21 @@ const PROXY_STRIP_RESPONSE = new Set([
 	"set-cookie2",
 ]);
 
+const CORS_ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
+const CORS_MAX_AGE_SECONDS = "600";
+
+function corsPreflightHeaders(request: Request): Headers {
+	const headers = new Headers();
+	headers.set("access-control-allow-origin", "*");
+	headers.set("access-control-allow-methods", CORS_ALLOW_METHODS);
+	headers.set("access-control-max-age", CORS_MAX_AGE_SECONDS);
+	const requestHeaders = request.headers.get("access-control-request-headers");
+	if (requestHeaders) {
+		headers.set("access-control-allow-headers", requestHeaders);
+	}
+	return headers;
+}
+
 export function createAppController(options: AppOptions = {}): AppController {
 	const fetcher = options.fetchImpl ?? fetch;
 	const probe = options.prober ?? ((port: number) => probeHttp(port, fetcher));
@@ -254,6 +269,12 @@ export function createAppController(options: AppOptions = {}): AppController {
 		},
 		async proxy(request, frame, search) {
 			const { port } = authorizeFrame(frame);
+			if (request.method.toUpperCase() === "OPTIONS") {
+				return new Response(null, {
+					status: 204,
+					headers: corsPreflightHeaders(request),
+				});
+			}
 			const target = `http://127.0.0.1:${port}${frame.suffix}${search}`;
 			const headers = new Headers();
 			for (const name of PROXY_REQUEST_HEADERS) {
@@ -272,9 +293,15 @@ export function createAppController(options: AppOptions = {}): AppController {
 			try {
 				upstream = await fetcher(target, init);
 			} catch {
-				return Response.json(
-					{ error: "app server unavailable" },
-					{ status: 503 },
+				return new Response(
+					JSON.stringify({ error: "app server unavailable" }),
+					{
+						status: 503,
+						headers: {
+							"content-type": "application/json",
+							"access-control-allow-origin": "*",
+						},
+					},
 				);
 			}
 			const out = new Headers();
@@ -289,6 +316,7 @@ export function createAppController(options: AppOptions = {}): AppController {
 				out.set(key, value);
 			});
 			out.set("referrer-policy", "no-referrer");
+			out.set("access-control-allow-origin", "*");
 			return new Response(upstream.body, {
 				status: upstream.status,
 				headers: out,

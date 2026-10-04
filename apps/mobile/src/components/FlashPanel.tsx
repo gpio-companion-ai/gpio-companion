@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import {
 	type BoardSketch,
@@ -26,10 +26,12 @@ export default function FlashPanel({
 	uuid,
 	project,
 	preselectDir,
+	autoStart,
 }: {
 	uuid: string;
 	project?: string;
 	preselectDir?: string;
+	autoStart?: boolean;
 }) {
 	const auth = useAuth();
 	const t = useT();
@@ -110,6 +112,81 @@ export default function FlashPanel({
 			})
 			.finally(() => setBusy(false));
 	}
+
+	// Auto-start flow (Flash Arduino from the Code page context menu): arm once,
+	// probe USB ports for an FQBN, then fire the flash when the sketch is set.
+	// Without a detected Arduino the panel stays manual (no FQBN defaulting).
+	const [armed, setArmed] = useState(false);
+	const firedRef = useRef(false);
+
+	useEffect(() => {
+		if (autoStart) {
+			setArmed(true);
+		}
+	}, [autoStart]);
+
+	useEffect(() => {
+		if (!armed || !uuid || !token) {
+			return;
+		}
+		let cancelled = false;
+		setBusy(true);
+		setError("");
+		void loadFlashPorts(token, uuid)
+			.then((listed) => {
+				if (cancelled) {
+					return;
+				}
+				const first = listed.ports[0];
+				if (first?.fqbn) {
+					setFqbn(first.fqbn);
+				}
+				if (first?.address) {
+					setPort(first.address);
+				}
+				if (!first?.fqbn) {
+					setArmed(false);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setError("request failed");
+					setArmed(false);
+				}
+			})
+			.finally(() => {
+				if (!cancelled) {
+					setBusy(false);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [armed, token, uuid]);
+
+	useEffect(() => {
+		if (!armed || firedRef.current || busy || !token || !canFlash) {
+			return;
+		}
+		firedRef.current = true;
+		setArmed(false);
+		setBusy(true);
+		setError("");
+		void startFlash(token, {
+			uuid,
+			fqbn: fqbn.trim(),
+			dir: dir.trim(),
+			port: port.trim() || undefined,
+		})
+			.then(() => loadFlash(token, uuid))
+			.then((next) => {
+				setStatus(next);
+			})
+			.catch((caught) => {
+				setError(caught instanceof Error ? caught.message : "request failed");
+			})
+			.finally(() => setBusy(false));
+	}, [armed, busy, canFlash, dir, fqbn, port, token, uuid]);
 
 	return (
 		<View style={{ gap: 8, marginTop: 8 }}>

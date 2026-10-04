@@ -595,9 +595,24 @@ body {
 	overflow: hidden;
 }
 
-/* DevicesLayout wrappers must stretch on the code route so oc-shell fills
-   the stage. Scoped to is-fill so other device pages keep natural-height
-   scrolling through b6-stage-content. */
+/* DevicesLayout wrappers grow into leftover stage space (e.g. the device app
+   viewer) while tall pages keep natural-height scrolling through
+   b6-stage-content. The is-fill rules below still win on the code route. */
+.b6-device-scope {
+	display: flex;
+	min-width: 0;
+	width: 100%;
+	flex: auto;
+	flex-direction: column;
+}
+
+.b6-device-scope .b6-device-body {
+	display: flex;
+	min-width: 0;
+	flex: auto;
+	flex-direction: column;
+}
+
 .b6-stage-content.is-fill .b6-device-scope {
 	display: flex;
 	min-width: 0;
@@ -2861,6 +2876,16 @@ button.oc-chip,
 .oc-context-menu button:hover,
 .oc-context-menu button:focus-visible {
 	background: rgba(var(--text-rgb, 226, 235, 232), 0.08);
+}
+
+.oc-context-menu button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.oc-context-menu button:disabled:hover,
+.oc-context-menu button:disabled:focus-visible {
+	background: transparent;
 }
 
 .oc-context-menu-sep {

@@ -193,9 +193,52 @@ describe("app controller tokens and proxy", () => {
 		expect(targets[0]?.url).toBe(`http://127.0.0.1:4600/api/data?x=1`);
 		expect(response.status).toBe(200);
 		expect(response.headers.get("set-cookie")).toBeNull();
-		expect(response.headers.get("access-control-allow-origin")).toBeNull();
+		expect(response.headers.get("access-control-allow-origin")).toBe("*");
 		expect(response.headers.get("referrer-policy")).toBe("no-referrer");
 		await expect(response.text()).resolves.toBe("<h1>hi</h1>");
+		app.stop();
+	});
+
+	test("preflight answers OPTIONS without forwarding", async () => {
+		const targets: Array<{ url: string; init: RequestInit }> = [];
+		const app = createAppController({
+			projectsDir: ROOT,
+			spawn: () => fakeProc(),
+			portPicker: async () => 4600,
+			prober: async () => true,
+			fetchImpl: async (input, init = {}) => {
+				targets.push({ url: String(input), init });
+				return new Response("nope", { status: 500 });
+			},
+		});
+		await app.start({ repo: "demo-repo", dir: "panel" });
+		const grant = app.mint("led-panel");
+		const frame = parseAppFramePath(
+			`/v1/app/led-panel/${grant.token}/api/state`,
+		);
+		expect(frame).not.toBeNull();
+		const response = await app.proxy(
+			new Request("https://api-x.gpio-companion.com/v1/app/led-panel/x", {
+				method: "OPTIONS",
+				headers: {
+					origin: "null",
+					"access-control-request-method": "POST",
+					"access-control-request-headers": "content-type",
+				},
+			}),
+			frame as never,
+			"",
+		);
+		expect(targets).toHaveLength(0);
+		expect(response.status).toBe(204);
+		expect(response.headers.get("access-control-allow-origin")).toBe("*");
+		expect(response.headers.get("access-control-allow-methods")).toContain(
+			"POST",
+		);
+		expect(response.headers.get("access-control-allow-headers")).toBe(
+			"content-type",
+		);
+		expect(response.headers.get("access-control-max-age")).toBe("600");
 		app.stop();
 	});
 
@@ -228,6 +271,7 @@ describe("app controller tokens and proxy", () => {
 			"",
 		);
 		expect(response.status).toBe(503);
+		expect(response.headers.get("access-control-allow-origin")).toBe("*");
 		app.stop();
 	});
 });
@@ -420,6 +464,7 @@ describe("app http api", () => {
 		expect(page.status).toBe(200);
 		expect(upstreamHits[0]?.url).toBe(`http://127.0.0.1:4600/`);
 		expect(page.headers.get("set-cookie")).toBeNull();
+		expect(page.headers.get("access-control-allow-origin")).toBe("*");
 		expect(page.headers.get("referrer-policy")).toBe("no-referrer");
 		await expect(page.text()).resolves.toBe("<h1>panel</h1>");
 

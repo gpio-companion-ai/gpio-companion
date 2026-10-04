@@ -97,8 +97,9 @@ type OpenFile = {
 	base64: string;
 };
 
-type SketchAction = {
-	kind: "run" | "flash";
+type SketchProbe = {
+	kind: "run" | "flash" | null;
+	phase: "loading" | "ready" | "unavailable";
 	dir: string;
 	running: boolean;
 };
@@ -154,7 +155,7 @@ export default function ProjectFiles({
 		x: number;
 		y: number;
 	} | null>(null);
-	const [sketchAction, setSketchAction] = useState<SketchAction | null>(null);
+	const [sketchProbe, setSketchProbe] = useState<SketchProbe | null>(null);
 	const sketchActionId = useRef(0);
 	const [picked, _setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
@@ -589,31 +590,50 @@ export default function ProjectFiles({
 		const runName = sketchNameFromPath("host", path);
 		const flashName = sketchNameFromPath("firmware", path);
 		if (!runName && !flashName) {
-			setSketchAction(null);
+			setSketchProbe({
+				kind: null,
+				phase: "unavailable",
+				dir: "",
+				running: false,
+			});
 			return;
 		}
-		setSketchAction(null);
 		const kind = runName ? "run" : "flash";
-		void loadSketchAction(id, kind, runName ?? flashName ?? "");
+		setSketchProbe({ kind, phase: "loading", dir: "", running: false });
+		void loadSketchProbe(id, kind, runName ?? flashName ?? "");
 	}
 
-	async function loadSketchAction(
+	async function loadSketchProbe(
 		id: number,
 		kind: "run" | "flash",
 		sketchName: string,
 	) {
 		if (!token || !uuid) {
+			if (sketchActionId.current === id) {
+				setSketchProbe({
+					kind,
+					phase: "unavailable",
+					dir: "",
+					running: false,
+				});
+			}
 			return;
 		}
 		try {
 			const list = await (kind === "run"
 				? loadRunSketches(token, uuid)
 				: loadFlashSketches(token, uuid));
+			if (sketchActionId.current !== id) {
+				return;
+			}
 			const sketch = findSketchByName(list.sketches, name, sketchName);
 			if (!sketch) {
-				if (sketchActionId.current === id) {
-					setSketchAction(null);
-				}
+				setSketchProbe({
+					kind,
+					phase: "unavailable",
+					dir: "",
+					running: false,
+				});
 				return;
 			}
 			const running =
@@ -621,10 +641,15 @@ export default function ProjectFiles({
 			if (sketchActionId.current !== id) {
 				return;
 			}
-			setSketchAction({ kind, dir: sketch.dir, running });
+			setSketchProbe({ kind, phase: "ready", dir: sketch.dir, running });
 		} catch {
 			if (sketchActionId.current === id) {
-				setSketchAction(null);
+				setSketchProbe({
+					kind,
+					phase: "unavailable",
+					dir: "",
+					running: false,
+				});
 			}
 		}
 	}
@@ -667,7 +692,7 @@ export default function ProjectFiles({
 
 	function flashSketchFromMenu(dir: string) {
 		setFileMenu(null);
-		setFlashSketch({ dir, project: name });
+		setFlashSketch({ dir, project: name, autoStart: true });
 		router.push("/project");
 	}
 
@@ -1234,32 +1259,52 @@ export default function ProjectFiles({
 								borderColor: colors.border,
 							}}
 						>
-							{sketchAction && sketchAction.kind === "run" ? (
-								<MenuRow
-									label={
-										sketchAction.running
-											? t("code.stopSketch")
-											: t("code.runSketch")
+							<MenuRow
+								label={
+									sketchProbe?.kind === "run" && sketchProbe.running
+										? t("code.stopSketch")
+										: t("code.runSketch")
+								}
+								icon={
+									sketchProbe?.kind === "run" && sketchProbe.running
+										? "stop"
+										: "play-arrow"
+								}
+								colors={colors}
+								disabled={
+									sketchProbe?.kind !== "run" || sketchProbe.phase !== "ready"
+								}
+								onPress={() => {
+									if (
+										sketchProbe?.kind !== "run" ||
+										sketchProbe.phase !== "ready"
+									) {
+										return;
 									}
-									icon={sketchAction.running ? "stop" : "play-arrow"}
-									colors={colors}
-									onPress={() => {
-										if (sketchAction.running) {
-											void stopSketch();
-										} else {
-											void startSketch(sketchAction.dir);
-										}
-									}}
-								/>
-							) : null}
-							{sketchAction && sketchAction.kind === "flash" ? (
-								<MenuRow
-									label={t("code.flashSketch")}
-									icon="bolt"
-									colors={colors}
-									onPress={() => flashSketchFromMenu(sketchAction.dir)}
-								/>
-							) : null}
+									if (sketchProbe.running) {
+										void stopSketch();
+									} else {
+										void startSketch(sketchProbe.dir);
+									}
+								}}
+							/>
+							<MenuRow
+								label={t("code.flashSketch")}
+								icon="bolt"
+								colors={colors}
+								disabled={
+									sketchProbe?.kind !== "flash" || sketchProbe.phase !== "ready"
+								}
+								onPress={() => {
+									if (
+										sketchProbe?.kind !== "flash" ||
+										sketchProbe.phase !== "ready"
+									) {
+										return;
+									}
+									flashSketchFromMenu(sketchProbe.dir);
+								}}
+							/>
 							<MenuRow
 								label={t("code.addToContext")}
 								icon="playlist-add"
@@ -1300,19 +1345,22 @@ function MenuRow({
 	label,
 	icon,
 	danger,
+	disabled,
 	colors,
 	onPress,
 }: {
 	label: string;
 	icon: React.ComponentProps<typeof MaterialIcons>["name"];
 	danger?: boolean;
+	disabled?: boolean;
 	colors: Colors;
 	onPress: () => void;
 }) {
-	const color = danger ? colors.danger : colors.text;
+	const color = disabled ? colors.border : danger ? colors.danger : colors.text;
 	return (
 		<Pressable
 			accessibilityRole="button"
+			disabled={disabled}
 			onPress={onPress}
 			style={({ pressed }) => ({
 				flexDirection: "row",
@@ -1320,7 +1368,8 @@ function MenuRow({
 				gap: 12,
 				padding: 10,
 				borderRadius: 6,
-				backgroundColor: pressed ? colors.border : "transparent",
+				opacity: disabled ? 0.45 : 1,
+				backgroundColor: pressed && !disabled ? colors.border : "transparent",
 			})}
 		>
 			<Text style={{ flex: 1, color }}>{label}</Text>

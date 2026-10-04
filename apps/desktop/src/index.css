@@ -2253,6 +2253,16 @@ button.oc-chip,
 	background: rgba(var(--text-rgb, 226, 235, 232), 0.08);
 }
 
+.oc-context-menu button:disabled {
+	opacity: 0.45;
+	cursor: default;
+}
+
+.oc-context-menu button:disabled:hover,
+.oc-context-menu button:disabled:focus-visible {
+	background: transparent;
+}
+
 .oc-context-menu-sep {
 	border: none;
 	height: 1px;

@@ -290,8 +290,9 @@ export default function Project() {
 		uuid: selectedUuid,
 		setUuid: selectBoard,
 		openCode,
+		flashSketch,
+		setFlashSketch,
 	} = useBoardSelection();
-	const { flashSketch } = useBoardSelection();
 	const { setTab } = useDeviceHub();
 	const router = useRouter();
 	const { setWorkItems } = useDeckNav();
@@ -311,6 +312,12 @@ export default function Project() {
 		key: string;
 		tool: BoardTool | null;
 	}>({ key: "", tool: null });
+	const [flashPreselect, setFlashPreselect] = useState<{
+		dir: string;
+		autoStart: boolean;
+		token: number;
+	} | null>(null);
+	const flashPreselectToken = useRef(0);
 	const [saving, setSaving] = useState(false);
 	const [reloading, setReloading] = useState(false);
 	const [saveHint, setSaveHint] = useState("");
@@ -874,15 +881,18 @@ export default function Project() {
 		});
 	}
 
-	// biome-ignore lint/correctness/useExhaustiveDependencies: open the flash tool when a sketch was preselected from the Code page
+	// biome-ignore lint/correctness/useExhaustiveDependencies: consume the flash preselect made from the Code page
 	useEffect(() => {
-		if (
-			bundle &&
-			flashSketch &&
-			flashSketch.project === bundle.repo &&
-			openTool !== "flash"
-		) {
-			toggleTool("flash");
+		if (bundle && flashSketch && flashSketch.project === bundle.repo) {
+			setFlashPreselect({
+				dir: flashSketch.dir,
+				autoStart: flashSketch.autoStart === true,
+				token: ++flashPreselectToken.current,
+			});
+			setFlashSketch(null);
+			if (openTool !== "flash") {
+				toggleTool("flash");
+			}
 		}
 	}, [bundle, flashSketch]);
 
@@ -1305,13 +1315,11 @@ export default function Project() {
 							onToggle={() => toggleTool("flash")}
 						>
 							<FlashPanel
+								key={flashPreselect ? String(flashPreselect.token) : "idle"}
 								uuid={activeUuid}
 								project={bundle.repo}
-								preselectDir={
-									flashSketch?.project === bundle.repo
-										? flashSketch.dir
-										: undefined
-								}
+								preselectDir={flashPreselect?.dir}
+								autoStart={flashPreselect?.autoStart === true}
 							/>
 						</ToolSection>
 						<ToolSection

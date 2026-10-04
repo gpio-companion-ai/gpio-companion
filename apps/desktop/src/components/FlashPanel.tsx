@@ -19,6 +19,7 @@ import {
 	stopUsbConsole,
 } from "../api";
 import { useSavedBleId } from "../hooks/useApiCache";
+import { useArmedAction } from "../hooks/useBoardSelection";
 import { useConsoleTunnel } from "../hooks/useConsoleTunnel";
 import { useDeviceHub } from "../hooks/useDeviceHub";
 import { useOfflineBleKey } from "../hooks/useOfflineBleKey";
@@ -167,6 +168,18 @@ export default function FlashPanel({
 			})
 			.finally(() => setBusy(false));
 	}
+
+	useArmedAction("flash", Boolean(uuid) && canFlash && !busy, () => {
+		start(async () => {
+			await startFlash({
+				uuid,
+				fqbn: fqbn.trim(),
+				dir: dir.trim(),
+				port: port.trim() || undefined,
+			});
+			setStatus(await loadFlash(uuid));
+		});
+	});
 
 	return (
 		<Stack spacing={1} sx={{ mt: 1 }}>

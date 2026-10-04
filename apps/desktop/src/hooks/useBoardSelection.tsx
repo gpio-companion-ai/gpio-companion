@@ -3,7 +3,9 @@ import {
 	type ReactNode,
 	useCallback,
 	useContext,
+	useEffect,
 	useMemo,
+	useRef,
 	useState,
 } from "react";
 
@@ -11,6 +13,8 @@ const STORAGE_KEY = "gpio-companion-selected-board";
 const LEGACY_STORAGE_KEY = "gpio-companion-t3-device";
 
 export type FlashSketchPreselect = { dir: string; project: string };
+
+export type BoardAction = "flash";
 
 export type DockTab =
 	| "console"
@@ -30,6 +34,9 @@ type BoardSelectionValue = {
 	setDockTab: (tab: DockTab) => void;
 	dockOpen: boolean;
 	setDockOpen: (open: boolean) => void;
+	pendingAction: BoardAction | null;
+	requestAction: (action: BoardAction) => void;
+	clearPending: () => void;
 };
 
 const fallbackValue: BoardSelectionValue = {
@@ -42,6 +49,9 @@ const fallbackValue: BoardSelectionValue = {
 	setDockTab: () => undefined,
 	dockOpen: true,
 	setDockOpen: () => undefined,
+	pendingAction: null,
+	requestAction: () => undefined,
+	clearPending: () => undefined,
 };
 
 const BoardSelectionCtx = createContext<BoardSelectionValue | null>(null);
@@ -83,6 +93,7 @@ export function BoardSelectionProvider({
 		useState<FlashSketchPreselect | null>(null);
 	const [dockTab, setDockTab] = useState<DockTab>("console");
 	const [dockOpen, setDockOpen] = useState(true);
+	const [pendingAction, setPendingAction] = useState<BoardAction | null>(null);
 
 	const setUuid = useCallback((next: string) => {
 		const trimmed = next.trim();
@@ -92,6 +103,18 @@ export function BoardSelectionProvider({
 
 	const setFlashSketch = useCallback((next: FlashSketchPreselect | null) => {
 		setFlashSketchState(next);
+	}, []);
+
+	const requestAction = useCallback((action: BoardAction) => {
+		setPendingAction(action);
+		setDockOpen(true);
+		if (action === "flash") {
+			setDockTab("flash");
+		}
+	}, []);
+
+	const clearPending = useCallback(() => {
+		setPendingAction(null);
 	}, []);
 
 	const openCode = useCallback(() => {
@@ -109,8 +132,22 @@ export function BoardSelectionProvider({
 			setDockTab,
 			dockOpen,
 			setDockOpen,
+			pendingAction,
+			requestAction,
+			clearPending,
 		}),
-		[uuid, setUuid, openCode, flashSketch, setFlashSketch, dockTab, dockOpen],
+		[
+			uuid,
+			setUuid,
+			openCode,
+			flashSketch,
+			setFlashSketch,
+			dockTab,
+			dockOpen,
+			pendingAction,
+			requestAction,
+			clearPending,
+		],
 	);
 	return (
 		<BoardSelectionCtx.Provider value={value}>
@@ -125,4 +162,22 @@ export function useBoardSelection(): BoardSelectionValue {
 		return fallbackValue;
 	}
 	return ctx;
+}
+
+export function useArmedAction(
+	action: BoardAction,
+	enabled: boolean,
+	run: () => void,
+) {
+	const { pendingAction, clearPending } = useBoardSelection();
+	const runRef = useRef(run);
+	runRef.current = run;
+
+	useEffect(() => {
+		if (pendingAction !== action || !enabled) {
+			return;
+		}
+		clearPending();
+		runRef.current();
+	}, [action, clearPending, enabled, pendingAction]);
 }
