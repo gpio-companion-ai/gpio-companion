@@ -1633,32 +1633,109 @@ wait_gpio_companion_active() {
 	return 1
 }
 
-install_gpio_companion_bin() {
-	local src=""
-	local can_build=0
-	if command -v bun >/dev/null 2>&1; then
-		if gpio_build_mem_available; then
-			can_build=1
-		else
-			echo "gpio-companion update: low MemAvailable, skipping on-device compile (GPIO_COMPANION_BUILD_MIN_MEM_KB to override)" >&2
+gpio_companion_current_version() {
+	local version=""
+	if gpio_companion_bin_healthy "$BIN_DIR/gpio-companion"; then
+		version="$("$BIN_DIR/gpio-companion" --version 2>/dev/null | tail -n1 | tr -d '[:space:]')"
+	fi
+	if [[ -z "$version" ]]; then
+		version="$(cat "${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}/companion.version" 2>/dev/null || true)"
+	fi
+	printf '%s' "${version:-0.0.0}"
+}
+
+version_newer() {
+	local candidate="$1" current="$2"
+	if [[ -z "$candidate" || -z "$current" || "$candidate" == "$current" ]]; then
+		return 1
+	fi
+	[[ "$(printf '%s\n%s\n' "$candidate" "$current" | sort -V | tail -n1)" == "$candidate" ]]
+}
+
+gpio_github_auth_header() {
+	local token_json token
+	if token_json="$(curl -fsS --max-time 5 "http://127.0.0.1:${GPIO_COMPANION_PORT:-4150}/v1/github-token" 2>/dev/null)"; then
+		token="$(printf '%s' "$token_json" | sed -n 's/.*"token"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+		if [[ -n "$token" ]]; then
+			printf 'Authorization: Bearer %s' "$token"
+			return 0
 		fi
 	fi
-	if [[ "$can_build" -eq 1 ]]; then
-		echo "gpio-companion update: compiling serve binary"
-		(cd "$REPO_ROOT" && bun install)
-		(cd "$REPO_ROOT/binary/gpio-companion" && bun run compile)
-		src="$REPO_ROOT/binary/gpio-companion/dist/gpio-companion"
-	elif [[ -x "$REPO_ROOT/binary/gpio-companion/dist/gpio-companion-linux-arm64" ]]; then
-		src="$REPO_ROOT/binary/gpio-companion/dist/gpio-companion-linux-arm64"
-	elif [[ -x "$REPO_ROOT/binary/gpio-companion/dist/gpio-companion" ]]; then
-		src="$REPO_ROOT/binary/gpio-companion/dist/gpio-companion"
+	return 1
+}
+
+gpio_companion_release_info() {
+	local repo="${GPIO_COMPANION_REPO:-gpio-companion-ai/gpio-companion}"
+	local api="https://api.github.com/repos/$repo/releases/latest"
+	local auth_string="" auth=() json tag url
+	if auth_string="$(gpio_github_auth_header)"; then
+		auth=(-H "$auth_string")
+	fi
+	if ! json="$(curl -fsSL --max-time 20 "${auth[@]}" -H "Accept: application/vnd.github+json" "$api" 2>/dev/null)"; then
+		return 1
+	fi
+	tag="$(printf '%s' "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p')"
+	url="$(printf '%s' "$json" | grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*gpio-companion-linux-arm64"' | head -n1 | sed 's/.*"\(https[^"]*\)".*/\1/')"
+	if [[ -z "$tag" || -z "$url" ]]; then
+		return 1
+	fi
+	printf '%s %s' "${tag#companion-v}" "$url"
+}
+
+install_gpio_companion_bin() {
+	local src="" release_version=""
+	local current release_info release_tag release_url staged
+	local can_build=0
+	current="$(gpio_companion_current_version)"
+	if release_info="$(gpio_companion_release_info)"; then
+		release_tag="${release_info%% *}"
+		release_url="${release_info#* }"
+		if [[ "${FORCE:-0}" -eq 1 ]] || version_newer "$release_tag" "$current"; then
+			staged="$BIN_DIR/.gpio-companion.download.$$"
+			echo "gpio-companion update: downloading companion release $release_tag (installed: $current)"
+			if curl -fL --retry 3 --max-time 600 -o "$staged" "$release_url" \
+				&& chmod 0755 "$staged" \
+				&& "$staged" --version >/dev/null 2>&1; then
+				src="$staged"
+				release_version="$release_tag"
+			else
+				echo "gpio-companion update: release download failed; falling back to local build" >&2
+				rm -f "$staged"
+			fi
+		else
+			echo "gpio-companion update: companion already at release $release_tag"
+		fi
 	else
-		die "gpio-companion binary missing and bun is not installed"
+		echo "gpio-companion update: no companion release available; falling back to local build" >&2
+	fi
+	if [[ -z "$src" ]]; then
+		if command -v bun >/dev/null 2>&1; then
+			if gpio_build_mem_available; then
+				can_build=1
+			else
+				echo "gpio-companion update: low MemAvailable, skipping on-device compile (GPIO_COMPANION_BUILD_MIN_MEM_KB to override)" >&2
+			fi
+		fi
+		if [[ "$can_build" -eq 1 ]]; then
+			echo "gpio-companion update: compiling serve binary"
+			(cd "$REPO_ROOT" && bun install)
+			(cd "$REPO_ROOT/binary/gpio-companion" && bun run compile)
+			src="$REPO_ROOT/binary/gpio-companion/dist/gpio-companion"
+		elif [[ -x "$REPO_ROOT/binary/gpio-companion/dist/gpio-companion-linux-arm64" ]]; then
+			src="$REPO_ROOT/binary/gpio-companion/dist/gpio-companion-linux-arm64"
+		elif [[ -x "$REPO_ROOT/binary/gpio-companion/dist/gpio-companion" ]]; then
+			src="$REPO_ROOT/binary/gpio-companion/dist/gpio-companion"
+		else
+			die "gpio-companion binary missing and bun is not installed"
+		fi
 	fi
 	if [[ ! -x "$src" ]]; then
 		die "gpio-companion binary was not built"
 	fi
 	swap_gpio_companion_bin "$src"
+	if [[ -n "$release_version" ]]; then
+		printf '%s\n' "$release_version" > "${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}/companion.version"
+	fi
 	install_ble_gatt_script
 	install_gpio_pwm
 	install_gpio_host

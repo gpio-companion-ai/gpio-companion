@@ -1,11 +1,14 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
-import { useState } from "react";
+import { isNewerVersion } from "gpio-companion-versions";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Linking, Pressable, Text, View } from "react-native";
 import {
 	type BoardView,
 	deviceDisplayName,
+	fetchCompanionRelease,
 	patchDeviceLabel,
 	startCliLogin,
+	startDeviceUpdate,
 } from "../lib/api.ts";
 import { useAuth } from "../lib/auth.tsx";
 import { useColors } from "../lib/color-mode.tsx";
@@ -47,7 +50,70 @@ export default function BoardCard({
 	const [label, setLabel] = useState(device.label ?? "");
 	const [saving, setSaving] = useState(false);
 	const [open, setOpen] = useState(false);
+	const [releaseVersion, setReleaseVersion] = useState<string | null>(null);
+	const [updateBusy, setUpdateBusy] = useState(false);
+	const [updateNote, setUpdateNote] = useState("");
+	const [updateError, setUpdateError] = useState("");
+	const updateLock = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const expanded = open;
+	const onboardVersion = status?.version?.trim() || "";
+	const updateAvailable = Boolean(
+		releaseVersion && isNewerVersion(releaseVersion, onboardVersion || "0.0.0"),
+	);
+	useEffect(() => {
+		if (!expanded || !online || !auth.token || releaseVersion) {
+			return;
+		}
+		let cancelled = false;
+		fetchCompanionRelease(auth.token)
+			.then((release) => {
+				if (!cancelled) {
+					setReleaseVersion(release.version ?? null);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setReleaseVersion(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [expanded, online, auth.token, releaseVersion]);
+	useEffect(
+		() => () => {
+			if (updateLock.current) {
+				clearTimeout(updateLock.current);
+			}
+		},
+		[],
+	);
+
+	async function runUpdate() {
+		if (!auth.token || !online || updateBusy) {
+			return;
+		}
+		if (updateLock.current) {
+			clearTimeout(updateLock.current);
+			updateLock.current = null;
+		}
+		setUpdateBusy(true);
+		setUpdateNote("");
+		setUpdateError("");
+		try {
+			await startDeviceUpdate(auth.token, device.uuid);
+			setUpdateNote(t("debug.updateStarted"));
+			updateLock.current = setTimeout(() => {
+				setUpdateBusy(false);
+				updateLock.current = null;
+			}, 120_000);
+		} catch (caught) {
+			setUpdateError(
+				caught instanceof Error ? caught.message : "update failed",
+			);
+			setUpdateBusy(false);
+		}
+	}
 	const summaryMeta = [
 		status?.model || status?.hardware || device.uuid.slice(0, 8),
 		networkLabel || "",
@@ -161,6 +227,16 @@ export default function BoardCard({
 						onPress={() => void saveLabel()}
 					/>
 					<Row>
+						<Chip
+							label={
+								onboardVersion
+									? t("devices.companionVersion", { version: onboardVersion })
+									: t("devices.versionUnknown")
+							}
+						/>
+						{updateAvailable ? (
+							<Chip label={t("devices.updateAvailable")} tone="warning" />
+						) : null}
 						{status?.model || status?.hardware ? (
 							<Chip label={status?.model || status?.hardware || ""} />
 						) : null}
@@ -202,6 +278,15 @@ export default function BoardCard({
 							onPress={() => setTab("code")}
 						/>
 						<CliAuthButton uuid={device.uuid} />
+						<TextButton
+							label={
+								updateBusy
+									? t("devices.updatingCompanion")
+									: t("devices.updateCompanion")
+							}
+							disabled={!online || updateBusy}
+							onPress={() => void runUpdate()}
+						/>
 						{!isEasy && onUnpair ? (
 							<TextButton
 								danger
@@ -223,6 +308,12 @@ export default function BoardCard({
 							/>
 						) : null}
 					</Row>
+					{updateNote ? (
+						<Text style={{ color: colors.muted }}>{updateNote}</Text>
+					) : null}
+					{updateError ? (
+						<Text style={{ color: colors.muted }}>{updateError}</Text>
+					) : null}
 				</View>
 			) : null}
 		</Paper>

@@ -1,10 +1,18 @@
+import { version as rootVersion } from "../../../package.json";
+
 export const PACKAGE_NAME = "gpio-companion";
-export const VERSION = "0.0.0";
+export const VERSION = rootVersion;
 export {
 	type CodeSpeechPlayer,
 	CodeSpeechQueue,
 	type CodeSpeechStatus,
 } from "./code-speech.ts";
+export {
+	compareVersions,
+	isNewerVersion,
+	type ParsedVersion,
+	parseVersion,
+} from "./semver.ts";
 
 export function greet(from = PACKAGE_NAME): string {
 	return `hello from ${from}`;
@@ -739,6 +747,7 @@ export {
 	partsSearchBody,
 } from "./jlcpcb-parts.ts";
 export {
+	COMPANION_REPO,
 	capLogText,
 	DEBUG_MAINTENANCE_PATH,
 	DEBUG_MAINTENANCE_TTL_SEC,

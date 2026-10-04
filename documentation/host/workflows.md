@@ -29,6 +29,16 @@ The APK is debug-signed for sideload. iOS is not published until Apple signing i
 
 The live site still deploys from the push to `main` through Cloudflare. The release workflow does not run `wrangler`.
 
+## Ship a companion (board) release
+
+1. Set the root `package.json` `version` (not `0.0.0`) — it is the single source: the onboard binary reports it via `--version` and `/v1/status`
+2. Optional notes: `binary/gpio-companion/release-notes/v<version>.md`
+3. Merge to `main` (or run **Release companion (board binary)** via `workflow_dispatch`)
+4. GitHub Actions cross-compiles the linux-arm64 binary and publishes `companion-v<version>` with the `gpio-companion-linux-arm64` asset
+5. If that tag already exists, the workflow skips (safe rerun)
+
+A hyphen in the version (e.g. `1.2.3-nightly.1`) marks the release as a prerelease; prereleases are never offered to boards — the updater and the dashboard device card follow latest stable only. Boards pull the release asset in `update-script.sh` (smoke-test + backup + atomic swap, legacy on-device build only as fallback). The dashboard device card shows the onboard version next to the latest release and a **New version available** badge with an **Update companion** button (same on web, desktop, and mobile).
+
 ## Ship a dashboard change
 
 1. Implement in `apps/dashboard` (and `packages/core` if signing/BLE envelope changed)

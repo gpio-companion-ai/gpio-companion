@@ -22,6 +22,7 @@ config.resolver.extraNodeModules = {
 	"gpio-companion-jlcpcb": path.join(coreSrc, "jlcpcb-parts.ts"),
 	"gpio-companion-projects": path.join(coreSrc, "project-files.ts"),
 	"gpio-companion-ssh": path.join(coreSrc, "ssh.ts"),
+	"gpio-companion-versions": path.join(coreSrc, "semver.ts"),
 };
 
 module.exports = config;

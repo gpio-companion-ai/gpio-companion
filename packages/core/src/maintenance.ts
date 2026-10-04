@@ -1,5 +1,6 @@
 import { parseLivePingUuid, redactDebugMessage } from "./debug.ts";
 
+export const COMPANION_REPO = "gpio-companion-ai/gpio-companion";
 export const LOGS_PATH = "/v1/logs";
 export const UPDATE_PATH = "/v1/update";
 export const LOGS_MAX_BYTES = 64 * 1024;

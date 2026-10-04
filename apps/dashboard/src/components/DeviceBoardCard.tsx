@@ -1,21 +1,24 @@
+import { GET as loadCompanionRelease } from "@api/companion-release";
+import { POST as startUpdate } from "@api/update";
 import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
 import Typography from "@shpaw415/mui-lite/Typography";
-import type { NetworkStatus } from "gpio-companion";
+import { isNewerVersion, type NetworkStatus } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useBoardSelection } from "../hooks/useBoardSelection.tsx";
 import { useDashboardMode } from "../hooks/useDashboardMode.tsx";
 import { useT } from "../hooks/useLocale.tsx";
-import type { ActionResult } from "../lib/action.ts";
+import { type ActionResult, unwrapAction } from "../lib/action.ts";
 import { deviceDisplayName, type StoredPairing } from "../lib/pairing-store.ts";
 import DeviceCompanionInfo from "./DeviceCompanionInfo.tsx";
 import DeviceLabelField from "./DeviceLabelField.tsx";
 import GpioPanel from "./GpioPanel.tsx";
 
 export type DeviceStatus = {
+	version?: string;
 	hardware?: string;
 	model?: string;
 	tunnel?: { configured?: boolean; apiHostname?: string };
@@ -54,6 +57,76 @@ export default function DeviceBoardCard({
 	const [open, setOpen] = useState(false);
 	const expanded = open;
 	const online = Boolean(status);
+	const [releaseVersion, setReleaseVersion] = useState<string | null>(null);
+	const [releaseUrl, setReleaseUrl] = useState<string | null>(null);
+	const [updateBusy, setUpdateBusy] = useState(false);
+	const [updateNote, setUpdateNote] = useState("");
+	const [updateError, setUpdateError] = useState("");
+	const updateLockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const onboardVersion = status?.version?.trim() || "";
+	const updateAvailable = Boolean(
+		releaseVersion && isNewerVersion(releaseVersion, onboardVersion || "0.0.0"),
+	);
+	useEffect(() => {
+		if (!expanded || !online || releaseVersion) {
+			return;
+		}
+		let cancelled = false;
+		void loadCompanionRelease()
+			.then((result) => {
+				if (cancelled) {
+					return;
+				}
+				const release = unwrapAction(result);
+				setReleaseVersion(release.version ?? null);
+				setReleaseUrl(release.url ?? null);
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setReleaseVersion(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [expanded, online, releaseVersion]);
+	useEffect(
+		() => () => {
+			if (updateLockRef.current) {
+				clearTimeout(updateLockRef.current);
+			}
+		},
+		[],
+	);
+
+	async function runUpdate() {
+		if (!online || updateBusy) {
+			return;
+		}
+		if (updateLockRef.current) {
+			clearTimeout(updateLockRef.current);
+			updateLockRef.current = null;
+		}
+		setUpdateBusy(true);
+		setUpdateNote("");
+		setUpdateError("");
+		try {
+			unwrapAction(await startUpdate(device.uuid));
+			setUpdateNote(t("debug.updateStarted"));
+			updateLockRef.current = setTimeout(() => {
+				setUpdateBusy(false);
+				updateLockRef.current = null;
+			}, 120_000);
+		} catch (caught) {
+			setUpdateError(
+				translateError(
+					t,
+					caught instanceof Error ? caught.message : "update failed",
+				),
+			);
+			setUpdateBusy(false);
+		}
+	}
 	const networkLabel =
 		status?.network?.type === "ethernet"
 			? t("devices.ethernet")
@@ -141,6 +214,25 @@ export default function DeviceBoardCard({
 								onSaved={onLabelSaved}
 							/>
 							<Stack direction="row" spacing={1} className="flex-wrap">
+								<Chip
+									label={
+										onboardVersion
+											? t("devices.companionVersion", {
+													version: onboardVersion,
+												})
+											: t("devices.versionUnknown")
+									}
+									variant="outlined"
+									size="small"
+								/>
+								{updateAvailable ? (
+									<Chip
+										label={t("devices.updateAvailable")}
+										color="warning"
+										variant="outlined"
+										size="small"
+									/>
+								) : null}
 								{status?.model || status?.hardware ? (
 									<Chip
 										label={status?.model || status?.hardware}
@@ -194,6 +286,18 @@ export default function DeviceBoardCard({
 									{t("project.openCode")}
 								</Button>
 								<CliAuthButton uuid={device.uuid} />
+								<Button
+									type="button"
+									variant="outlined"
+									size="small"
+									color={updateAvailable ? "primary" : "secondary"}
+									disabled={!online || updateBusy}
+									onClick={() => void runUpdate()}
+								>
+									{updateBusy
+										? t("devices.updatingCompanion")
+										: t("devices.updateCompanion")}
+								</Button>
 								{!isEasy && onUnpair ? (
 									<Button
 										type="button"
@@ -206,6 +310,21 @@ export default function DeviceBoardCard({
 									</Button>
 								) : null}
 							</Stack>
+							{updateNote ? (
+								<Typography color="secondary">{updateNote}</Typography>
+							) : null}
+							{updateError ? (
+								<Typography color="secondary">
+									{translateError(t, updateError)}
+								</Typography>
+							) : null}
+							{releaseUrl && updateAvailable ? (
+								<Typography color="secondary">
+									<a href={releaseUrl} target="_blank" rel="noreferrer">
+										{releaseVersion}
+									</a>
+								</Typography>
+							) : null}
 						</Stack>
 					</div>
 				) : null}

@@ -58,6 +58,12 @@ export {
 } from "./model-view.ts";
 export { normalizeProjectName } from "./project-files.ts";
 export {
+	compareVersions,
+	isNewerVersion,
+	type ParsedVersion,
+	parseVersion,
+} from "./semver.ts";
+export {
 	asSshWsError,
 	isSshChunk,
 	isSshPath,

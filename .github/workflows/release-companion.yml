@@ -1,0 +1,114 @@
+name: Release companion (board binary)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-companion-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  companion-version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      release: ${{ steps.meta.outputs.release }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if [ "$VERSION" = "0.0.0" ]; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$VERSION" == *-* ]]; then
+            echo "prerelease=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "prerelease=false" >> "$GITHUB_OUTPUT"
+          fi
+          if gh release view "companion-v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  companion-publish:
+    needs: companion-version
+    if: needs.companion-version.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.0"
+
+      - name: install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: cross-compile linux-arm64 binary
+        working-directory: binary/gpio-companion
+        run: bun run compile:linux-arm64
+
+      - name: verify embedded version
+        env:
+          VERSION: ${{ needs.companion-version.outputs.version }}
+        run: |
+          BIN="binary/gpio-companion/dist/gpio-companion-linux-arm64"
+          if [ ! -f "$BIN" ]; then
+            echo "companion binary missing: $BIN" >&2
+            exit 1
+          fi
+          if ! grep -qa "$VERSION" "$BIN"; then
+            echo "binary does not embed version $VERSION" >&2
+            exit 1
+          fi
+
+      - name: publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.companion-version.outputs.version }}
+          PRERELEASE: ${{ needs.companion-version.outputs.prerelease }}
+        run: |
+          BIN="binary/gpio-companion/dist/gpio-companion-linux-arm64"
+          ASSET="$RUNNER_TEMP/gpio-companion-linux-arm64"
+          cp "$BIN" "$ASSET"
+          NOTES="$RUNNER_TEMP/companion-notes.md"
+          FILE="binary/gpio-companion/release-notes/v${VERSION}.md"
+          if [ -s "$FILE" ]; then
+            cp "$FILE" "$NOTES"
+          else
+            {
+              echo "gpio-companion companion v${VERSION}"
+              echo
+              echo "Self-contained linux-arm64 board binary (Orange Pi / Raspberry Pi). Boards install it through the companion update flow; \`--version\` prints \`${VERSION}\`."
+              echo
+              git log -20 --pretty=format:'- %s' -- binary/gpio-companion packages/core native scripts package.json
+              echo
+            } > "$NOTES"
+          fi
+          FLAGS=()
+          if [ "$PRERELEASE" = "true" ]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "companion-v${VERSION}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "gpio-companion companion v${VERSION}" \
+            --notes-file "$NOTES" \
+            "${FLAGS[@]}" \
+            "$ASSET"

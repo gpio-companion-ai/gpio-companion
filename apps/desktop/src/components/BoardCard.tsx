@@ -9,14 +9,17 @@ import Paper from "@shpaw415/mui-lite/Paper";
 import Stack from "@shpaw415/mui-lite/Stack";
 import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
+import { isNewerVersion } from "gpio-companion";
 import { translateError } from "gpio-companion-i18n";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	type BoardView,
 	deviceDisplayName,
+	fetchCompanionRelease,
 	openExternal,
 	patchDeviceLabel,
 	startCliLogin,
+	startDeviceUpdate,
 } from "../api";
 import { formatNetworkLabel } from "../device-info";
 import { useBoardSelection } from "../hooks/useBoardSelection";
@@ -78,6 +81,71 @@ export default function BoardCard({
 	const [open, setOpen] = useState(false);
 	const [confirmUnpair, setConfirmUnpair] = useState(false);
 	const expanded = open;
+	const [releaseVersion, setReleaseVersion] = useState<string | null>(null);
+	const [releaseUrl, setReleaseUrl] = useState<string | null>(null);
+	const [updateBusy, setUpdateBusy] = useState(false);
+	const [updateNote, setUpdateNote] = useState("");
+	const [updateError, setUpdateError] = useState("");
+	const updateLockRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+	const onboardVersion = status?.version?.trim() || "";
+	const updateAvailable = Boolean(
+		releaseVersion && isNewerVersion(releaseVersion, onboardVersion || "0.0.0"),
+	);
+	useEffect(() => {
+		if (!expanded || !online || releaseVersion) {
+			return;
+		}
+		let cancelled = false;
+		fetchCompanionRelease()
+			.then((release) => {
+				if (!cancelled) {
+					setReleaseVersion(release.version ?? null);
+					setReleaseUrl(release.url ?? null);
+				}
+			})
+			.catch(() => {
+				if (!cancelled) {
+					setReleaseVersion(null);
+				}
+			});
+		return () => {
+			cancelled = true;
+		};
+	}, [expanded, online, releaseVersion]);
+	useEffect(
+		() => () => {
+			if (updateLockRef.current) {
+				clearTimeout(updateLockRef.current);
+			}
+		},
+		[],
+	);
+
+	async function runUpdate() {
+		if (!online || updateBusy) {
+			return;
+		}
+		if (updateLockRef.current) {
+			clearTimeout(updateLockRef.current);
+			updateLockRef.current = null;
+		}
+		setUpdateBusy(true);
+		setUpdateNote("");
+		setUpdateError("");
+		try {
+			await startDeviceUpdate(device.uuid);
+			setUpdateNote(t("debug.updateStarted"));
+			updateLockRef.current = setTimeout(() => {
+				setUpdateBusy(false);
+				updateLockRef.current = null;
+			}, 120_000);
+		} catch (caught) {
+			setUpdateError(
+				caught instanceof Error ? caught.message : "update failed",
+			);
+			setUpdateBusy(false);
+		}
+	}
 
 	async function saveLabel() {
 		setSaving(true);
@@ -178,6 +246,25 @@ export default function BoardCard({
 								spacing={1}
 								sx={{ flexWrap: "wrap", gap: 1 }}
 							>
+								<Chip
+									label={
+										onboardVersion
+											? t("devices.companionVersion", {
+													version: onboardVersion,
+												})
+											: t("devices.versionUnknown")
+									}
+									variant="outlined"
+									size="small"
+								/>
+								{updateAvailable ? (
+									<Chip
+										label={t("devices.updateAvailable")}
+										color="warning"
+										variant="outlined"
+										size="small"
+									/>
+								) : null}
 								{status?.model || status?.hardware ? (
 									<Chip
 										label={status?.model || status?.hardware}
@@ -235,6 +322,16 @@ export default function BoardCard({
 									{t("project.openCode")}
 								</Button>
 								<CliAuthButton uuid={device.uuid} />
+								<Button
+									variant="outlined"
+									size="small"
+									disabled={!online || updateBusy}
+									onClick={() => void runUpdate()}
+								>
+									{updateBusy
+										? t("devices.updatingCompanion")
+										: t("devices.updateCompanion")}
+								</Button>
 								{!isEasy && onUnpair ? (
 									<Button
 										color="error"
@@ -246,6 +343,23 @@ export default function BoardCard({
 									</Button>
 								) : null}
 							</Stack>
+							{updateNote ? (
+								<Typography color="secondary">{updateNote}</Typography>
+							) : null}
+							{updateError ? (
+								<Typography color="secondary">
+									{translateError(t, updateError)}
+								</Typography>
+							) : null}
+							{releaseUrl && updateAvailable ? (
+								<Button
+									variant="text"
+									size="small"
+									onClick={() => void openExternal(releaseUrl)}
+								>
+									{releaseVersion}
+								</Button>
+							) : null}
 						</Stack>
 					</div>
 				) : null}

@@ -108,6 +108,12 @@ server_needs_build() {
 	if [[ "$FORCE" -eq 1 ]]; then
 		return 0
 	fi
+	local release_info
+	if release_info="$(gpio_companion_release_info)"; then
+		if version_newer "${release_info%% *}" "$(gpio_companion_current_version)"; then
+			return 0
+		fi
+	fi
 	if [[ "$bin_rev" != "$after" ]]; then
 		paths_changed '^(binary/gpio-companion/|packages/core/|native/gpio-pwm/|native/gpio-host/|native/arduino-proxy/|scripts/systemd/gpio-companion\.service|package\.json|bun\.lock)' "$bin_rev"
 		return

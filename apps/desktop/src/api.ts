@@ -439,6 +439,7 @@ export function onBleStatus(
 }
 
 export type DeviceStatus = {
+	version?: string;
 	hardware?: string;
 	model?: string;
 	tunnel?: { configured?: boolean; apiHostname?: string };
@@ -1412,6 +1413,13 @@ export function startDeviceUpdate(uuid: string) {
 	return apiRequest<{ started: boolean }>("POST", "/api/mobile/update", {
 		uuid,
 	});
+}
+
+export function fetchCompanionRelease() {
+	return apiRequest<{ version: string | null; url: string | null }>(
+		"GET",
+		"/api/mobile/companion-release",
+	);
 }
 
 export function listAdminDevices() {

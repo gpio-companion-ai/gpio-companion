@@ -1,7 +1,7 @@
 {
 	"name": "gpio-companion-monorepo",
 	"private": true,
-	"version": "0.0.0",
+	"version": "1.0.0",
 	"packageManager": "bun@1.4.0",
 	"description": "On-device GPIO AI coworker — Armbian, tscircuit, GitHub, Bun, Arduino C",
 	"repository": {

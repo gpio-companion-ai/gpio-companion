@@ -1520,6 +1520,7 @@ export async function handleDeviceRequest(
 		const disk = extras?.readDisk ? extras.readDisk() : null;
 		const network = extras?.readNetwork ? extras.readNetwork() : null;
 		return json({
+			version: VERSION,
 			hardware: config.hardware,
 			model: readBoardModel(),
 			tunnel: {

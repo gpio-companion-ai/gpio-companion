@@ -553,6 +553,11 @@ export const fr = {
 		ethernet: "Ethernet",
 		wifiSsid: "WiFi · {ssid}",
 		pairedDevice: "Appareil associé",
+		companionVersion: "Compagnon {version}",
+		versionUnknown: "version inconnue",
+		updateAvailable: "Nouvelle version disponible",
+		updateCompanion: "Mettre à jour le compagnon",
+		updatingCompanion: "Mise à jour…",
 	},
 	pair: {
 		title: "Associer une carte",

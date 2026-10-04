@@ -169,6 +169,7 @@ export type Device = {
 };
 
 export type DeviceStatus = {
+	version?: string;
 	hardware?: string;
 	model?: string;
 	tunnel?: { configured?: boolean; apiHostname?: string };
@@ -1377,6 +1378,13 @@ export function startDeviceUpdate(token: string, uuid: string) {
 		method: "POST",
 		body: JSON.stringify({ uuid }),
 	});
+}
+
+export function fetchCompanionRelease(token: string) {
+	return request<{ version: string | null; url: string | null }>(
+		token,
+		"/api/mobile/companion-release",
+	);
 }
 
 export function listAdminDevices(token: string) {

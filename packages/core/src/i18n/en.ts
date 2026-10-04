@@ -539,6 +539,11 @@ export const en = {
 		ethernet: "Ethernet",
 		wifiSsid: "WiFi · {ssid}",
 		pairedDevice: "Paired device",
+		companionVersion: "Companion {version}",
+		versionUnknown: "version unknown",
+		updateAvailable: "New version available",
+		updateCompanion: "Update companion",
+		updatingCompanion: "Updating…",
 	},
 	pair: {
 		title: "Pair a board",
