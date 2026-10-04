@@ -478,6 +478,10 @@ describe("app http api", () => {
 	test("frame with a bad token or foreign origin is refused", async () => {
 		const bad = await fetch(`${api.url}v1/app/led-panel/${"b".repeat(43)}/`);
 		expect(bad.status).toBe(403);
+		expect(bad.headers.get("access-control-allow-origin")).toBe("*");
+		await expect(bad.json()).resolves.toMatchObject({
+			error: expect.stringContaining("token"),
+		});
 		const grant = apiApp.mint("led-panel");
 		const foreign = await fetch(`${api.url}v1/app/led-panel/${grant.token}/`, {
 			headers: { origin: "https://evil.example" },

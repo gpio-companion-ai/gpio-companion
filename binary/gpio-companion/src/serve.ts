@@ -725,13 +725,19 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					console.error(`gpio-companion app: unauthorized origin ${origin}`);
 					return Response.json(
 						{ error: "unauthorized app origin" },
-						{ status: 401 },
+						{
+							status: 401,
+							headers: { "access-control-allow-origin": "*" },
+						},
 					);
 				}
 				if (!extras.app) {
 					return Response.json(
 						{ error: "app is unavailable" },
-						{ status: 503 },
+						{
+							status: 503,
+							headers: { "access-control-allow-origin": "*" },
+						},
 					);
 				}
 				if (upgrade === "websocket") {
@@ -754,7 +760,13 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 						const message =
 							error instanceof Error ? error.message : "app frame failed";
 						const status = error instanceof AppError ? error.status : 400;
-						return Response.json({ error: message }, { status });
+						return Response.json(
+							{ error: message },
+							{
+								status,
+								headers: { "access-control-allow-origin": "*" },
+							},
+						);
 					}
 				}
 				try {
@@ -763,10 +775,19 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 					if (error instanceof AppError) {
 						return Response.json(
 							{ error: error.message },
-							{ status: error.status },
+							{
+								status: error.status,
+								headers: { "access-control-allow-origin": "*" },
+							},
 						);
 					}
-					return Response.json({ error: "app frame failed" }, { status: 502 });
+					return Response.json(
+						{ error: "app frame failed" },
+						{
+							status: 502,
+							headers: { "access-control-allow-origin": "*" },
+						},
+					);
 				}
 			}
 			let response: Response;
