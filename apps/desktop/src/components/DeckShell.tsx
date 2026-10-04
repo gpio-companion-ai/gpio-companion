@@ -254,6 +254,26 @@ export default function DeckShell({
 		},
 	});
 
+	// Code explorer "Open in full screen" routes through the same app dialog
+	// as the ui socket `app --view page` command.
+	useEffect(() => {
+		function onUiAppPage(event: Event) {
+			const detail = (
+				event as CustomEvent<{ appId?: unknown; title?: unknown }>
+			).detail;
+			if (!detail || typeof detail.appId !== "string" || !detail.appId) {
+				return;
+			}
+			setUiApp({
+				appId: detail.appId,
+				title: typeof detail.title === "string" ? detail.title : detail.appId,
+				full: true,
+			});
+		}
+		window.addEventListener("gpio-ui-app-page", onUiAppPage);
+		return () => window.removeEventListener("gpio-ui-app-page", onUiAppPage);
+	}, []);
+
 	function closeUiModal(action: string) {
 		if (!uiModal) {
 			return;

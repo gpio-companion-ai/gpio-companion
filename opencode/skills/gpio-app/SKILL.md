@@ -148,9 +148,11 @@ gpio-companion app start --repo blink-led --dir thermostat
 - **One app at a time.** A second `app start` returns 409 until
   `gpio-companion app stop`.
 - The user can also start/stop the app from the dashboard without you:
-  **Project → Custom server** (pick the app, Start server, Open), and the
-  dock actions tab has **Stop custom server**. If the user started it, just
-  open it with `ui app`.
+  **Project → Custom server** (pick the app, Start server, Open), the
+  dock actions tab has **Stop custom server**, and in the Code page file
+  explorer a long-press / right-click on the app's `app/<name>` folder offers
+  Start app, Stop app, Open in preview, and Open in full screen. If the user
+  started it, just open it with `ui app`.
 
 Then open it for the user (skill `gpio-ui`; check `ui list` first — when no
 app is open, say so once and move on):

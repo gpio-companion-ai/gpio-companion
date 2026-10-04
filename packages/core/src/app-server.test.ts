@@ -9,6 +9,7 @@ import {
 	appFrameUrl,
 	appFrameWsUrl,
 	appNameFromMintPath,
+	boardAppDirFromPath,
 	capAppLog,
 	isAppFrameMintPath,
 	isAppManagePath,
@@ -61,6 +62,18 @@ describe("app names and tokens", () => {
 		expect(isAppPort(4599)).toBe(false);
 		expect(isAppPort(4620)).toBe(false);
 		expect(isAppPort(4600.5)).toBe(false);
+	});
+
+	test("boardAppDirFromPath matches app/<name> dirs only", () => {
+		expect(boardAppDirFromPath("app/led-panel")).toBe("led-panel");
+		expect(boardAppDirFromPath("app/thermostat")).toBe("thermostat");
+		expect(boardAppDirFromPath("app/led-panel/server.ts")).toBeNull();
+		expect(boardAppDirFromPath("app")).toBeNull();
+		expect(boardAppDirFromPath("app/")).toBeNull();
+		expect(boardAppDirFromPath("host/blink")).toBeNull();
+		expect(boardAppDirFromPath("apps/led")).toBeNull();
+		expect(boardAppDirFromPath("app/Led")).toBeNull();
+		expect(boardAppDirFromPath("app/start")).toBeNull();
 	});
 });
 

@@ -17,6 +17,7 @@
 		"baseUrl": ".",
 		"paths": {
 			"gpio-companion": ["../../packages/core/src/breadboard-view.ts"],
+			"gpio-companion-app": ["../../packages/core/src/app-server.ts"],
 			"gpio-companion-ui": ["../../packages/core/src/ui.ts"],
 			"gpio-companion-i18n": ["../../packages/core/src/i18n/index.ts"],
 			"gpio-companion-wifi": ["../../packages/core/src/wifi.ts"],

@@ -8,6 +8,7 @@
 			"openauthster": ["./modules/openauthster/index.ts"],
 			"gpio-companion-i18n": ["../../packages/core/src/i18n/index.ts"],
 			"gpio-companion-ui": ["../../packages/core/src/ui.ts"],
+			"gpio-companion-app": ["../../packages/core/src/app-server.ts"],
 			"gpio-companion-embed": ["../../packages/core/src/breadboard-embed.ts"],
 			"gpio-companion-model": ["../../packages/core/src/model-view.ts"],
 			"gpio-companion-wifi": ["../../packages/core/src/wifi.ts"],

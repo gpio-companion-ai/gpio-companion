@@ -1260,6 +1260,13 @@ export const fr = {
 		appClose: "Fermer",
 		appMissing:
 			"Cette appli de la carte ne tourne pas. Demandez à l’agent de la démarrer.",
+		appStart: "Démarrer l’appli",
+		appStop: "Arrêter l’appli",
+		appOpenPreview: "Ouvrir en aperçu",
+		appOpenFullscreen: "Ouvrir en plein écran",
+		appStartingNote: "Démarrage de l’appli…",
+		appStartedNote: "Appli démarrée sur la carte",
+		appStoppedNote: "Appli arrêtée",
 		blockedComposer:
 			"Répondez ci-dessus pour continuer — l’envoi est en pause.",
 		attach: "Joindre un fichier",

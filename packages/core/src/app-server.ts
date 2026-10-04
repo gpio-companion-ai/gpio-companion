@@ -80,6 +80,15 @@ export function isAppName(value: string): boolean {
 	);
 }
 
+export function boardAppDirFromPath(path: string): string | null {
+	const segments = path.split("/");
+	if (segments.length !== 2 || segments[0] !== "app") {
+		return null;
+	}
+	const dir = segments[1] ?? "";
+	return isAppName(dir) ? dir : null;
+}
+
 export function isValidAppToken(value: string): boolean {
 	return value.length >= APP_TOKEN_MIN_LENGTH && APP_TOKEN_PATTERN.test(value);
 }

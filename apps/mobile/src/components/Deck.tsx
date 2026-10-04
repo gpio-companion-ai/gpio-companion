@@ -422,6 +422,31 @@ function DeckFrame({ children }: { children: ReactNode }) {
 		command.run();
 	};
 
+	// Code explorer "Open in full screen" routes through the same app modal
+	// as the ui socket `app --view page` command.
+	useEffect(() => {
+		const subscription = DeviceEventEmitter.addListener(
+			"gpio-ui-app-page",
+			(payload: unknown) => {
+				const detail =
+					payload && typeof payload === "object"
+						? (payload as { appId?: unknown; title?: unknown })
+						: undefined;
+				if (!detail || typeof detail.appId !== "string" || !detail.appId) {
+					return;
+				}
+				setUiApp({
+					appId: detail.appId,
+					title: typeof detail.title === "string" ? detail.title : detail.appId,
+					full: true,
+				});
+			},
+		);
+		return () => {
+			subscription.remove();
+		};
+	}, []);
+
 	useEffect(() => {
 		Animated.timing(drawerX, {
 			toValue: drawerOpen ? 0 : -drawerWidth,

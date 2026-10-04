@@ -316,6 +316,8 @@ export default function Code() {
 		closeApp: () => undefined,
 	});
 	const previewPending = useRef<{ repo: string; path: string } | null>(null);
+	const appPending = useRef<{ appId: string; title: string } | null>(null);
+	const [appPendingTick, setAppPendingTick] = useState(0);
 	const repoRef = useRef(repo);
 	repoRef.current = repo;
 	const reposRef = useRef(repos);
@@ -629,9 +631,26 @@ export default function Code() {
 		if (!appId) {
 			return;
 		}
+		// ProjectFiles mounts with the files pane, so the bridge is a no-op
+		// stub until then; park the request and apply it from the effect below
+		// once the pane (and the real bridge) exists.
+		appPending.current = { appId, title: title || appId };
 		setPane("files");
-		filesBridge.current.openApp(appId, title);
+		setAppPendingTick((tick) => tick + 1);
 	}
+
+	// biome-ignore lint/correctness/useExhaustiveDependencies: apply once the files pane has mounted ProjectFiles with the real bridge
+	useEffect(() => {
+		if (pane !== "files") {
+			return;
+		}
+		const pending = appPending.current;
+		if (!pending) {
+			return;
+		}
+		appPending.current = null;
+		filesBridge.current.openApp(pending.appId, pending.title);
+	}, [pane, selected, repo, appPendingTick]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: shell event wiring mounts once
 	useEffect(() => {

@@ -15,6 +15,10 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/breadboard-view.ts",
 			),
+			"gpio-companion-app": path.resolve(
+				repoRoot,
+				"packages/core/src/app-server.ts",
+			),
 			"gpio-companion-ui": path.resolve(repoRoot, "packages/core/src/ui.ts"),
 			"gpio-companion-i18n": path.resolve(
 				repoRoot,

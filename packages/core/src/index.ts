@@ -98,6 +98,7 @@ export {
 	appNameFromMintPath,
 	type BoardApp,
 	type BoardAppList,
+	boardAppDirFromPath,
 	capAppLog,
 	isAppFrameMintPath,
 	isAppManagePath,

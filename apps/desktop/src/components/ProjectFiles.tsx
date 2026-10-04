@@ -1,4 +1,5 @@
 import { BREADBOARD_DIAGRAM_JSON } from "gpio-companion";
+import { boardAppDirFromPath } from "gpio-companion-app";
 import {
 	codeAttachFileName,
 	codeAttachKind,
@@ -38,6 +39,8 @@ import {
 import { createPortal } from "react-dom";
 import {
 	listBoardFiles,
+	loadAppStatus,
+	loadBoardApps,
 	loadFlashSketches,
 	loadRun,
 	loadRunSketches,
@@ -46,7 +49,9 @@ import {
 	removeBoardFile,
 	renameBoardFile,
 	signBoardFilesLive,
+	startApp,
 	startRun,
+	stopApp,
 	stopRun,
 	uploadBoardFile,
 	writeBoardFile,
@@ -79,6 +84,14 @@ type SketchProbe = {
 	phase: "loading" | "ready" | "unavailable";
 	dir: string;
 	running: boolean;
+};
+
+type AppProbe = {
+	phase: "loading" | "ready" | "unavailable";
+	dir: string;
+	appId: string;
+	running: boolean;
+	otherRunning: boolean;
 };
 
 type ContextMenuItem = {
@@ -156,6 +169,8 @@ export default function ProjectFiles({
 	const fileMenuRef = useRef<HTMLDivElement | null>(null);
 	const [sketchProbe, setSketchProbe] = useState<SketchProbe | null>(null);
 	const sketchActionId = useRef(0);
+	const [appProbe, setAppProbe] = useState<AppProbe | null>(null);
+	const appProbeId = useRef(0);
 	const [dropDir, setDropDir] = useState<string | null>(null);
 	const [picked, setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
@@ -537,6 +552,25 @@ export default function ProjectFiles({
 		const left = Math.max(8, Math.min(x, window.innerWidth - 228));
 		const top = Math.max(8, Math.min(y, window.innerHeight - 96));
 		setFileMenu({ path, x: left, y: top });
+		const appDir = boardAppDirFromPath(path);
+		if (appDir) {
+			setSketchProbe({
+				kind: null,
+				phase: "unavailable",
+				dir: "",
+				running: false,
+			});
+			const id = ++appProbeId.current;
+			setAppProbe({
+				phase: "loading",
+				dir: appDir,
+				appId: "",
+				running: false,
+				otherRunning: false,
+			});
+			void loadAppProbe(id, appDir);
+			return;
+		}
 		const id = ++sketchActionId.current;
 		const runName = sketchNameFromPath("host", path);
 		const flashName = sketchNameFromPath("firmware", path);
@@ -626,6 +660,104 @@ export default function ProjectFiles({
 			setNote(shownError(caught instanceof Error ? caught.message : ""));
 		} finally {
 			setBusy("");
+		}
+	}
+
+	async function loadAppProbe(id: number, dir: string) {
+		const unavailable: AppProbe = {
+			phase: "unavailable",
+			dir: "",
+			appId: "",
+			running: false,
+			otherRunning: false,
+		};
+		try {
+			const [listed, status] = await Promise.all([
+				loadBoardApps(uuid).catch(() => null),
+				loadAppStatus(uuid).catch(() => null),
+			]);
+			if (appProbeId.current !== id) {
+				return;
+			}
+			const entry =
+				listed?.apps.find(
+					(item) => item.project === name && item.dir === dir,
+				) ?? null;
+			if (!entry) {
+				setAppProbe(unavailable);
+				return;
+			}
+			const runningName = status?.running && status.name ? status.name : "";
+			setAppProbe({
+				phase: "ready",
+				dir,
+				appId: entry.name,
+				running: runningName === entry.name,
+				otherRunning: Boolean(runningName) && runningName !== entry.name,
+			});
+		} catch {
+			if (appProbeId.current === id) {
+				setAppProbe(unavailable);
+			}
+		}
+	}
+
+	function closeAppMenu() {
+		setFileMenu(null);
+	}
+
+	async function startBoardApp(dir: string, appId: string) {
+		closeAppMenu();
+		if (!uuid || !name) {
+			return;
+		}
+		setBusy("app");
+		try {
+			await startApp({ uuid, repo: name, dir });
+			setNote("");
+			setSaved(t("code.appStartedNote"));
+			if (appId) {
+				openApp(appId, appId);
+			}
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function stopBoardApp() {
+		closeAppMenu();
+		if (!uuid) {
+			return;
+		}
+		setBusy("app");
+		try {
+			await stopApp(uuid);
+			setNote("");
+			setSaved(t("code.appStoppedNote"));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	function openAppFullscreen(appId: string) {
+		closeAppMenu();
+		if (!appId) {
+			return;
+		}
+		try {
+			window.dispatchEvent(
+				new CustomEvent("gpio-ui-app-page", {
+					detail: { appId, title: appId },
+				}),
+			);
+		} catch {
+			undefined;
 		}
 	}
 
@@ -1258,6 +1390,70 @@ export default function ProjectFiles({
 	);
 
 	function fileMenuItems(path: string): ContextMenuItem[] {
+		const appDir = boardAppDirFromPath(path);
+		if (appDir) {
+			const probe = appProbe;
+			const readyProbe =
+				probe && probe.phase === "ready" && probe.dir === appDir ? probe : null;
+			const running = Boolean(readyProbe?.running);
+			const actionBusy = busy === "app";
+			return [
+				{
+					key: "app-start",
+					label: t("code.appStart"),
+					icon: <PlayIcon />,
+					disabled:
+						!readyProbe ||
+						actionBusy ||
+						readyProbe.running ||
+						readyProbe.otherRunning,
+					onSelect: () => {
+						if (!readyProbe) {
+							return;
+						}
+						void startBoardApp(appDir, readyProbe.appId);
+					},
+				},
+				{
+					key: "app-stop",
+					label: t("code.appStop"),
+					icon: <StopSketchIcon />,
+					disabled: !running || actionBusy,
+					onSelect: () => {
+						if (!readyProbe?.running) {
+							return;
+						}
+						void stopBoardApp();
+					},
+				},
+				{
+					key: "app-preview",
+					label: t("code.appOpenPreview"),
+					icon: <AppPreviewIcon />,
+					disabled: !running,
+					separatorBefore: true,
+					onSelect: () => {
+						if (!readyProbe) {
+							return;
+						}
+						closeAppMenu();
+						openApp(readyProbe.appId, readyProbe.appId);
+					},
+				},
+				{
+					key: "app-full",
+					label: t("code.appOpenFullscreen"),
+					icon: <FullscreenIcon />,
+					disabled: !running,
+					onSelect: () => {
+						if (!readyProbe) {
+							return;
+						}
+						openAppFullscreen(readyProbe.appId);
+					},
+				},
+			];
+		}
 		const items: ContextMenuItem[] = [];
 		const probe = sketchProbe;
 		const runReady = probe?.kind === "run" && probe.phase === "ready";
@@ -1494,6 +1690,34 @@ function FlashSketchIcon() {
 	);
 }
 
+function AppPreviewIcon() {
+	return (
+		<svg
+			viewBox="0 0 16 16"
+			aria-hidden="true"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.3"
+		>
+			<path d="M2 3.5h12v9H2zM2 6h12M4.2 4.8h.01M6.2 4.8h.01" />
+		</svg>
+	);
+}
+
+function FullscreenIcon() {
+	return (
+		<svg
+			viewBox="0 0 16 16"
+			aria-hidden="true"
+			fill="none"
+			stroke="currentColor"
+			strokeWidth="1.3"
+		>
+			<path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" />
+		</svg>
+	);
+}
+
 function RefreshIcon() {
 	return (
 		<svg viewBox="0 0 16 16" aria-hidden="true">
@@ -1564,6 +1788,7 @@ function TreeRows({
 	const suppressMenu = useRef(false);
 	const open = node.type === "dir" && openDirs.has(node.path);
 	const target = node.type === "dir" ? node.path : parentDir(node.path);
+	const appDir = node.type === "dir" ? boardAppDirFromPath(node.path) : null;
 	return (
 		<>
 			{renaming === node.path ? (
@@ -1609,13 +1834,13 @@ function TreeRows({
 							return;
 						}
 						window.clearTimeout(hold.current);
-						if (node.type === "dir") {
+						if (node.type === "dir" && !appDir) {
 							return;
 						}
 						onFileMenu(node.path, event.clientX, event.clientY);
 					}}
 					onPointerDown={(event) => {
-						if (node.type === "dir" || event.button !== 0) {
+						if ((node.type === "dir" && !appDir) || event.button !== 0) {
 							return;
 						}
 						held.current = false;

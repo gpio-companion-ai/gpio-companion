@@ -2,6 +2,7 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import * as DocumentPicker from "expo-document-picker";
 import { File } from "expo-file-system";
 import { router } from "expo-router";
+import { boardAppDirFromPath } from "gpio-companion-app";
 import {
 	codeAttachFileName,
 	codeAttachKind,
@@ -37,6 +38,7 @@ import { findSketchByName, sketchNameFromPath } from "gpio-companion-sketches";
 import { useEffect, useRef, useState } from "react";
 import {
 	Alert,
+	DeviceEventEmitter,
 	Modal,
 	Pressable,
 	ScrollView,
@@ -47,6 +49,8 @@ import {
 import { WebView } from "react-native-webview";
 import {
 	listBoardFiles,
+	loadAppStatus,
+	loadBoardApps,
 	loadFlashSketches,
 	loadRun,
 	loadRunSketches,
@@ -55,7 +59,9 @@ import {
 	removeBoardFile,
 	renameBoardFile,
 	signBoardFilesLive,
+	startApp,
 	startRun,
+	stopApp,
 	stopRun,
 	uploadBoardFile,
 	writeBoardFile,
@@ -102,6 +108,14 @@ type SketchProbe = {
 	phase: "loading" | "ready" | "unavailable";
 	dir: string;
 	running: boolean;
+};
+
+type AppProbe = {
+	phase: "loading" | "ready" | "unavailable";
+	dir: string;
+	appId: string;
+	running: boolean;
+	otherRunning: boolean;
 };
 
 export type CodeFilesBridge = {
@@ -157,6 +171,8 @@ export default function ProjectFiles({
 	} | null>(null);
 	const [sketchProbe, setSketchProbe] = useState<SketchProbe | null>(null);
 	const sketchActionId = useRef(0);
+	const [appProbe, setAppProbe] = useState<AppProbe | null>(null);
+	const appProbeId = useRef(0);
 	const [picked, _setPicked] = useState<ExplorerPick | null>(null);
 	const [creating, setCreating] = useState<string | null>(null);
 	const [renaming, setRenaming] = useState("");
@@ -586,6 +602,25 @@ export default function ProjectFiles({
 
 	function openFileMenu(path: string, x: number, y: number) {
 		setFileMenu({ path, x, y });
+		const appDir = boardAppDirFromPath(path);
+		if (appDir) {
+			setSketchProbe({
+				kind: null,
+				phase: "unavailable",
+				dir: "",
+				running: false,
+			});
+			const id = ++appProbeId.current;
+			setAppProbe({
+				phase: "loading",
+				dir: appDir,
+				appId: "",
+				running: false,
+				otherRunning: false,
+			});
+			void loadAppProbe(id, appDir);
+			return;
+		}
 		const id = ++sketchActionId.current;
 		const runName = sketchNameFromPath("host", path);
 		const flashName = sketchNameFromPath("firmware", path);
@@ -688,6 +723,102 @@ export default function ProjectFiles({
 		} finally {
 			setBusy("");
 		}
+	}
+
+	async function loadAppProbe(id: number, dir: string) {
+		const unavailable: AppProbe = {
+			phase: "unavailable",
+			dir: "",
+			appId: "",
+			running: false,
+			otherRunning: false,
+		};
+		if (!token || !uuid) {
+			if (appProbeId.current === id) {
+				setAppProbe(unavailable);
+			}
+			return;
+		}
+		try {
+			const [listed, status] = await Promise.all([
+				loadBoardApps(token, uuid).catch(() => null),
+				loadAppStatus(token, uuid).catch(() => null),
+			]);
+			if (appProbeId.current !== id) {
+				return;
+			}
+			const entry =
+				listed?.apps.find(
+					(item) => item.project === name && item.dir === dir,
+				) ?? null;
+			if (!entry) {
+				setAppProbe(unavailable);
+				return;
+			}
+			const runningName = status?.running && status.name ? status.name : "";
+			setAppProbe({
+				phase: "ready",
+				dir,
+				appId: entry.name,
+				running: runningName === entry.name,
+				otherRunning: Boolean(runningName) && runningName !== entry.name,
+			});
+		} catch {
+			if (appProbeId.current === id) {
+				setAppProbe(unavailable);
+			}
+		}
+	}
+
+	function closeAppMenu() {
+		setFileMenu(null);
+	}
+
+	async function startBoardApp(dir: string, appId: string) {
+		closeAppMenu();
+		if (!token || !uuid || !name) {
+			return;
+		}
+		setBusy("app");
+		try {
+			await startApp(token, { uuid, repo: name, dir });
+			setNote("");
+			setSaved(t("code.appStartedNote"));
+			if (appId) {
+				openApp(appId, appId);
+			}
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	async function stopBoardApp() {
+		closeAppMenu();
+		if (!token || !uuid) {
+			return;
+		}
+		setBusy("app");
+		try {
+			await stopApp(token, uuid);
+			setNote("");
+			setSaved(t("code.appStoppedNote"));
+		} catch (caught) {
+			setSaved("");
+			setNote(shownError(caught instanceof Error ? caught.message : ""));
+		} finally {
+			setBusy("");
+		}
+	}
+
+	function openAppFullscreen(appId: string) {
+		closeAppMenu();
+		if (!appId) {
+			return;
+		}
+		DeviceEventEmitter.emit("gpio-ui-app-page", { appId, title: appId });
 	}
 
 	function flashSketchFromMenu(dir: string) {
@@ -854,6 +985,15 @@ export default function ProjectFiles({
 		language: "plaintext",
 		rev,
 	};
+
+	const menuAppDir = fileMenu ? boardAppDirFromPath(fileMenu.path) : null;
+	const menuAppProbe =
+		appProbe &&
+		menuAppDir &&
+		appProbe.phase === "ready" &&
+		appProbe.dir === menuAppDir
+			? appProbe
+			: null;
 
 	return (
 		<View style={{ flex: 1 }}>
@@ -1259,80 +1399,152 @@ export default function ProjectFiles({
 								borderColor: colors.border,
 							}}
 						>
-							<MenuRow
-								label={
-									sketchProbe?.kind === "run" && sketchProbe.running
-										? t("code.stopSketch")
-										: t("code.runSketch")
-								}
-								icon={
-									sketchProbe?.kind === "run" && sketchProbe.running
-										? "stop"
-										: "play-arrow"
-								}
-								colors={colors}
-								disabled={
-									sketchProbe?.kind !== "run" || sketchProbe.phase !== "ready"
-								}
-								onPress={() => {
-									if (
-										sketchProbe?.kind !== "run" ||
-										sketchProbe.phase !== "ready"
-									) {
-										return;
-									}
-									if (sketchProbe.running) {
-										void stopSketch();
-									} else {
-										void startSketch(sketchProbe.dir);
-									}
-								}}
-							/>
-							<MenuRow
-								label={t("code.flashSketch")}
-								icon="bolt"
-								colors={colors}
-								disabled={
-									sketchProbe?.kind !== "flash" || sketchProbe.phase !== "ready"
-								}
-								onPress={() => {
-									if (
-										sketchProbe?.kind !== "flash" ||
-										sketchProbe.phase !== "ready"
-									) {
-										return;
-									}
-									flashSketchFromMenu(sketchProbe.dir);
-								}}
-							/>
-							<MenuRow
-								label={t("code.addToContext")}
-								icon="playlist-add"
-								colors={colors}
-								onPress={() => void addToContext(fileMenu.path)}
-							/>
-							<MenuRow
-								label={t("code.renameFile")}
-								icon="edit"
-								colors={colors}
-								onPress={() => startRename(fileMenu.path)}
-							/>
-							<View
-								role="separator"
-								style={{
-									height: 1,
-									marginVertical: 4,
-									marginHorizontal: 8,
-									backgroundColor: colors.border,
-								}}
-							/>
-							<MenuRow
-								label={t("code.deleteFile")}
-								icon="delete-outline"
-								danger
-								colors={colors}
-								onPress={() => deleteFile(fileMenu.path)}
-							/>
+							{menuAppDir ? (
+								<>
+									<MenuRow
+										label={t("code.appStart")}
+										icon="play-arrow"
+										colors={colors}
+										disabled={
+											!menuAppProbe ||
+											busy === "app" ||
+											menuAppProbe.running ||
+											menuAppProbe.otherRunning
+										}
+										onPress={() => {
+											if (!menuAppProbe) {
+												return;
+											}
+											void startBoardApp(menuAppDir, menuAppProbe.appId);
+										}}
+									/>
+									<MenuRow
+										label={t("code.appStop")}
+										icon="stop"
+										colors={colors}
+										disabled={!menuAppProbe?.running || busy === "app"}
+										onPress={() => {
+											if (!menuAppProbe?.running) {
+												return;
+											}
+											void stopBoardApp();
+										}}
+									/>
+									<View
+										role="separator"
+										style={{
+											height: 1,
+											marginVertical: 4,
+											marginHorizontal: 8,
+											backgroundColor: colors.border,
+										}}
+									/>
+									<MenuRow
+										label={t("code.appOpenPreview")}
+										icon="picture-in-picture"
+										colors={colors}
+										disabled={!menuAppProbe?.running}
+										onPress={() => {
+											if (!menuAppProbe) {
+												return;
+											}
+											closeAppMenu();
+											openApp(menuAppProbe.appId, menuAppProbe.appId);
+										}}
+									/>
+									<MenuRow
+										label={t("code.appOpenFullscreen")}
+										icon="fullscreen"
+										colors={colors}
+										disabled={!menuAppProbe?.running}
+										onPress={() => {
+											if (!menuAppProbe) {
+												return;
+											}
+											openAppFullscreen(menuAppProbe.appId);
+										}}
+									/>
+								</>
+							) : (
+								<>
+									<MenuRow
+										label={
+											sketchProbe?.kind === "run" && sketchProbe.running
+												? t("code.stopSketch")
+												: t("code.runSketch")
+										}
+										icon={
+											sketchProbe?.kind === "run" && sketchProbe.running
+												? "stop"
+												: "play-arrow"
+										}
+										colors={colors}
+										disabled={
+											sketchProbe?.kind !== "run" ||
+											sketchProbe.phase !== "ready"
+										}
+										onPress={() => {
+											if (
+												sketchProbe?.kind !== "run" ||
+												sketchProbe.phase !== "ready"
+											) {
+												return;
+											}
+											if (sketchProbe.running) {
+												void stopSketch();
+											} else {
+												void startSketch(sketchProbe.dir);
+											}
+										}}
+									/>
+									<MenuRow
+										label={t("code.flashSketch")}
+										icon="bolt"
+										colors={colors}
+										disabled={
+											sketchProbe?.kind !== "flash" ||
+											sketchProbe.phase !== "ready"
+										}
+										onPress={() => {
+											if (
+												sketchProbe?.kind !== "flash" ||
+												sketchProbe.phase !== "ready"
+											) {
+												return;
+											}
+											flashSketchFromMenu(sketchProbe.dir);
+										}}
+									/>
+									<MenuRow
+										label={t("code.addToContext")}
+										icon="playlist-add"
+										colors={colors}
+										onPress={() => void addToContext(fileMenu.path)}
+									/>
+									<MenuRow
+										label={t("code.renameFile")}
+										icon="edit"
+										colors={colors}
+										onPress={() => startRename(fileMenu.path)}
+									/>
+									<View
+										role="separator"
+										style={{
+											height: 1,
+											marginVertical: 4,
+											marginHorizontal: 8,
+											backgroundColor: colors.border,
+										}}
+									/>
+									<MenuRow
+										label={t("code.deleteFile")}
+										icon="delete-outline"
+										danger
+										colors={colors}
+										onPress={() => deleteFile(fileMenu.path)}
+									/>
+								</>
+							)}
 						</View>
 					) : null}
 				</View>
@@ -1428,6 +1640,7 @@ function TreeRows({
 }) {
 	const t = useT();
 	const open = node.type === "dir" && openDirs.has(node.path);
+	const appDir = node.type === "dir" ? boardAppDirFromPath(node.path) : null;
 	return (
 		<View>
 			<View
@@ -1444,7 +1657,7 @@ function TreeRows({
 					}
 					delayLongPress={500}
 					onLongPress={(event) => {
-						if (node.type === "dir") {
+						if (node.type === "dir" && !appDir) {
 							return;
 						}
 						onFileMenu(
