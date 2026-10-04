@@ -116,6 +116,7 @@ import { type AgentController, createAgentController } from "./agent.ts";
 import { type FetchLike, proxyAiRequest } from "./ai-credentials.ts";
 import {
 	type AppController,
+	appFramePreflightHeaders,
 	appUpstreamWsUrl,
 	createAppController,
 	listBoardApps,
@@ -558,13 +559,44 @@ export function startDeviceApi(options: ServeOptions): DeviceApiServer {
 		port,
 		hostname,
 		async fetch(request, server) {
-			if (request.method === "OPTIONS") {
-				return new Response(null, { status: 204 });
-			}
 			const url = new URL(request.url);
 			const path = url.pathname.replace(/\/+$/, "") || "/";
 			const upgrade = request.headers.get("upgrade")?.toLowerCase() ?? "";
 			const appFrame = parseAppFramePath(path);
+			if (request.method === "OPTIONS") {
+				if (appFrame && extras.app) {
+					const origin = request.headers.get("origin") ?? "";
+					if (!isAllowedDebugOrigin(origin, dashboardUrl)) {
+						console.error(`gpio-companion app: unauthorized origin ${origin}`);
+						return Response.json(
+							{ error: "unauthorized app origin" },
+							{
+								status: 401,
+								headers: { "access-control-allow-origin": "*" },
+							},
+						);
+					}
+					try {
+						extras.app.authorize(appFrame);
+					} catch (error) {
+						const message =
+							error instanceof Error ? error.message : "app frame failed";
+						const status = error instanceof AppError ? error.status : 400;
+						return Response.json(
+							{ error: message },
+							{
+								status,
+								headers: { "access-control-allow-origin": "*" },
+							},
+						);
+					}
+					return new Response(null, {
+						status: 204,
+						headers: appFramePreflightHeaders(request),
+					});
+				}
+				return new Response(null, { status: 204 });
+			}
 			const watchRepo =
 				request.method === "GET" ? parseBoardFileWatchPath(path) : null;
 			const eventRepo =

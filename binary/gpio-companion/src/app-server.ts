@@ -105,7 +105,7 @@ const PROXY_STRIP_RESPONSE = new Set([
 const CORS_ALLOW_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 const CORS_MAX_AGE_SECONDS = "600";
 
-function corsPreflightHeaders(request: Request): Headers {
+export function appFramePreflightHeaders(request: Request): Headers {
 	const headers = new Headers();
 	headers.set("access-control-allow-origin", "*");
 	headers.set("access-control-allow-methods", CORS_ALLOW_METHODS);
@@ -272,7 +272,7 @@ export function createAppController(options: AppOptions = {}): AppController {
 			if (request.method.toUpperCase() === "OPTIONS") {
 				return new Response(null, {
 					status: 204,
-					headers: corsPreflightHeaders(request),
+					headers: appFramePreflightHeaders(request),
 				});
 			}
 			const target = `http://127.0.0.1:${port}${frame.suffix}${search}`;

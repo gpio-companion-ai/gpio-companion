@@ -475,6 +475,34 @@ describe("app http api", () => {
 		expect(upstreamHits[1]?.url).toBe("http://127.0.0.1:4600/api/data?x=1");
 	});
 
+	test("frame preflight answers OPTIONS with CORS headers", async () => {
+		const grant = apiApp.mint("led-panel");
+		const pre = await fetch(
+			`${api.url}v1/app/led-panel/${grant.token}/api/data`,
+			{
+				method: "OPTIONS",
+				headers: {
+					origin: "null",
+					"access-control-request-method": "POST",
+					"access-control-request-headers": "content-type",
+				},
+			},
+		);
+		expect(pre.status).toBe(204);
+		expect(pre.headers.get("access-control-allow-origin")).toBe("*");
+		expect(pre.headers.get("access-control-allow-methods")).toContain("POST");
+		expect(pre.headers.get("access-control-allow-headers")).toBe(
+			"content-type",
+		);
+		expect(pre.headers.get("access-control-max-age")).toBe("600");
+		const dead = await fetch(
+			`${api.url}v1/app/led-panel/${"b".repeat(43)}/api/data`,
+			{ method: "OPTIONS", headers: { origin: "null" } },
+		);
+		expect(dead.status).toBe(403);
+		expect(dead.headers.get("access-control-allow-origin")).toBe("*");
+	});
+
 	test("frame with a bad token or foreign origin is refused", async () => {
 		const bad = await fetch(`${api.url}v1/app/led-panel/${"b".repeat(43)}/`);
 		expect(bad.status).toBe(403);
