@@ -108,6 +108,7 @@ import {
 	BackHandler,
 	DeviceEventEmitter,
 	Easing,
+	Linking,
 	Modal,
 	Pressable,
 	ScrollView,
@@ -120,7 +121,10 @@ import { Blocks } from "../components/OcMarkdown.tsx";
 import ProjectFiles, {
 	type CodeFilesBridge,
 } from "../components/ProjectFiles.tsx";
+import { Field, PrimaryButton, TextButton, Title } from "../components/ui.tsx";
 import {
+	createProject,
+	getGithubApp,
 	getVoiceSettings,
 	listBoardFiles,
 	listProjects,
@@ -136,7 +140,7 @@ import { useAuth } from "../lib/auth.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
 import { useColors } from "../lib/color-mode.tsx";
 import { useDeviceHub } from "../lib/device-hub.tsx";
-import { useLocale, useT } from "../lib/locale.tsx";
+import { translateError, useLocale, useT } from "../lib/locale.tsx";
 import { storageGet, storageSet } from "../lib/storage.ts";
 import { takePendingUiApp } from "../lib/ui-app.ts";
 import { takePendingUiPreview } from "../lib/ui-preview.ts";
@@ -216,6 +220,11 @@ export default function Code() {
 	const selected = uuid || devices[0]?.uuid || "";
 	const [repos, setRepos] = useState<Repo[]>([]);
 	const [repo, setRepo] = useState("");
+	const [canCreate, setCanCreate] = useState(true);
+	const [installUrl, setInstallUrl] = useState("");
+	const [createOpen, setCreateOpen] = useState(false);
+	const [createName, setCreateName] = useState("");
+	const [creating, setCreating] = useState(false);
 	const [view, setView] = useState<OpencodeView>(() => {
 		if (typeof window === "undefined") {
 			return emptyOpencodeView();
@@ -352,6 +361,12 @@ export default function Code() {
 			.catch((caught) => {
 				setError(caught instanceof Error ? caught.message : "request failed");
 			});
+		void getGithubApp(token)
+			.then((app) => {
+				setCanCreate(app.canCreate !== false);
+				setInstallUrl(app.installUrl);
+			})
+			.catch(() => undefined);
 	}, [token]);
 
 	useEffect(() => {
@@ -523,6 +538,42 @@ export default function Code() {
 		const match = repos.find((item) => item.name === name);
 		if (match) {
 			void storageSet(PROJECT_KEY, `${match.owner}/${match.name}`);
+		}
+	}
+
+	async function makeProject() {
+		const name = createName.trim();
+		if (!name || creating) {
+			return;
+		}
+		setError("");
+		setCreating(true);
+		try {
+			const created = await createProject(token, name);
+			setRepos((current) =>
+				current.some(
+					(item) => item.owner === created.owner && item.name === created.name,
+				)
+					? current
+					: [{ owner: created.owner, name: created.name }, ...current],
+			);
+			setCreateName("");
+			setCreateOpen(false);
+			setRepo(created.name);
+			void storageSet(PROJECT_KEY, `${created.owner}/${created.name}`);
+			setQuery("");
+			clearQuestionDraft();
+			setMode("home");
+			replaceCodeNav({ mode: "home", sessionID: "" });
+		} catch (caught) {
+			setError(
+				translateError(
+					t,
+					caught instanceof Error ? caught.message : "request failed",
+				),
+			);
+		} finally {
+			setCreating(false);
 		}
 	}
 
@@ -2487,9 +2538,71 @@ export default function Code() {
 							<Text style={[muted, { padding: 12, fontSize: 13 }]}>
 								{t("code.projects")}
 							</Text>
+							{canCreate ? (
+								<Pressable
+									accessibilityRole="button"
+									onPress={() => {
+										setCreateName("");
+										setCreateOpen(true);
+									}}
+									style={({ pressed }) => [
+										row,
+										{
+											flexDirection: "row",
+											alignItems: "center",
+											paddingHorizontal: 12,
+											backgroundColor: pressed ? colors.chipBg : "transparent",
+										},
+									]}
+								>
+									<Text
+										style={[muted, { fontWeight: "600" }]}
+										numberOfLines={1}
+									>
+										{`+ ${t("project.newProject")}`}
+									</Text>
+								</Pressable>
+							) : (
+								<Pressable
+									accessibilityRole="button"
+									disabled={!installUrl}
+									onPress={() => void Linking.openURL(installUrl)}
+									style={({ pressed }) => [
+										row,
+										{
+											flexDirection: "row",
+											alignItems: "center",
+											paddingHorizontal: 12,
+											backgroundColor: pressed ? colors.chipBg : "transparent",
+										},
+									]}
+								>
+									<Text
+										style={[muted, { fontWeight: "600" }]}
+										numberOfLines={1}
+									>
+										{t("project.authorizeRepos")}
+									</Text>
+								</Pressable>
+							)}
 							{repos.length === 0 ? (
 								<View style={{ alignItems: "center", gap: 8, padding: 16 }}>
 									<Text style={muted}>{t("code.noProjects")}</Text>
+									{canCreate ? (
+										<PrimaryButton
+											label={t("project.newProject")}
+											onPress={() => {
+												setCreateName("");
+												setCreateOpen(true);
+											}}
+										/>
+									) : (
+										<PrimaryButton
+											label={t("project.authorizeRepos")}
+											disabled={!installUrl}
+											onPress={() => void Linking.openURL(installUrl)}
+										/>
+									)}
 									<Pressable onPress={() => router.push("/project")}>
 										<Text style={{ color: colors.text, fontWeight: "600" }}>
 											{t("code.openProject")}
@@ -3492,6 +3605,58 @@ export default function Code() {
 								);
 							})}
 						</ScrollView>
+					</Pressable>
+				</Pressable>
+			</Modal>
+			<Modal
+				visible={createOpen}
+				animationType="fade"
+				transparent
+				onRequestClose={() => {
+					if (!creating) {
+						setCreateOpen(false);
+					}
+				}}
+			>
+				<Pressable
+					onPress={() => {
+						if (!creating) {
+							setCreateOpen(false);
+						}
+					}}
+					style={{
+						flex: 1,
+						justifyContent: "center",
+						backgroundColor: "rgba(0,0,0,0.5)",
+						padding: 24,
+					}}
+				>
+					<Pressable
+						onPress={() => undefined}
+						style={{
+							backgroundColor: colors.surface,
+							borderRadius: 16,
+							padding: 16,
+							gap: 12,
+						}}
+					>
+						<Title>{t("project.newProject")}</Title>
+						<Field
+							label={t("project.newProject")}
+							value={createName}
+							onChangeText={setCreateName}
+							placeholder={t("project.placeholderName")}
+						/>
+						<PrimaryButton
+							label={creating ? t("project.creating") : t("project.create")}
+							disabled={creating || !createName.trim()}
+							onPress={() => void makeProject()}
+						/>
+						<TextButton
+							label={t("project.cancel")}
+							disabled={creating}
+							onPress={() => setCreateOpen(false)}
+						/>
 					</Pressable>
 				</Pressable>
 			</Modal>

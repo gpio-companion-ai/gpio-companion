@@ -1,3 +1,10 @@
+import Button from "@shpaw415/mui-lite/Button";
+import Dialog, {
+	DialogActions,
+	DialogContent,
+	DialogTitle,
+} from "@shpaw415/mui-lite/Dialog";
+import TextField from "@shpaw415/mui-lite/TextField";
 import {
 	applyCodeMention,
 	CODE_ATTACH_ACCEPT,
@@ -26,6 +33,7 @@ import {
 	stageBoardContext,
 	stageCodeAttach,
 } from "gpio-companion-attach";
+import { translateError } from "gpio-companion-i18n";
 import {
 	activeOpencodeQuestion,
 	applyOpencodeEvent,
@@ -93,9 +101,12 @@ import {
 	useState,
 } from "react";
 import {
+	createProject,
+	getGithubApp,
 	getVoiceSettings,
 	listProjects,
 	opencodeCall,
+	openExternal,
 	signOpencodeLive,
 	speakCode,
 	transcribeCode,
@@ -109,7 +120,7 @@ import ProjectFiles, { type CodeFilesBridge } from "./ProjectFiles";
 
 const PROJECT_KEY = "gpio-companion-selected-project";
 
-type Repo = { owner: string; name: string };
+type Repo = { owner: string; name: string; full_name?: string };
 type Mode = "home" | "draft" | "session";
 type ChipMenuId = "model" | "effort" | "permission" | "project" | "board";
 
@@ -516,6 +527,11 @@ export default function OpenCodeSession({
 	const [menu, setMenu] = useState<ChipMenuId | "">("");
 	const [selectsOpen, setSelectsOpen] = useState(false);
 	const [replyBusy, setReplyBusy] = useState(false);
+	const [createOpen, setCreateOpen] = useState(false);
+	const [createName, setCreateName] = useState("");
+	const [creating, setCreating] = useState(false);
+	const [canCreate, setCanCreate] = useState(true);
+	const [installUrl, setInstallUrl] = useState("");
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
@@ -595,6 +611,12 @@ export default function OpenCodeSession({
 			.catch((caught) => {
 				setError(caught instanceof Error ? caught.message : "request failed");
 			});
+		void getGithubApp()
+			.then((app) => {
+				setCanCreate(app.canCreate !== false);
+				setInstallUrl(app.installUrl);
+			})
+			.catch(() => undefined);
 	}, []);
 
 	useEffect(() => {
@@ -709,6 +731,42 @@ export default function OpenCodeSession({
 		setQuery("");
 		clearQuestionDraft();
 		leaveChat();
+	}
+
+	async function makeProject() {
+		const name = createName.trim();
+		if (!name || creating) {
+			return;
+		}
+		setError("");
+		setCreating(true);
+		try {
+			const created = await createProject(name);
+			setRepos((current) =>
+				current.some((item) => item.full_name === created.full_name)
+					? current
+					: [created, ...current],
+			);
+			setCreateName("");
+			setCreateOpen(false);
+			setRepo(created.name);
+			window.localStorage.setItem(
+				PROJECT_KEY,
+				`${created.owner}/${created.name}`,
+			);
+			setQuery("");
+			clearQuestionDraft();
+			leaveChat();
+		} catch (caught) {
+			setError(
+				translateError(
+					t,
+					caught instanceof Error ? caught.message : "request failed",
+				),
+			);
+		} finally {
+			setCreating(false);
+		}
 	}
 
 	function requestPreview(repoName: string, path: string) {
@@ -2754,9 +2812,55 @@ export default function OpenCodeSession({
 						<div className="oc-home">
 							<aside className="oc-projects" aria-label={t("code.projects")}>
 								<div className="oc-label">{t("code.projects")}</div>
+								{canCreate ? (
+									<button
+										type="button"
+										className="oc-row oc-new"
+										onClick={() => {
+											setCreateName("");
+											setCreateOpen(true);
+										}}
+									>
+										<span className="oc-session-title">
+											{`+ ${t("project.newProject")}`}
+										</span>
+									</button>
+								) : (
+									<button
+										type="button"
+										className="oc-row oc-new"
+										disabled={!installUrl}
+										onClick={() => void openExternal(installUrl)}
+									>
+										<span className="oc-session-title">
+											{t("project.authorizeRepos")}
+										</span>
+									</button>
+								)}
 								{repos.length === 0 ? (
 									<div className="oc-empty">
 										<p className="oc-muted">{t("code.noProjects")}</p>
+										{canCreate ? (
+											<button
+												type="button"
+												className="oc-neutral"
+												onClick={() => {
+													setCreateName("");
+													setCreateOpen(true);
+												}}
+											>
+												{t("project.newProject")}
+											</button>
+										) : (
+											<button
+												type="button"
+												className="oc-neutral"
+												disabled={!installUrl}
+												onClick={() => void openExternal(installUrl)}
+											>
+												{t("project.authorizeRepos")}
+											</button>
+										)}
 										<button
 											type="button"
 											className="oc-neutral"
@@ -3240,6 +3344,55 @@ export default function OpenCodeSession({
 						</div>
 					) : null}
 				</ProjectFiles>
+				<Dialog
+					open={createOpen}
+					onClose={() => {
+						if (!creating) {
+							setCreateOpen(false);
+						}
+					}}
+					fullWidth
+					scroll="paper"
+					sx={{ zIndex: 1300 }}
+					slotProps={{ paper: { className: "max-w-xl w-full" } }}
+				>
+					<DialogTitle>{t("project.newProject")}</DialogTitle>
+					<DialogContent>
+						<TextField
+							label={t("project.newProject")}
+							placeholder={t("project.placeholderName")}
+							value={createName}
+							autoComplete="off"
+							disabled={creating}
+							autoFocus
+							onChange={(event) => setCreateName(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter") {
+									event.preventDefault();
+									void makeProject();
+								}
+							}}
+						/>
+					</DialogContent>
+					<DialogActions>
+						<Button
+							type="button"
+							variant="text"
+							disabled={creating}
+							onClick={() => setCreateOpen(false)}
+						>
+							{t("project.cancel")}
+						</Button>
+						<Button
+							type="button"
+							variant="contained"
+							disabled={creating || !createName.trim()}
+							onClick={() => void makeProject()}
+						>
+							{creating ? t("project.creating") : t("project.create")}
+						</Button>
+					</DialogActions>
+				</Dialog>
 			</div>
 		</div>
 	);

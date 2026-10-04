@@ -4,6 +4,7 @@ import {
 	githubCloneUrl,
 	githubOriginMatches,
 	isProjectFileDir,
+	normalizeProjectName,
 	PCB_CIRCUIT_JSON,
 	PROJECT_FILE_DIRS,
 	PROJECT_PUSH_MESSAGE,
@@ -51,6 +52,19 @@ describe("project files", () => {
 		expect(
 			githubOriginMatches("https://github.com/ada/other.git", "ada", "blink"),
 		).toBe(false);
+	});
+
+	test("normalizes project names with spaces", () => {
+		expect(normalizeProjectName("my project")).toBe("my-project");
+		expect(normalizeProjectName("blink  led")).toBe("blink-led");
+		expect(normalizeProjectName("  spaced name  ")).toBe("spaced-name");
+		expect(normalizeProjectName("tab\tname")).toBe("tab-name");
+		expect(normalizeProjectName("Blink LED.git")).toBe("Blink-LED");
+		expect(normalizeProjectName("blink-led")).toBe("blink-led");
+		expect(() => normalizeProjectName("   ")).toThrow();
+		expect(() => normalizeProjectName(".")).toThrow();
+		expect(() => normalizeProjectName("..")).toThrow();
+		expect(() => normalizeProjectName("../etc passwd")).toThrow();
 	});
 
 	test("parses project sync bodies", () => {

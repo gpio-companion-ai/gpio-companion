@@ -36,6 +36,7 @@ import {
 	circuitVerifyOverlay,
 	type ModelPart,
 	modelPartRepoPath,
+	normalizeProjectName,
 	parseModelManifest,
 	parseWokwiDiagram,
 	type RunStatus,
@@ -321,10 +322,11 @@ export default function ProjectBrowser({
 	);
 
 	async function makeProject() {
-		const name = createName.trim();
-		if (!name || creating) {
+		const raw = createName.trim();
+		if (!raw || creating) {
 			return;
 		}
+		const name = normalizeProjectName(raw);
 		setError("");
 		setCreating(true);
 		try {

@@ -24,6 +24,7 @@ import {
 	circuitVerifyOverlay,
 	type ModelPart,
 	modelPartRepoPath,
+	normalizeProjectName,
 	parseModelManifest,
 	parseWokwiDiagram,
 } from "gpio-companion";
@@ -561,10 +562,11 @@ export default function Project({
 	}, [repos, owner, query]);
 
 	async function makeProject() {
-		const name = createName.trim();
-		if (!name || creating) {
+		const raw = createName.trim();
+		if (!raw || creating) {
 			return;
 		}
+		const name = normalizeProjectName(raw);
 		setError("");
 		setCreating(true);
 		try {

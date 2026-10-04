@@ -4,6 +4,7 @@ import {
 	modelPartRepoPath,
 	parseModelManifest,
 } from "gpio-companion-model";
+import { normalizeProjectName } from "gpio-companion-projects";
 import {
 	type ReactNode,
 	useCallback,
@@ -613,10 +614,11 @@ export default function Project() {
 	}, [repos, owner, query]);
 
 	async function makeProject() {
-		const name = createName.trim();
-		if (!name || creating || !token) {
+		const raw = createName.trim();
+		if (!raw || creating || !token) {
 			return;
 		}
+		const name = normalizeProjectName(raw);
 		setError("");
 		setCreating(true);
 		try {

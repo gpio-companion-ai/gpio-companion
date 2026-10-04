@@ -8,6 +8,7 @@ import {
 	MODEL_DIR,
 	MODEL_FILE_MAX_BYTES,
 	MODEL_MANIFEST_PATH,
+	normalizeProjectName,
 	PCB_CIRCUIT_JSON,
 	PCB_PREVIEW_SVG,
 	PROJECT_FILE_DIRS,
@@ -551,7 +552,7 @@ export async function createGpioCompanionRepo(
 	account: GithubAccount,
 	name: string,
 ): Promise<GithubRepo> {
-	const repoName = parseRepoName(name);
+	const repoName = normalizeProjectName(name);
 	let created: CreatedGithubRepo;
 	let writer: GithubAccount = account;
 	try {

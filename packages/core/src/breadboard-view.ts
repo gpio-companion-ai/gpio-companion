@@ -56,6 +56,7 @@ export {
 	parseModelEmbedMessage,
 	parseModelManifest,
 } from "./model-view.ts";
+export { normalizeProjectName } from "./project-files.ts";
 export {
 	asSshWsError,
 	isSshChunk,

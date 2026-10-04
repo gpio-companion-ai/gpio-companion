@@ -1,3 +1,4 @@
+import { GET as getGithubApp } from "@api/github-app";
 import { GET as getPairing } from "@api/pair";
 import { useEffect, useRef, useState } from "react";
 import OpenCodeSession, {
@@ -8,6 +9,7 @@ import { useActionError } from "../../hooks/useActionError.tsx";
 import { useAuthSession } from "../../hooks/useAuth.ts";
 import { useBoardSelection } from "../../hooks/useBoardSelection.tsx";
 import { useT } from "../../hooks/useLocale.tsx";
+import { unwrapAction } from "../../lib/action.ts";
 import type { StoredPairing } from "../../lib/pairing-store.ts";
 
 function boardName(item: StoredPairing) {
@@ -32,6 +34,8 @@ export default function CodePage() {
 	);
 	const [loading, setLoading] = useState(true);
 	const [reposError, setReposError] = useState("");
+	const [canCreate, setCanCreate] = useState(true);
+	const [installUrl, setInstallUrl] = useState("");
 	const [boardMenu, setBoardMenu] = useState(false);
 	const boardMenuRef = useRef<HTMLDivElement | null>(null);
 
@@ -39,6 +43,8 @@ export default function CodePage() {
 		if (!session.data?.id) {
 			setDevices([]);
 			setRepos([]);
+			setCanCreate(true);
+			setInstallUrl("");
 			setLoading(false);
 			return;
 		}
@@ -60,6 +66,13 @@ export default function CodePage() {
 				);
 			})
 			.finally(() => setLoading(false));
+		void getGithubApp()
+			.then((result) => {
+				const app = unwrapAction(result);
+				setCanCreate(app.canCreate);
+				setInstallUrl(app.installUrl);
+			})
+			.catch(() => undefined);
 	}, [session.data?.id, run, t]);
 
 	useEffect(() => {
@@ -157,7 +170,21 @@ export default function CodePage() {
 					</div>
 				</div>
 			) : (
-				<OpenCodeSession uuid={selected} repos={repos} />
+				<OpenCodeSession
+					uuid={selected}
+					repos={repos}
+					canCreate={canCreate}
+					installUrl={installUrl}
+					onRepoCreated={(repo) =>
+						setRepos((current) =>
+							current.some(
+								(item) => item.owner === repo.owner && item.name === repo.name,
+							)
+								? current
+								: [repo, ...current],
+						)
+					}
+				/>
 			)}
 		</div>
 	);

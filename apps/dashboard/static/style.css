@@ -8817,6 +8817,10 @@ mark {
   color: rgb(var(--text-main));
   box-shadow: inset 2px 0 rgb(var(--text-main));
 }
+.oc-row.oc-new {
+  color: rgb(var(--text-secondary));
+  font-weight: 450;
+}
 .oc-row span, .oc-session-title {
   min-width: 0;
   overflow: hidden;

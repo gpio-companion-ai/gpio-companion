@@ -65,6 +65,10 @@ export function parseGithubRepoName(value: string): string {
 	return name;
 }
 
+export function normalizeProjectName(value: string): string {
+	return parseGithubRepoName(value.trim().replace(/\s+/g, "-"));
+}
+
 export function githubCloneUrl(owner: string, name: string): string {
 	return `https://github.com/${owner}/${name}.git`;
 }

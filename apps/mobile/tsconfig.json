@@ -21,6 +21,7 @@
 			"gpio-companion-config": ["../../packages/core/src/config.ts"],
 			"gpio-companion-usage": ["../../packages/core/src/usage-charts.ts"],
 			"gpio-companion-jlcpcb": ["../../packages/core/src/jlcpcb-parts.ts"],
+			"gpio-companion-projects": ["../../packages/core/src/project-files.ts"],
 			"gpio-companion-ssh": ["../../packages/core/src/ssh.ts"]
 		}
 	},

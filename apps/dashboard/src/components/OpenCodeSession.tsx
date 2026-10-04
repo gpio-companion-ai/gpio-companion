@@ -3,8 +3,15 @@ import { POST as speak } from "@api/code/tts";
 import { PUT as writeFile } from "@api/files/write";
 import { POST as postOpencode } from "@api/opencode";
 import { POST as signOpencodeLive } from "@api/opencode/live";
-import { GET as getProjects } from "@api/projects";
+import { PATCH as createProject, GET as getProjects } from "@api/projects";
 import { GET as loadVoiceSettingsAction } from "@api/voice-settings";
+import Button from "@shpaw415/mui-lite/Button";
+import Dialog, {
+	DialogActions,
+	DialogContent,
+	DialogTitle,
+} from "@shpaw415/mui-lite/Dialog";
+import TextField from "@shpaw415/mui-lite/TextField";
 import {
 	activeOpencodeQuestion,
 	applyCodeMention,
@@ -88,6 +95,7 @@ import {
 	stageCodeAttach,
 	storeOpencodePrompts,
 } from "gpio-companion";
+import { translateError } from "gpio-companion/i18n";
 import {
 	type ReactNode,
 	useCallback,
@@ -409,9 +417,15 @@ function TurnView({ turn, caret }: { turn: OpencodeTurn; caret: boolean }) {
 export default function OpenCodeSession({
 	uuid,
 	repos,
+	canCreate = true,
+	installUrl = "",
+	onRepoCreated,
 }: {
 	uuid: string;
 	repos: Repo[];
+	canCreate?: boolean;
+	installUrl?: string;
+	onRepoCreated?: (repo: Repo) => void;
 }) {
 	const t = useT();
 	const { locale } = useLocale();
@@ -490,6 +504,9 @@ export default function OpenCodeSession({
 	const [menu, setMenu] = useState<ChipMenuId | "">("");
 	const [selectsOpen, setSelectsOpen] = useState(false);
 	const [replyBusy, setReplyBusy] = useState(false);
+	const [createOpen, setCreateOpen] = useState(false);
+	const [createName, setCreateName] = useState("");
+	const [creating, setCreating] = useState(false);
 	const scroller = useRef<HTMLDivElement>(null);
 	const field = useRef<HTMLTextAreaElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
@@ -665,6 +682,38 @@ export default function OpenCodeSession({
 		setQuery("");
 		clearQuestionDraft();
 		leaveChat();
+	}
+
+	async function makeProject() {
+		const name = createName.trim();
+		if (!name || creating) {
+			return;
+		}
+		setError("");
+		setCreating(true);
+		try {
+			const created = unwrapAction(await createProject(name));
+			onRepoCreated?.(created);
+			setCreateName("");
+			setCreateOpen(false);
+			setRepo(created.name);
+			window.localStorage.setItem(
+				PROJECT_KEY,
+				`${created.owner}/${created.name}`,
+			);
+			setQuery("");
+			clearQuestionDraft();
+			leaveChat();
+		} catch (err) {
+			setError(
+				translateError(
+					t,
+					err instanceof Error ? err.message : "failed to create project",
+				),
+			);
+		} finally {
+			setCreating(false);
+		}
 	}
 
 	function requestPreview(repoName: string, path: string) {
@@ -2651,9 +2700,51 @@ export default function OpenCodeSession({
 					<div className="oc-home">
 						<aside className="oc-projects" aria-label={t("code.projects")}>
 							<div className="oc-label">{t("code.projects")}</div>
+							{canCreate ? (
+								<button
+									type="button"
+									className="oc-row oc-new"
+									onClick={() => {
+										setCreateName("");
+										setCreateOpen(true);
+									}}
+								>
+									<span className="oc-session-title">
+										{`+ ${t("project.newProject")}`}
+									</span>
+								</button>
+							) : (
+								<a
+									className="oc-row oc-new"
+									href={installUrl || "/profile/github"}
+								>
+									<span className="oc-session-title">
+										{t("project.authorizeRepos")}
+									</span>
+								</a>
+							)}
 							{repos.length === 0 ? (
 								<div className="oc-empty">
 									<p className="oc-muted">{t("code.noProjects")}</p>
+									{canCreate ? (
+										<button
+											type="button"
+											className="oc-neutral"
+											onClick={() => {
+												setCreateName("");
+												setCreateOpen(true);
+											}}
+										>
+											{t("project.newProject")}
+										</button>
+									) : (
+										<a
+											className="oc-neutral"
+											href={installUrl || "/profile/github"}
+										>
+											{t("project.authorizeRepos")}
+										</a>
+									)}
 									<a className="oc-neutral" href="/project">
 										{t("code.openProject")}
 									</a>
@@ -3126,6 +3217,55 @@ export default function OpenCodeSession({
 					</div>
 				) : null}
 			</ProjectFiles>
+			<Dialog
+				open={createOpen}
+				onClose={() => {
+					if (!creating) {
+						setCreateOpen(false);
+					}
+				}}
+				fullWidth
+				scroll="paper"
+				sx={{ zIndex: 1300 }}
+				slotProps={{ paper: { className: "max-w-xl w-full" } }}
+			>
+				<DialogTitle>{t("project.newProject")}</DialogTitle>
+				<DialogContent>
+					<TextField
+						label={t("project.newProject")}
+						placeholder={t("project.placeholderName")}
+						value={createName}
+						autoComplete="off"
+						disabled={creating}
+						autoFocus
+						onChange={(event) => setCreateName(event.target.value)}
+						onKeyDown={(event) => {
+							if (event.key === "Enter") {
+								event.preventDefault();
+								void makeProject();
+							}
+						}}
+					/>
+				</DialogContent>
+				<DialogActions>
+					<Button
+						type="button"
+						variant="text"
+						disabled={creating}
+						onClick={() => setCreateOpen(false)}
+					>
+						{t("project.cancel")}
+					</Button>
+					<Button
+						type="button"
+						variant="contained"
+						disabled={creating || !createName.trim()}
+						onClick={() => void makeProject()}
+					>
+						{creating ? t("project.creating") : t("project.create")}
+					</Button>
+				</DialogActions>
+			</Dialog>
 		</div>
 	);
 }
