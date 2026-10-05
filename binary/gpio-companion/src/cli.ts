@@ -462,6 +462,8 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
 			io.stderr(`unknown console command: ${sub}\n${helpText()}`);
 			return 1;
 		}
+		case "bug-report":
+			return bugReport(rest, io, jsonArgs);
 		case "ui": {
 			const [sub, ...subRest] = rest;
 			const subArgs = stripGlobal(subRest);
@@ -623,6 +625,123 @@ export async function run(argv: string[], io: CliIo): Promise<number> {
 	}
 }
 
+async function bugReport(
+	rest: string[],
+	io: CliIo,
+	jsonArgs: string[],
+): Promise<number> {
+	const [sub, ...subRest] = rest;
+	const args = stripGlobal(subRest);
+	if (sub !== "submit") {
+		io.stderr(
+			"usage: gpio-companion bug-report submit --kind bug|enhancement --title <t> --body <text>",
+		);
+		return 1;
+	}
+	const kind = flag(args, "--kind") === "enhancement" ? "enhancement" : "bug";
+	const title = flag(args, "--title");
+	const body = flag(args, "--body");
+	if (!title || !body) {
+		io.stderr(
+			"usage: gpio-companion bug-report submit --kind bug|enhancement --title <t> --body <text>",
+		);
+		return 1;
+	}
+	const diagnostics = await collectDiagnostics(io, jsonArgs);
+	return call(
+		io,
+		"POST",
+		"/v1/support",
+		{
+			kind,
+			title,
+			description: body,
+			surface: diagnostics.surface,
+			console: diagnostics.console,
+			network: diagnostics.network,
+		},
+		jsonArgs,
+	);
+}
+
+async function collectDiagnostics(
+	io: CliIo,
+	jsonArgs: string[],
+): Promise<{
+	surface: string;
+	console: unknown[];
+	network: unknown[];
+}> {
+	const empty = { surface: "web", console: [], network: [] };
+	const id = crypto.randomUUID();
+	const posted = await requestJson(
+		io,
+		"POST",
+		"/v1/ui",
+		{ type: "diagnostics", id },
+		jsonArgs,
+	);
+	if (!posted.ok) {
+		return empty;
+	}
+	const delivered =
+		(posted.data as { delivered?: number } | null)?.delivered ?? 0;
+	if (!delivered) {
+		return empty;
+	}
+	const reply = await requestJson(
+		io,
+		"GET",
+		`/v1/ui/reply/${encodeURIComponent(id)}`,
+		undefined,
+		jsonArgs,
+	);
+	const body = (reply.data as { body?: string } | null)?.body;
+	if (!body) {
+		return empty;
+	}
+	try {
+		const parsed = JSON.parse(body) as {
+			console?: unknown[];
+			network?: unknown[];
+		};
+		return {
+			surface: "web",
+			console: Array.isArray(parsed.console) ? parsed.console : [],
+			network: Array.isArray(parsed.network) ? parsed.network : [],
+		};
+	} catch {
+		return empty;
+	}
+}
+
+async function requestJson(
+	io: CliIo,
+	method: string,
+	path: string,
+	body: unknown,
+	extraArgs: string[],
+): Promise<{ ok: boolean; data: unknown }> {
+	const fetchImpl = io.fetchImpl ?? ((input, init) => fetch(input, init));
+	try {
+		const response = await fetchImpl(`${baseUrl(io, extraArgs)}${path}`, {
+			method,
+			headers: {
+				accept: "application/json",
+				...(body !== undefined ? { "content-type": "application/json" } : {}),
+			},
+			body: body !== undefined ? JSON.stringify(body) : undefined,
+		});
+		const text = await response.text().catch(() => "");
+		return {
+			ok: response.ok,
+			data: text ? (JSON.parse(text) as unknown) : null,
+		};
+	} catch {
+		return { ok: false, data: null };
+	}
+}
+
 async function sketchRun(
 	args: string[],
 	io: CliIo,
@@ -644,7 +763,7 @@ async function sketchRun(
 
 function helpText(): string {
 	return [
-		"gpio-companion serve | version | sketch | flash | gpio | proxy | verify | console | ui | app | status | health",
+		"gpio-companion serve | version | sketch | flash | gpio | proxy | verify | console | ui | bug-report | app | status | health",
 		"  sketch run --path <sketch-dir>",
 		"  sketch status [--json]",
 		"  sketch stop",
@@ -663,6 +782,7 @@ function helpText(): string {
 		"  ui palette --open|--close | ui preview --repo <n> --path <p>",
 		"  ui modal --id <id> --title <t> --body <b> --button <l> [--button <l>]",
 		"  ui reply --id <modal-id>",
+		"  bug-report submit --kind bug|enhancement --title <t> --body <text>",
 		"  ui app --id <name> [--view split|modal|page] [--title <t>]",
 		"  app start --repo <repo> --dir <app-folder>",
 		"  app status | app list | app stop",

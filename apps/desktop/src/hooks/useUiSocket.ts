@@ -12,7 +12,7 @@ type UiSocketOptions = {
 };
 
 export type UiSocketHandle = {
-	reply: (id: string, action: string) => void;
+	reply: (id: string, action: string, body?: string) => void;
 };
 
 export function useUiSocket(options: UiSocketOptions): UiSocketHandle {
@@ -115,10 +115,17 @@ export function useUiSocket(options: UiSocketOptions): UiSocketHandle {
 	}, [enabled, surface, uuid]);
 
 	return {
-		reply(id: string, action: string) {
+		reply(id: string, action: string, body?: string) {
 			const current = socketRef.current;
 			if (current && current.readyState === WebSocket.OPEN) {
-				current.send(JSON.stringify({ op: "reply", id, action }));
+				current.send(
+					JSON.stringify({
+						op: "reply",
+						id,
+						action,
+						...(body ? { body } : {}),
+					}),
+				);
 			}
 		},
 	};

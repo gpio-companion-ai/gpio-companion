@@ -15,6 +15,7 @@ export type UiSocket = {
 
 export type UiReply = {
 	action: string;
+	body?: string;
 	at: number;
 };
 
@@ -97,7 +98,11 @@ export function createUiHub(): UiHub {
 					return;
 				}
 				sweep();
-				const reply: UiReply = { action: message.action, at: Date.now() };
+				const reply: UiReply = {
+					action: message.action,
+					...(message.body ? { body: message.body } : {}),
+					at: Date.now(),
+				};
 				replies.set(message.id, reply);
 				const pending = waiters.get(message.id);
 				if (pending) {

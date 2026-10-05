@@ -37,6 +37,7 @@
 		"build:dashboard": "bun run --filter gpio-companion-dashboard build",
 		"deploy:dashboard": "bun run --filter gpio-companion-dashboard deploy",
 		"deploy:hub": "bun run --filter gpio-companion-hub deploy",
+		"deploy:support": "bun run --filter gpio-companion-support deploy",
 		"deploy:voice": "bun run --filter gpio-companion-voice deploy",
 		"compile": "bun run --filter gpio-companion-bin compile",
 		"install:raspberrypi": "./scripts/install-raspberrypi.sh",

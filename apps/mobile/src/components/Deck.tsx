@@ -2,6 +2,10 @@ import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePathname, useRouter } from "expo-router";
 import type { UiModalCommand } from "gpio-companion-ui";
 import {
+	browserDiagnosticsBody,
+	installBrowserDiagnosticsHere,
+} from "gpio-companion-ui";
+import {
 	type ReactNode,
 	useCallback,
 	useEffect,
@@ -71,9 +75,11 @@ import { useUiSocket } from "../lib/use-ui-socket.ts";
 import AppWebView from "./AppWebView.tsx";
 import BoardPresenceAlerts from "./BoardPresenceAlerts.tsx";
 import DockSsh from "./DockSsh.tsx";
+import SupportChat from "./SupportChat.tsx";
 import { ErrorText, PrimaryButton, TextButton } from "./ui.tsx";
 
 const logo = require("../../assets/logo.png");
+installBrowserDiagnosticsHere();
 const DOCK_STORAGE_KEY = "b6-dockH";
 const DOCK_COLLAPSED_KEY = "b6-dockCollapsed";
 const PROJECT_STORAGE_KEY = "gpio-companion-selected-project";
@@ -268,6 +274,10 @@ function DeckFrame({ children }: { children: ReactNode }) {
 					return;
 				case "modal":
 					setUiModal(command);
+					return;
+				case "diagnostics":
+					installBrowserDiagnosticsHere();
+					uiSocket.reply(command.id, "diagnostics", browserDiagnosticsBody());
 					return;
 				case "preview": {
 					// Already on Code: only emit the preview event so the
@@ -689,6 +699,7 @@ function DeckFrame({ children }: { children: ReactNode }) {
 				</Pressable>
 			</Modal>
 
+			{auth.token ? <SupportChat /> : null}
 			<BoardPresenceAlerts
 				token={auth.token}
 				boards={boards.map((board) => ({

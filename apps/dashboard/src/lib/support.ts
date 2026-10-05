@@ -1,7 +1,12 @@
+import {
+	deliverSupportEmail,
+	redactSecrets,
+	SUPPORT_FROM,
+	SUPPORT_TO,
+} from "gpio-companion";
 import { errorStatus, jsonFail, jsonOk } from "./mobile-http.ts";
 
-export const SUPPORT_TO = "support@gpio-companion.com";
-export const SUPPORT_FROM = "noreply@gpio-companion.com";
+export { SUPPORT_FROM, SUPPORT_TO };
 export const SUPPORT_RATE_MAX = 5;
 export const SUPPORT_RATE_WINDOW_MS = 60 * 60 * 1000;
 
@@ -10,21 +15,11 @@ const MODEL_MAX = 120;
 const UUID_RE =
 	/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const SECRET_PATTERNS: RegExp[] = [
-	/-----BEGIN [A-Z0-9 ]+-----[\s\S]*?-----END [A-Z0-9 ]+-----/g,
-	/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi,
-	/\b(?:ghp_|gho_|ghu_|ghs_|ghr_|github_pat_)[A-Za-z0-9_]+/g,
-	/\bgpioai\.v1\.[A-Za-z0-9._-]+/g,
-	/\bAKIA[0-9A-Z]{16}\b/g,
-	/\bsk-[A-Za-z0-9_-]{16,}\b/g,
-	/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g,
-	/\b[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD)[A-Z0-9_]*\s*=\s*\S+/g,
-	/\b(?:password|passwd|psk|api[_-]?key|secret|token|authorization|pairing[_-]?key)\s*[:=]\s*\S+/gi,
-	/https?:\/\/[^\s/@]+:[^\s/@]+@/gi,
-	/\b[A-Fa-f0-9]{64,}\b/g,
-];
-
 export type SupportSurface = "web" | "desktop" | "mobile";
+
+export function stripSecrets(value: string): string {
+	return redactSecrets(value);
+}
 
 export type SupportEnv = {
 	DYNAMIC_PAGE_KV: KVNamespace;
@@ -35,48 +30,12 @@ export type SupportEnv = {
 
 type SupportFetch = typeof fetch;
 
-type SendResult = {
-	success?: boolean;
-	result?: {
-		delivered?: string[];
-		permanent_bounces?: string[];
-		queued?: string[];
-	} | null;
-};
-
 export type SupportBody = {
 	text?: unknown;
 	surface?: unknown;
 	boardUuid?: unknown;
 	boardModel?: unknown;
 };
-
-export function stripSecrets(value: string): string {
-	let next = value;
-	for (const pattern of SECRET_PATTERNS) {
-		next = next.replace(pattern, (match) => {
-			const labeled =
-				/^((?:password|passwd|psk|api[_-]?key|secret|token|authorization|pairing[_-]?key)\s*[:=]\s*)/i.exec(
-					match,
-				);
-			if (labeled?.[1]) {
-				return `${labeled[1]}[redacted]`;
-			}
-			const envLabeled = /^([A-Z0-9_]+=)/.exec(match);
-			if (
-				envLabeled?.[1] &&
-				/(?:KEY|TOKEN|SECRET|PASSWORD)/.test(envLabeled[1])
-			) {
-				return `${envLabeled[1]}[redacted]`;
-			}
-			if (/^https?:\/\//i.test(match)) {
-				return match.replace(/:\/\/[^:]+:[^@]+@/, "://[redacted]@");
-			}
-			return "[redacted]";
-		});
-	}
-	return next;
-}
 
 export function supportAccepted(
 	result: { sent?: boolean } | null | undefined,
@@ -119,19 +78,6 @@ function emailConfigured(env: SupportEnv): boolean {
 	return Boolean(cloudflareAccountId(env) && cloudflareEmailToken(env));
 }
 
-function acceptedSend(result: SendResult, to: string): boolean {
-	if (result.success !== true || !result.result) {
-		return false;
-	}
-	const bounced = result.result.permanent_bounces ?? [];
-	if (bounced.includes(to)) {
-		return false;
-	}
-	const delivered = result.result.delivered ?? [];
-	const queued = result.result.queued ?? [];
-	return delivered.includes(to) || queued.includes(to);
-}
-
 async function sendSupportMail(
 	env: SupportEnv,
 	message: {
@@ -144,45 +90,12 @@ async function sendSupportMail(
 	},
 	fetchImpl: SupportFetch,
 ): Promise<void> {
-	const accountId = cloudflareAccountId(env);
-	const token = cloudflareEmailToken(env);
-	if (!accountId || !token) {
-		throw new Error("support email is not configured");
-	}
-	const payload: Record<string, unknown> = {
-		to: message.to,
-		from: message.from,
-		subject: message.subject,
-		text: message.text,
-		html: message.html,
-	};
-	if (message.replyTo) {
-		payload.reply_to = message.replyTo;
-	}
-	const response = await fetchImpl(
-		`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/email/sending/send`,
-		{
-			method: "POST",
-			headers: {
-				Authorization: `Bearer ${token}`,
-				"Content-Type": "application/json",
-			},
-			body: JSON.stringify(payload),
-		},
+	await deliverSupportEmail(
+		cloudflareAccountId(env),
+		cloudflareEmailToken(env),
+		message,
+		fetchImpl,
 	);
-	if (!response.ok) {
-		await response.text().catch(() => "");
-		throw new Error("support email is not configured");
-	}
-	let parsed: SendResult;
-	try {
-		parsed = (await response.json()) as SendResult;
-	} catch {
-		throw new Error("support email is not configured");
-	}
-	if (!acceptedSend(parsed, message.to)) {
-		throw new Error("support email is not configured");
-	}
 }
 
 function fromAddress(env: SupportEnv): string {
@@ -254,6 +167,23 @@ async function releaseRate(kv: KVNamespace, userId: string, now: number) {
 		(stamp) => stamp !== now,
 	);
 	await writeStamps(kv, userId, stamps);
+}
+
+export async function takeSupportSlot(
+	env: SupportEnv,
+	userId: string,
+	now = Date.now(),
+): Promise<number> {
+	await consumeRate(env.DYNAMIC_PAGE_KV, userId, now);
+	return now;
+}
+
+export async function refundSupportSlot(
+	env: SupportEnv,
+	userId: string,
+	stamp: number,
+): Promise<void> {
+	await releaseRate(env.DYNAMIC_PAGE_KV, userId, stamp);
 }
 
 function escapeHtml(value: string): string {

@@ -74,6 +74,14 @@ The Worker name in the dashboard must stay `gpio-companion-hub` (same as `wrangl
 
 The dashboard `wrangler.jsonc` binds that Worker with `script_name: "gpio-companion-hub"`. Pis mint a short-lived ticket via `POST /api/hub` `{uuid,key}` then connect `wss://gpio-companion.com/api/hub` and publish flash, run, and Arduino proxy status. That socket also writes KV `live:{uuid}`. Dashboard browsers upgrade the same path with the session cookie. Writes stay signed HTTP. Live GPIO is `wss://api-<slug>.gpio-companion.com/v1/gpio`.
 
+## 2a. Support agent Worker
+
+Bug-report chat runs in a per-user Durable Object. Pages cannot define that class, so deploy this Worker before a dashboard deploy that binds `SUPPORT_AGENT`.
+
+App: `apps/workers/support-agent`. Wrangler name: `gpio-companion-support`. Binding: `SUPPORT_AGENT` / class `SupportAgent`. First upload: `bun run deploy:support`. Workers Builds root directory: `apps/workers/support-agent`. Build: `bun run ci:install`. Deploy: `bunx wrangler deploy`.
+
+Set Worker secret `OPENVIKING_API_KEY` to an OpenViking **user** key for the account that owns `viking://resources/gpio-companion`. Do not use the root key. The live binding `OPENVIKING` is Workers VPC service `gpio-companion-openviking` (HTTP `127.0.0.1:1933`, no public hostname). The connector on this machine is the user unit `gpio-openviking-tunnel.service`. The chat still runs if that binding or key is missing; lookup tools then say the project cannot be checked.
+
 ## 2b. Voice hub Worker (unused by dashboard UI)
 
 Talk UI is removed. The dashboard does **not** bind `VOICE_HUB` / `gpio-companion-voice`. Do not deploy that Worker as a dashboard prerequisite. Source remains at `apps/workers/voice-hub` if Talk is restored later. `/api/voice/*` returns 503 while unbound.

@@ -30,7 +30,8 @@
 			"gpio-companion-attach": ["../../packages/core/src/code-attach.ts"],
 			"gpio-companion-config": ["../../packages/core/src/config.ts"],
 			"gpio-companion-jlcpcb": ["../../packages/core/src/jlcpcb-parts.ts"],
-			"gpio-companion-usage": ["../../packages/core/src/usage-charts.ts"]
+			"gpio-companion-usage": ["../../packages/core/src/usage-charts.ts"],
+			"gpio-companion-support": ["../../packages/core/src/support-chat.ts"]
 		}
 	},
 	"include": ["src"],

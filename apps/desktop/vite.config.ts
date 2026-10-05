@@ -60,6 +60,10 @@ export default defineConfig({
 				repoRoot,
 				"packages/core/src/usage-charts.ts",
 			),
+			"gpio-companion-support": path.resolve(
+				repoRoot,
+				"packages/core/src/support-chat.ts",
+			),
 		},
 	},
 	clearScreen: false,

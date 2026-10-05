@@ -49,11 +49,16 @@
 	// CLOUDFLARE_ACCOUNT_ID wrangler var (do not bake empty)
 	"durable_objects": {
 		"bindings": [
-			{
-				"name": "DEVICE_HUB",
-				"class_name": "DeviceHub",
-				"script_name": "gpio-companion-hub"
-			}
+		{
+			"name": "DEVICE_HUB",
+			"class_name": "DeviceHub",
+			"script_name": "gpio-companion-hub"
+		},
+		{
+			"name": "SUPPORT_AGENT",
+			"class_name": "SupportAgent",
+			"script_name": "gpio-companion-support"
+		}
 		]
 	}
 }

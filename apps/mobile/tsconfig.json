@@ -24,7 +24,8 @@
 			"gpio-companion-jlcpcb": ["../../packages/core/src/jlcpcb-parts.ts"],
 			"gpio-companion-projects": ["../../packages/core/src/project-files.ts"],
 			"gpio-companion-ssh": ["../../packages/core/src/ssh.ts"],
-			"gpio-companion-versions": ["../../packages/core/src/semver.ts"]
+			"gpio-companion-versions": ["../../packages/core/src/semver.ts"],
+			"gpio-companion-support": ["../../packages/core/src/support-chat.ts"]
 		}
 	},
 	"include": ["**/*.ts", "**/*.tsx"],

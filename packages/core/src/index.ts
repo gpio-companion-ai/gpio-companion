@@ -980,6 +980,17 @@ export {
 	SKETCH_LIST_MAX,
 } from "./project-files.ts";
 export {
+	browserDiagnosticsBody,
+	BROWSER_DIAGNOSTICS_BODY_MAX,
+	type BrowserDiagnostics,
+	installBrowserDiagnostics,
+	installBrowserDiagnosticsHere,
+	readBrowserDiagnostics,
+	recordBrowserConsole,
+	recordBrowserNetwork,
+} from "./browser-diagnostics.ts";
+export { redactSecrets } from "./redact.ts";
+export {
 	capRunLog,
 	isRunPath,
 	parseRunPut,
@@ -1044,6 +1055,42 @@ export {
 	sshWsUrl,
 } from "./ssh.ts";
 export {
+	assertOvUri,
+	clipExcerpt,
+	type OvCall,
+	onOpenSupportChat,
+	openSupportChat,
+	ovRequest,
+	parseSupportSummary,
+	partialSummary,
+	SUPPORT_CHAT_MESSAGE_CAP,
+	SUPPORT_CHAT_MODEL_MAX,
+	SUPPORT_CHAT_TEXT_MAX,
+	SUPPORT_OV_EXCERPT_MAX,
+	SUPPORT_OV_ROOT,
+	type SupportChatMessage,
+	type SupportChatRole,
+	type SupportChatState,
+	type SupportChatStatus,
+	type SupportChatSummary,
+	type SupportChatTurn,
+	type SupportSeverity,
+	type SupportSurface,
+	supportBoardUuid,
+	supportLocale,
+	supportReportId,
+	supportReportMail,
+	supportSurface,
+	supportText,
+	userMessageCount,
+} from "./support-chat.ts";
+export {
+	deliverSupportEmail,
+	SUPPORT_FROM,
+	SUPPORT_TO,
+	type SupportMail,
+} from "./support-mail.ts";
+export {
 	cloudflareTunnelName,
 	DASHBOARD_ORIGIN,
 	DEVICE_API_PORT,
@@ -1068,6 +1115,7 @@ export {
 	UI_NAVIGATE_TARGETS,
 	UI_PATH,
 	UI_PREVIEW_PATH_MAX,
+	UI_REPLY_BODY_MAX,
 	UI_REPLY_POLL_MS,
 	UI_REPLY_PREFIX,
 	UI_REPLY_TICK_MS,
@@ -1078,6 +1126,7 @@ export {
 	type UiAppCommand,
 	type UiCommand,
 	type UiCommandResult,
+	type UiDiagnosticsCommand,
 	type UiDockCommand,
 	type UiDockTab,
 	UiError,

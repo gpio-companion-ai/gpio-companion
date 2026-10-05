@@ -94,6 +94,29 @@ export const aiUsage = sqliteTable(
 
 export type AiUsageKind = "chat" | "embedding" | "stt" | "tts";
 
+export const supportReports = sqliteTable(
+	"support_reports",
+	{
+		reportId: text("report_id").primaryKey(),
+		userId: text("user_id").notNull(),
+		createdAt: text("created_at").notNull(),
+		surface: text("surface").notNull(),
+		board: text("board").notNull().default(""),
+		subject: text("subject").notNull(),
+		bodyText: text("body_text").notNull(),
+		bodyHtml: text("body_html").notNull(),
+		summaryJson: text("summary_json").notNull(),
+		emailedAt: text("emailed_at"),
+	},
+	(table) => [
+		index("support_reports_created_idx").on(table.createdAt),
+		check(
+			"support_reports_surface_check",
+			sql`${table.surface} in ('web', 'desktop', 'mobile')`,
+		),
+	],
+);
+
 export const jlcpcbDraftAssemblyLines = sqliteTable(
 	"jlcpcb_draft_assembly_lines",
 	{

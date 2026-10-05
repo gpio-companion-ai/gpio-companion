@@ -82,6 +82,7 @@ const LOCAL_COMMANDS = new Set([
 	"verify",
 	"console",
 	"ui",
+	"bug-report",
 	"app",
 	"status",
 	"health",

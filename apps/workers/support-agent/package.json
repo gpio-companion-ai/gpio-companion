@@ -1,0 +1,30 @@
+{
+	"name": "gpio-companion-support",
+	"private": true,
+	"type": "module",
+	"version": "0.0.0",
+	"packageManager": "bun@1.4.0",
+	"description": "gpio-companion bug-report Pi harness",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy",
+		"ci:install": "bun install --cwd ../../..",
+		"postinstall": "ln -sfn \"$PWD/node_modules/wrangler/bin/wrangler.js\" /usr/local/bin/wrangler || true",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@cloudflare/codemode": "^0.5.3",
+		"@earendil-works/pi-ai": "^1.0.3",
+		"@earendil-works/pi-durable": "^1.0.3",
+		"agents": "^0.26.0",
+		"ai": "^7",
+		"gpio-companion": "workspace:*",
+		"just-bash": "^3"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260702.1",
+		"@types/bun": "catalog:",
+		"typescript": "catalog:",
+		"wrangler": "^4.127.1"
+	}
+}

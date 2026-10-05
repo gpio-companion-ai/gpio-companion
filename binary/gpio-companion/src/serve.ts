@@ -1060,6 +1060,25 @@ export async function handleDeviceRequest(
 		});
 	}
 
+	if (path === "/v1/support") {
+		if (!isLoopback(url)) {
+			throw new Error("support proxy is local-only");
+		}
+		if (request.method.toUpperCase() !== "POST") {
+			return json({ error: "method not allowed" }, 405);
+		}
+		const pairing = await pairingStore.read();
+		return proxyJlcpcbRequest({
+			request,
+			bodyText,
+			uuid: pairing.uuid,
+			key: pairing.key,
+			origin: extras?.dashboardUrl,
+			fetchImpl: extras?.fetchImpl,
+			upstreamPath: "/api/support/device",
+		});
+	}
+
 	if (path === "/v1/jlcpcb" || path === "/v1/jlcpcb/draft") {
 		if (!isLoopback(url)) {
 			throw new Error("jlcpcb proxy is local-only");
@@ -2088,7 +2107,10 @@ async function handleUi(
 		if (!reply) {
 			return json({ error: "no reply" }, 404);
 		}
-		return json({ action: reply.action });
+		return json({
+			action: reply.action,
+			...(reply.body ? { body: reply.body } : {}),
+		});
 	}
 	return json({ error: "method not allowed" }, 405);
 }

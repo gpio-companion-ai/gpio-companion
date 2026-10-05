@@ -1,4 +1,5 @@
 import { useFocusEffect } from "expo-router";
+import { openSupportChat } from "gpio-companion-support";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { findNodeHandle, Linking, type ScrollView, View } from "react-native";
 import AddressForm from "../components/AddressForm.tsx";
@@ -9,7 +10,6 @@ import UsageChartsWebView from "../components/UsageChartsWebView.tsx";
 import {
 	Body,
 	ErrorText,
-	Field,
 	Muted,
 	Paper,
 	PrimaryButton,
@@ -18,12 +18,7 @@ import {
 	TextButton,
 } from "../components/ui.tsx";
 import VoiceCard from "../components/VoiceCard.tsx";
-import {
-	getCredits,
-	getCreditsUsage,
-	listDeviceStatus,
-	submitBugReport,
-} from "../lib/api.ts";
+import { getCredits, getCreditsUsage, listDeviceStatus } from "../lib/api.ts";
 import { CACHE_KEYS, useCachedQuery } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
@@ -199,12 +194,12 @@ export default function Profile() {
 			>
 				<AddressForm token={token} />
 			</View>
-			<BugReportForm token={token} />
+			<BugReportCard token={token} />
 		</Screen>
 	);
 }
 
-function BugReportForm({ token }: { token: string | null }) {
+function BugReportCard({ token }: { token: string | null }) {
 	const t = useT();
 	const { uuid } = useBoardSelection();
 	const boardsQuery = useCachedQuery(CACHE_KEYS.userBoards, () => {
@@ -219,44 +214,6 @@ function BugReportForm({ token }: { token: string | null }) {
 	const boardLabel = [board?.device.label, board?.status?.model]
 		.filter(Boolean)
 		.join(" · ");
-	const [text, setText] = useState("");
-	const [busy, setBusy] = useState(false);
-	const [sent, setSent] = useState(false);
-	const [error, setError] = useState("");
-
-	async function submit() {
-		if (!token) {
-			setSent(false);
-			setError(t("common.signInFirst"));
-			return;
-		}
-		setBusy(true);
-		setSent(false);
-		setError("");
-		try {
-			const result = await submitBugReport(token, {
-				text,
-				surface: "mobile",
-				boardUuid: uuid,
-				boardModel: board?.status?.model ?? "",
-			});
-			if (result?.sent !== true) {
-				setError(t("errors.supportEmailMissing"));
-				return;
-			}
-			setText("");
-			setSent(true);
-		} catch (caught) {
-			setSent(false);
-			setError(
-				caught instanceof Error
-					? caught.message
-					: t("errors.supportEmailMissing"),
-			);
-		} finally {
-			setBusy(false);
-		}
-	}
 
 	return (
 		<Paper>
@@ -265,20 +222,9 @@ function BugReportForm({ token }: { token: string | null }) {
 			{boardLabel ? (
 				<Muted>{t("profile.bugBoard", { board: boardLabel })}</Muted>
 			) : null}
-			{sent ? <Body>{t("profile.bugSent")}</Body> : null}
-			<ErrorText>{translateError(t, error)}</ErrorText>
-			<Field
-				label={t("profile.bugLabel")}
-				placeholder={t("profile.bugPlaceholder")}
-				value={text}
-				onChangeText={setText}
-				multiline
-				autoCapitalize="sentences"
-			/>
 			<PrimaryButton
-				label={busy ? t("profile.bugSending") : t("profile.bugSend")}
-				disabled={busy || !text.trim()}
-				onPress={() => void submit()}
+				label={t("profile.bugOpen")}
+				onPress={() => openSupportChat()}
 			/>
 		</Paper>
 	);

@@ -1,3 +1,5 @@
+import type { SupportChatState } from "gpio-companion-support";
+import { recordBrowserNetwork } from "gpio-companion-ui";
 import { dashboardUrl } from "./config.ts";
 import {
 	isOfflineSignFallback,
@@ -57,7 +59,7 @@ async function fetchOnce(
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
 	try {
-		return await fetch(`${dashboardUrl}${path}`, {
+		const response = await fetch(`${dashboardUrl}${path}`, {
 			...init,
 			headers: {
 				accept: "application/json",
@@ -67,7 +69,12 @@ async function fetchOnce(
 			},
 			signal: controller.signal,
 		});
+		if (!response.ok) {
+			recordBrowserNetwork(init.method ?? "GET", path, response.status);
+		}
+		return response;
 	} catch (caught) {
+		recordBrowserNetwork(init.method ?? "GET", path, 0);
 		if (
 			caught instanceof Error &&
 			(caught.name === "AbortError" || /abort/i.test(caught.message))
@@ -537,6 +544,27 @@ export function saveProfile(
 			body: JSON.stringify(profile),
 		},
 	);
+}
+
+export function supportChat(token: string) {
+	return request<SupportChatState>(token, "/api/mobile/support-chat");
+}
+
+export function supportChatSend(
+	token: string,
+	body: {
+		text: string;
+		surface: "mobile";
+		locale: "en" | "fr";
+		boardUuid?: string;
+		boardModel?: string;
+		restart?: boolean;
+	},
+) {
+	return request<SupportChatState>(token, "/api/mobile/support-chat", {
+		method: "POST",
+		body: JSON.stringify(body),
+	});
 }
 
 export function submitBugReport(

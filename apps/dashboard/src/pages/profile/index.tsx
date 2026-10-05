@@ -1,13 +1,11 @@
 import { GET as getCredits } from "@api/credits";
-import Alert from "@shpaw415/mui-lite/Alert";
 import Button from "@shpaw415/mui-lite/Button";
 import Chip from "@shpaw415/mui-lite/Chip";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Skeleton from "@shpaw415/mui-lite/Skeleton";
 import Stack from "@shpaw415/mui-lite/Stack";
-import TextField from "@shpaw415/mui-lite/TextField";
 import Typography from "@shpaw415/mui-lite/Typography";
-import { translateError } from "gpio-companion/i18n";
+import { openSupportChat } from "gpio-companion";
 import { useEffect, useState } from "react";
 import AddressForm from "../../components/AddressForm.tsx";
 import BoardAlertSettings from "../../components/BoardAlertSettings.tsx";
@@ -22,7 +20,6 @@ import { useWorkbench } from "../../hooks/useWorkbench.tsx";
 import { requireLogin } from "../../lib/auth/refresh.ts";
 import { formatUsd } from "../../lib/credits.ts";
 import { clearOfflineKeys } from "../../lib/offline-keys.ts";
-import { supportAccepted } from "../../lib/support.ts";
 
 export default function ProfilePage() {
 	const auth = useAuth();
@@ -135,64 +132,19 @@ export default function ProfilePage() {
 					</Paper>
 					<ExperienceCard />
 					<AddressForm />
-					<BugReportForm />
+					<BugReportCard />
 				</>
 			) : null}
 		</Stack>
 	);
 }
 
-function BugReportForm() {
+function BugReportCard() {
 	const t = useT();
 	const { uuid } = useBoardSelection();
 	const { boards } = useWorkbench();
 	const board = boards.find((item) => item.uuid === uuid);
 	const boardLabel = [board?.label, board?.model].filter(Boolean).join(" · ");
-	const [text, setText] = useState("");
-	const [busy, setBusy] = useState(false);
-	const [sent, setSent] = useState(false);
-	const [error, setError] = useState("");
-
-	async function submit() {
-		setBusy(true);
-		setSent(false);
-		setError("");
-		try {
-			const response = await fetch("/api/support", {
-				method: "POST",
-				headers: {
-					accept: "application/json",
-					"content-type": "application/json",
-				},
-				body: JSON.stringify({
-					text,
-					surface: "web",
-					boardUuid: uuid,
-					boardModel: board?.model ?? "",
-				}),
-			});
-			const payload = (await response.json().catch(() => null)) as {
-				ok?: boolean;
-				error?: string;
-				data?: { sent?: boolean };
-			} | null;
-			if (!supportAccepted(payload?.ok ? payload.data : null)) {
-				setError(payload?.error || t("errors.supportEmailMissing"));
-				return;
-			}
-			setText("");
-			setSent(true);
-		} catch (caught) {
-			setSent(false);
-			setError(
-				caught instanceof Error
-					? caught.message
-					: t("errors.supportEmailMissing"),
-			);
-		} finally {
-			setBusy(false);
-		}
-	}
 
 	return (
 		<Paper className="w-full p-3" elevation={1}>
@@ -204,25 +156,12 @@ function BugReportForm() {
 						{t("profile.bugBoard", { board: boardLabel })}
 					</Typography>
 				) : null}
-				{sent ? <Alert severity="success">{t("profile.bugSent")}</Alert> : null}
-				{error ? (
-					<Alert severity="error">{translateError(t, error)}</Alert>
-				) : null}
-				<TextField
-					label={t("profile.bugLabel")}
-					placeholder={t("profile.bugPlaceholder")}
-					value={text}
-					multiline
-					disabled={busy}
-					onChange={(event) => setText(event.target.value)}
-				/>
 				<Button
 					variant="contained"
 					size="small"
-					disabled={busy || !text.trim()}
-					onClick={() => void submit()}
+					onClick={() => openSupportChat()}
 				>
-					{busy ? t("profile.bugSending") : t("profile.bugSend")}
+					{t("profile.bugOpen")}
 				</Button>
 			</Stack>
 		</Paper>

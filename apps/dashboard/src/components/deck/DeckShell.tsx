@@ -27,10 +27,12 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
-import type {
-	UiAppCommand,
-	UiModalCommand,
-	UiNavigateTarget,
+import {
+	browserDiagnosticsBody,
+	installBrowserDiagnosticsHere,
+	type UiAppCommand,
+	type UiModalCommand,
+	type UiNavigateTarget,
 } from "gpio-companion";
 import type {
 	ComponentType,
@@ -60,9 +62,11 @@ import {
 } from "../../lib/dashboard-mode.ts";
 import AppFrame from "../AppFrame.tsx";
 import BoardPresenceAlerts from "../BoardPresenceAlerts.tsx";
+import SupportChat from "../SupportChat.tsx";
 import DockBody from "./DockBody.tsx";
 
 const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
+installBrowserDiagnosticsHere();
 
 type DeckTranslate = (key: `deck.${string}`) => string;
 type FocusRegion = "primary";
@@ -281,6 +285,10 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 					return;
 				case "modal":
 					setUiModal(command);
+					return;
+				case "diagnostics":
+					installBrowserDiagnosticsHere();
+					uiSocket.reply(command.id, "diagnostics", browserDiagnosticsBody());
 					return;
 				case "app": {
 					openUiApp(command);
@@ -1133,6 +1141,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				</div>
 			) : null}
 
+			{session.data?.id ? <SupportChat /> : null}
 			<BoardPresenceAlerts
 				enabled={Boolean(session.data?.id)}
 				boards={boards.map((board) => ({

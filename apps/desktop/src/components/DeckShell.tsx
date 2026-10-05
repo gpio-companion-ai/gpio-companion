@@ -7,7 +7,11 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
 import Typography from "@shpaw415/mui-lite/Typography";
-import type { UiModalCommand } from "gpio-companion-ui";
+import {
+	browserDiagnosticsBody,
+	installBrowserDiagnosticsHere,
+	type UiModalCommand,
+} from "gpio-companion-ui";
 import {
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
@@ -16,6 +20,7 @@ import {
 	useState,
 } from "react";
 import logo from "../../../../logo/logo.png";
+installBrowserDiagnosticsHere();
 import { useUserBoards } from "../hooks/useApiCache";
 import type { DockTab } from "../hooks/useBoardSelection";
 import { useBoardSelection } from "../hooks/useBoardSelection";
@@ -31,6 +36,7 @@ import { useT } from "../locale";
 import AppFrame from "./AppFrame";
 import BoardPresenceAlerts from "./BoardPresenceAlerts";
 import DockBody from "./DockBody";
+import SupportChat from "./SupportChat";
 
 export type DeckSection = "project" | "devices" | "profile";
 type RailPane = "work" | "fleet" | "you";
@@ -192,6 +198,10 @@ export default function DeckShell({
 					return;
 				case "modal":
 					setUiModal(command);
+					return;
+				case "diagnostics":
+					installBrowserDiagnosticsHere();
+					uiSocket.reply(command.id, "diagnostics", browserDiagnosticsBody());
 					return;
 				case "app": {
 					if (command.view === "modal") {
@@ -777,6 +787,7 @@ export default function DeckShell({
 				</div>
 			) : null}
 
+			{signedIn ? <SupportChat /> : null}
 			<BoardPresenceAlerts
 				boards={boards.map((board) => ({
 					uuid: board.device.uuid,

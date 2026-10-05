@@ -67,6 +67,11 @@ export type UiAppCommand = {
 	title: string;
 };
 
+export type UiDiagnosticsCommand = {
+	type: "diagnostics";
+	id: string;
+};
+
 export type UiCommand =
 	| UiNavigateCommand
 	| UiDockCommand
@@ -74,7 +79,8 @@ export type UiCommand =
 	| UiToastCommand
 	| UiModalCommand
 	| UiPreviewCommand
-	| UiAppCommand;
+	| UiAppCommand
+	| UiDiagnosticsCommand;
 
 export const UI_NAVIGATE_TARGETS = [
 	"project",
@@ -113,10 +119,13 @@ export type UiSocketHello = {
 	focused: boolean;
 };
 
+export const UI_REPLY_BODY_MAX = 8000;
+
 export type UiSocketReply = {
 	op: "reply";
 	id: string;
 	action: string;
+	body?: string;
 };
 
 export type UiSocketClientMessage = UiSocketHello | UiSocketReply;
@@ -207,6 +216,8 @@ export function parseUiCommand(input: unknown): UiCommand {
 			return parsePreview(record);
 		case "app":
 			return parseApp(record);
+		case "diagnostics":
+			return parseDiagnostics(record);
 		default:
 			throw new UiError("unknown ui command");
 	}
@@ -236,7 +247,13 @@ export function parseUiSocketMessage(input: unknown): UiSocketClientMessage {
 		if (!action) {
 			throw new UiError("reply action is required");
 		}
-		return { op: "reply", id, action };
+		const body =
+			typeof record.body === "string"
+				? record.body.slice(0, UI_REPLY_BODY_MAX)
+				: "";
+		return body
+			? { op: "reply", id, action, body }
+			: { op: "reply", id, action };
 	}
 	throw new UiError("unknown ui message");
 }
@@ -284,6 +301,16 @@ function capText(value: unknown, max: number, label: string): string {
 		throw new UiError(`${label} text is required`);
 	}
 	return value.slice(0, max);
+}
+
+function parseDiagnostics(
+	record: Record<string, unknown>,
+): UiDiagnosticsCommand {
+	const id = typeof record.id === "string" ? record.id.trim() : "";
+	if (!id || id.length > 128) {
+		throw new UiError("diagnostics id is required");
+	}
+	return { type: "diagnostics", id };
 }
 
 function parseModal(record: Record<string, unknown>): UiModalCommand {
@@ -336,6 +363,12 @@ function parsePreview(record: Record<string, unknown>): UiPreviewCommand {
 	}
 	return { type: "preview", repo, path };
 }
+
+export {
+	browserDiagnosticsBody,
+	installBrowserDiagnosticsHere,
+	recordBrowserNetwork,
+} from "./browser-diagnostics.ts";
 
 function parseApp(record: Record<string, unknown>): UiAppCommand {
 	if (typeof record.appId !== "string" || !isAppName(record.appId.trim())) {

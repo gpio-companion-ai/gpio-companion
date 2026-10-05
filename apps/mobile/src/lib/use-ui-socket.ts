@@ -15,7 +15,7 @@ type UiSocketOptions = {
 };
 
 export type UiSocketHandle = {
-	reply: (id: string, action: string) => void;
+	reply: (id: string, action: string, body?: string) => void;
 };
 
 export function useUiSocket(options: UiSocketOptions): UiSocketHandle {
@@ -80,8 +80,15 @@ export function useUiSocket(options: UiSocketOptions): UiSocketHandle {
 	}, [authToken, enabled, surface, uuid, send]);
 
 	return {
-		reply(id: string, action: string) {
-			send(JSON.stringify({ op: "reply", id, action }));
+		reply(id: string, action: string, body?: string) {
+			send(
+				JSON.stringify({
+					op: "reply",
+					id,
+					action,
+					...(body ? { body } : {}),
+				}),
+			);
 		},
 	};
 }

@@ -1,0 +1,50 @@
+{
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	// Workers Builds (Git): Worker gpio-companion-support, root apps/workers/support-agent
+	// build: bun run ci:install
+	// deploy: bunx wrangler deploy
+	// OPENVIKING_API_KEY is a Worker secret (OpenViking user support-reader, not the root key).
+	// VPC service gpio-companion-openviking: HTTP 127.0.0.1:1933, no public hostname.
+	// Connector: user systemd unit gpio-openviking-tunnel.service on this machine.
+	"name": "gpio-companion-support",
+	"main": "src/index.ts",
+	"compatibility_date": "2026-10-05",
+	"compatibility_flags": ["nodejs_compat"],
+	"observability": {
+		"enabled": true
+	},
+	"ai": {
+		"binding": "AI"
+	},
+	"d1_databases": [
+		{
+			"binding": "DASHBOARD_DB",
+			"database_name": "gpio-companion-dashboard",
+			"database_id": "c1ffbccb-de80-4f65-bd69-516f508f64fe"
+		}
+	],
+	"vpc_services": [
+		{
+			"binding": "OPENVIKING",
+			"service_id": "01a10d1e-2d40-7ef0-a60d-b78da6cbe8ee",
+			"remote": true
+		}
+	],
+	"vars": {
+		"SUPPORT_MODEL": "@cf/zai-org/glm-5.3-flash"
+	},
+	"durable_objects": {
+		"bindings": [
+			{
+				"name": "SUPPORT_AGENT",
+				"class_name": "SupportAgent"
+			}
+		]
+	},
+	"migrations": [
+		{
+			"tag": "v1",
+			"new_sqlite_classes": ["SupportAgent"]
+		}
+	]
+}
