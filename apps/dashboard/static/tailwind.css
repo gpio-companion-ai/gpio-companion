@@ -3795,6 +3795,18 @@ button.oc-chip,
 		flex-direction: column;
 	}
 
+	/* The editor pane (app preview, code editor, markdown/SVG views) must
+	   stretch to fill the single-pane Preview tab; otherwise the app iframe
+	   collapses to intrinsic height like on /devices/app. */
+	.oc-code-tabs.is-m-preview .oc-editor {
+		display: flex;
+		min-width: 0;
+		min-height: 0;
+		flex: 1;
+		flex-direction: column;
+		overflow: hidden;
+	}
+
 	.oc-tree-row {
 		min-height: 40px;
 	}
