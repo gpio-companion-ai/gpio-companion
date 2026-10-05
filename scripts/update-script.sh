@@ -180,6 +180,10 @@ install_cleanup_units
 install_wifi_keep_units
 install_update_wrapper
 write_repo_metadata
+if [[ -f "$SCRIPT_DIR/systemd/gpio-companion-update.service" ]]; then
+	install -m 0644 "$SCRIPT_DIR/systemd/gpio-companion-update.service" /etc/systemd/system/gpio-companion-update.service
+	install -m 0644 "$SCRIPT_DIR/systemd/gpio-companion-update.timer" /etc/systemd/system/gpio-companion-update.timer
+fi
 install_gpio_3d || echo "gpio-companion update: gpio-3d install failed" >&2
 unit_before=""
 if [[ -f /etc/systemd/system/gpio-companion.service ]]; then
@@ -199,10 +203,6 @@ if server_needs_build; then
 		echo "gpio-companion update: server changed, rebuilding ($bin_rev -> $after)"
 	fi
 	install_gpio_companion_bin
-	if [[ -f "$SCRIPT_DIR/systemd/gpio-companion-update.service" ]]; then
-		install -m 0644 "$SCRIPT_DIR/systemd/gpio-companion-update.service" /etc/systemd/system/gpio-companion-update.service
-		install -m 0644 "$SCRIPT_DIR/systemd/gpio-companion-update.timer" /etc/systemd/system/gpio-companion-update.timer
-	fi
 	printf '%s\n' "$after" >"$BIN_REV_FILE"
 	systemctl daemon-reload
 	if [[ "$adapter_changed" -eq 1 ]]; then
