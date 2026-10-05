@@ -459,7 +459,7 @@ EOF
 }
 
 install_opencode_service() {
-	local home unit_dir unit bin dest projects
+	local home unit_dir unit bin dest projects template
 	bin="$(opencode_wrapper_bin)"
 	if [[ ! -x "$bin" ]]; then
 		bin="$(opencode_bin || true)"
@@ -479,11 +479,21 @@ install_opencode_service() {
 	unit_dir="$home/.config/systemd/user"
 	unit="$unit_dir/gpio-opencode.service"
 	install -d -m 0755 "$unit_dir"
+	template="$SCRIPT_DIR/systemd/gpio-opencode.service"
+	if [[ ! -s "$template" ]]; then
+		echo "gpio-companion: opencode unit template missing or empty ($template); refusing to install a broken unit" >&2
+		return 1
+	fi
 	dest="$(mktemp)"
 	sed \
 		-e "s|__OPENCODE_BIN__|$bin|g" \
 		-e "s|__OPENCODE_SERVER_ENV__|$(opencode_server_env_path)|g" \
-		"$SCRIPT_DIR/systemd/gpio-opencode.service" >"$dest"
+		"$template" >"$dest"
+	if [[ ! -s "$dest" ]]; then
+		echo "gpio-companion: rendered opencode unit is empty; refusing to install it" >&2
+		rm -f "$dest"
+		return 1
+	fi
 	install -m 0644 "$dest" "$unit"
 	rm -f "$dest"
 	if [[ "$GPIO_USER" != "root" ]]; then
@@ -1733,8 +1743,18 @@ install_gpio_companion_bin() {
 		die "gpio-companion binary was not built"
 	fi
 	swap_gpio_companion_bin "$src"
+	if [[ -n "$staged" ]]; then
+		rm -f "$staged"
+	fi
 	if [[ -n "$release_version" ]]; then
-		printf '%s\n' "$release_version" > "${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}/companion.version"
+		local version_tmp="${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}/.companion.version.$$"
+		printf '%s\n' "$release_version" >"$version_tmp"
+		if [[ -s "$version_tmp" ]]; then
+			mv -f "$version_tmp" "${GPIO_COMPANION_CONFIG_DIR:-/etc/gpio-companion}/companion.version"
+		else
+			rm -f "$version_tmp"
+			echo "gpio-companion update: companion.version write came up empty; skipping" >&2
+		fi
 	fi
 	install_ble_gatt_script
 	install_gpio_pwm

@@ -55,6 +55,14 @@ done
 
 ensure_root
 
+# one update at a time: concurrent runs race the git checkout and have
+# truncated rendered files (0-byte opencode unit, 2026-10-04)
+exec 9>/run/gpio-companion-update.lock
+if ! flock -n 9; then
+	echo "gpio-companion update: another update is already running; skipping"
+	exit 0
+fi
+
 cd "$REPO_ROOT"
 
 before="$(git_in "$REPO_ROOT" rev-parse HEAD 2>/dev/null || echo unknown)"
