@@ -27,6 +27,7 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
+import { onOpenSupportChat } from "gpio-companion";
 import {
 	browserDiagnosticsBody,
 	installBrowserDiagnosticsHere,
@@ -62,7 +63,6 @@ import {
 } from "../../lib/dashboard-mode.ts";
 import AppFrame from "../AppFrame.tsx";
 import BoardPresenceAlerts from "../BoardPresenceAlerts.tsx";
-import SupportChat from "../SupportChat.tsx";
 import DockBody from "./DockBody.tsx";
 
 const DASHBOARD_BOTTOM_NAV_ID = "gpio-dashboard-bottom-nav";
@@ -70,7 +70,14 @@ installBrowserDiagnosticsHere();
 
 type DeckTranslate = (key: `deck.${string}`) => string;
 type FocusRegion = "primary";
-type DockTab = "console" | "gpio" | "flash" | "problems" | "actions" | "ssh";
+type DockTab =
+	| "console"
+	| "gpio"
+	| "flash"
+	| "problems"
+	| "actions"
+	| "ssh"
+	| "support";
 type ContextLink = {
 	href: string;
 	labelKey: `deck.${string}`;
@@ -83,6 +90,7 @@ const DOCK_TABS: Array<[DockTab, ComponentType]> = [
 	["problems", WarningIcon],
 	["actions", StopCircleIcon],
 	["ssh", ComputerIcon],
+	["support", WarningIcon],
 ];
 
 const UI_NAVIGATE_HREF: Record<UiNavigateTarget, string> = {
@@ -571,6 +579,13 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	}, [dockHeight]);
 
 	useEffect(() => {
+		return onOpenSupportChat(() => {
+			setDockTab("support");
+			setDockOpen(true);
+		});
+	}, [setDockOpen, setDockTab]);
+
+	useEffect(() => {
 		if (mode === "easy" && (dockTab === "problems" || dockTab === "ssh")) {
 			setDockTab("flash");
 		}
@@ -973,7 +988,8 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 							<div className="b6-dock-tabs" role="tablist">
 								{DOCK_TABS.filter(
 									([tab]) =>
-										mode === "expert" || (tab !== "problems" && tab !== "ssh"),
+										mode === "expert" ||
+										(tab !== "problems" && tab !== "ssh"),
 								).map(([tab, Icon]) => (
 									<button
 										key={tab}
@@ -1141,7 +1157,6 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 				</div>
 			) : null}
 
-			{session.data?.id ? <SupportChat /> : null}
 			<BoardPresenceAlerts
 				enabled={Boolean(session.data?.id)}
 				boards={boards.map((board) => ({

@@ -20,6 +20,7 @@ import FlashPanel from "./FlashPanel";
 import FlashProxyButton from "./FlashProxyButton";
 import GpioPanel from "./GpioPanel";
 import SshPanel from "./SshPanel";
+import SupportChat from "./SupportChat";
 import VerifyPanel from "./VerifyPanel";
 
 export type DesktopDockTab =
@@ -28,7 +29,8 @@ export type DesktopDockTab =
 	| "flash"
 	| "problems"
 	| "actions"
-	| "ssh";
+	| "ssh"
+	| "support";
 
 export default function DockBody({
 	tab,
@@ -58,6 +60,9 @@ export default function DockBody({
 		node.scrollTop = node.scrollHeight;
 	}, [log]);
 
+	if (tab === "support") {
+		return <SupportChat />;
+	}
 	if (!uuid) {
 		return <span>{t("deck.dock.needBoard")}</span>;
 	}

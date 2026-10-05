@@ -7,6 +7,7 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
 import Typography from "@shpaw415/mui-lite/Typography";
+import { onOpenSupportChat } from "gpio-companion-support";
 import {
 	browserDiagnosticsBody,
 	installBrowserDiagnosticsHere,
@@ -36,7 +37,7 @@ import { useT } from "../locale";
 import AppFrame from "./AppFrame";
 import BoardPresenceAlerts from "./BoardPresenceAlerts";
 import DockBody from "./DockBody";
-import SupportChat from "./SupportChat";
+
 
 export type DeckSection = "project" | "devices" | "profile";
 type RailPane = "work" | "fleet" | "you";
@@ -400,6 +401,13 @@ export default function DeckShell({
 	}, [admin, deviceTab, mode, onDeviceTab]);
 
 	useEffect(() => {
+		return onOpenSupportChat(() => {
+			setDockTab("support");
+			setDockOpen(true);
+		});
+	}, [setDockOpen, setDockTab]);
+
+	useEffect(() => {
 		if (isEasy && (dockTab === "problems" || dockTab === "ssh")) {
 			setDockTab("flash");
 		}
@@ -666,6 +674,7 @@ export default function DeckShell({
 								"gpio",
 								"flash",
 								"actions",
+								"support",
 								...(isEasy ? [] : ["problems", "ssh"]),
 							] as DockTab[]
 						).map((item) => (
@@ -787,7 +796,6 @@ export default function DeckShell({
 				</div>
 			) : null}
 
-			{signedIn ? <SupportChat /> : null}
 			<BoardPresenceAlerts
 				boards={boards.map((board) => ({
 					uuid: board.device.uuid,

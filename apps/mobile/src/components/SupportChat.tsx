@@ -1,18 +1,13 @@
 import { translateError } from "gpio-companion-i18n";
-import {
-	onOpenSupportChat,
-	type SupportChatState,
-} from "gpio-companion-support";
+import type { SupportChatState } from "gpio-companion-support";
 import { useEffect, useState } from "react";
 import {
-	Modal,
 	Pressable,
 	ScrollView,
 	Text,
 	TextInput,
 	View,
 } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { listDeviceStatus, supportChat, supportChatSend } from "../lib/api.ts";
 import { CACHE_KEYS, useCachedQuery } from "../lib/api-cache.tsx";
 import { useAuth } from "../lib/auth.tsx";
@@ -25,7 +20,6 @@ const EMPTY: SupportChatState = { status: "idle", messages: [] };
 export default function SupportChat() {
 	const t = useT();
 	const colors = useColors();
-	const insets = useSafeAreaInsets();
 	const { locale } = useLocale();
 	const auth = useAuth();
 	const { uuid } = useBoardSelection();
@@ -39,16 +33,13 @@ export default function SupportChat() {
 	const board = boardsQuery.data?.devices.find(
 		(item) => item.device.uuid === uuid,
 	);
-	const [open, setOpen] = useState(false);
 	const [state, setState] = useState<SupportChatState>(EMPTY);
 	const [text, setText] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 
-	useEffect(() => onOpenSupportChat(() => setOpen(true)), []);
-
 	useEffect(() => {
-		if (!open || !token) {
+		if (!token) {
 			return;
 		}
 		let cancelled = false;
@@ -70,7 +61,7 @@ export default function SupportChat() {
 		return () => {
 			cancelled = true;
 		};
-	}, [open, token]);
+	}, [token]);
 
 	async function send(restart = false) {
 		if (!token) {
@@ -106,56 +97,11 @@ export default function SupportChat() {
 	const completed = state.status === "completed";
 
 	return (
-		<>
-			<Pressable
-				accessibilityRole="button"
-				onPress={() => setOpen(true)}
-				style={{
-					position: "absolute",
-					right: 16,
-					bottom: insets.bottom + 72,
-					zIndex: 20,
-					backgroundColor: colors.surface,
-					borderColor: colors.border,
-					borderWidth: 1,
-					borderRadius: 999,
-					paddingHorizontal: 14,
-					paddingVertical: 10,
-				}}
-			>
-				<Text style={{ color: colors.text }}>{t("profile.bugTitle")}</Text>
-			</Pressable>
-			<Modal
-				visible={open}
-				animationType="slide"
-				onRequestClose={() => setOpen(false)}
-			>
-				<View
-					style={{
-						flex: 1,
-						backgroundColor: colors.bg,
-						paddingTop: insets.top + 8,
-						paddingBottom: insets.bottom + 8,
-					}}
-				>
-					<View
-						style={{
-							flexDirection: "row",
-							justifyContent: "space-between",
-							paddingHorizontal: 16,
-							paddingBottom: 8,
-						}}
-					>
-						<Text style={{ color: colors.text, fontWeight: "600" }}>
-							{t("profile.bugChatTitle")}
-						</Text>
-						<Pressable onPress={() => setOpen(false)}>
-							<Text style={{ color: colors.muted }}>
-								{t("profile.bugClose")}
-							</Text>
-						</Pressable>
-					</View>
-					<ScrollView contentContainerStyle={{ padding: 16, gap: 8 }}>
+		<View style={{ flex: 1 }}>
+			<Text style={{ color: colors.text, fontWeight: "600", marginBottom: 8 }}>
+				{t("profile.bugChatTitle")}
+			</Text>
+			<ScrollView contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
 						<Text style={{ color: colors.text }}>
 							{t("profile.bugGreeting")}
 						</Text>
@@ -219,9 +165,7 @@ export default function SupportChat() {
 								</Text>
 							</Pressable>
 						</View>
-					)}
-				</View>
-			</Modal>
-		</>
+			)}
+		</View>
 	);
 }

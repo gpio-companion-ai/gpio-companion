@@ -151,6 +151,9 @@ export const fr = {
 			stopApp: "Arrêter le serveur personnalisé",
 			appRunning: "{name} est en cours.",
 			appIdle: "Aucun serveur personnalisé en cours.",
+			support: "Rapport",
+			supportHint:
+				"Décrivez un bug à l’assistant. Il envoie le rapport au support une fois qu’il est complet.",
 			ssh: "SSH",
 			sshHint: "Ouvrir un shell sur la carte sélectionnée via SSH.",
 			sshOpen: "Connecter SSH",

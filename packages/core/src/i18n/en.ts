@@ -147,6 +147,8 @@ export const en = {
 			stopApp: "Stop custom server",
 			appRunning: "{name} is running.",
 			appIdle: "No custom server is running.",
+			support: "Report",
+			supportHint: "Tell the assistant about a bug. It emails support when the report is complete.",
 			ssh: "SSH",
 			sshHint: "Open a shell on the selected board over SSH.",
 			sshOpen: "Connect SSH",

@@ -38,7 +38,8 @@ export type DockTab =
 	| "flash"
 	| "problems"
 	| "actions"
-	| "ssh";
+	| "ssh"
+	| "support";
 export type FlashSketchPreselect = { dir: string; project: string };
 
 type WorkbenchValue = {

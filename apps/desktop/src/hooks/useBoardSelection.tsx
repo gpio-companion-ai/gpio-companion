@@ -22,7 +22,8 @@ export type DockTab =
 	| "flash"
 	| "problems"
 	| "actions"
-	| "ssh";
+	| "ssh"
+	| "support";
 
 type BoardSelectionValue = {
 	uuid: string;

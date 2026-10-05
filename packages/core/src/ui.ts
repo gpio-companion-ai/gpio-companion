@@ -40,7 +40,8 @@ export type UiDockTab =
 	| "flash"
 	| "problems"
 	| "actions"
-	| "ssh";
+	| "ssh"
+	| "support";
 
 export type UiNavigateCommand = { type: "navigate"; target: UiNavigateTarget };
 export type UiDockCommand = { type: "dock"; tab: UiDockTab };
@@ -105,6 +106,7 @@ export const UI_DOCK_TABS = [
 	"problems",
 	"actions",
 	"ssh",
+	"support",
 ] as const satisfies readonly UiDockTab[];
 
 export const UI_SURFACES = [

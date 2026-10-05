@@ -1,5 +1,6 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePathname, useRouter } from "expo-router";
+import { onOpenSupportChat } from "gpio-companion-support";
 import type { UiModalCommand } from "gpio-companion-ui";
 import {
 	browserDiagnosticsBody,
@@ -76,6 +77,7 @@ import AppWebView from "./AppWebView.tsx";
 import BoardPresenceAlerts from "./BoardPresenceAlerts.tsx";
 import DockSsh from "./DockSsh.tsx";
 import SupportChat from "./SupportChat.tsx";
+
 import { ErrorText, PrimaryButton, TextButton } from "./ui.tsx";
 
 const logo = require("../../assets/logo.png");
@@ -1171,7 +1173,14 @@ function CommandRow({
 	);
 }
 
-type DockTab = "console" | "gpio" | "flash" | "problems" | "actions" | "ssh";
+type DockTab =
+	| "console"
+	| "gpio"
+	| "flash"
+	| "problems"
+	| "actions"
+	| "ssh"
+	| "support";
 
 function DockStatusRow({ name, status }: { name: string; status: string }) {
 	const colors = useColorMode().colors;
@@ -1628,6 +1637,13 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 	const [collapsed, setCollapsed] = useState(false);
 
 	useEffect(() => {
+		return onOpenSupportChat(() => {
+			setTab("support");
+			setCollapsed(false);
+		});
+	}, []);
+
+	useEffect(() => {
 		const subscription = DeviceEventEmitter.addListener(
 			"gpio-ui-dock",
 			(payload: unknown) => {
@@ -1641,7 +1657,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 					next === "flash" ||
 					next === "problems" ||
 					next === "actions" ||
-					next === "ssh"
+					next === "ssh" ||
+					next === "support"
 				) {
 					setTab(next);
 					setCollapsed(false);
@@ -1908,8 +1925,8 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 		[updateHeight, collapsed, setDockCollapsed],
 	);
 	const tabs: DockTab[] = isEasy
-		? ["console", "gpio", "flash", "actions"]
-		: ["console", "gpio", "flash", "problems", "actions", "ssh"];
+		? ["console", "gpio", "flash", "actions", "support"]
+		: ["console", "gpio", "flash", "problems", "actions", "ssh", "support"];
 	const helpKey = `deck.${tab}Help` as DeckKey;
 	const currentBoard = pairedBoards.find((board) => board.device.uuid === uuid);
 	const boardLabel = currentBoard
@@ -2026,7 +2043,9 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 			</View>
 			{!collapsed && height > 96 ? (
 				<View style={{ flex: 1, paddingHorizontal: 14, paddingTop: 8 }}>
-					{tab === "problems" ? (
+					{tab === "support" ? (
+						<SupportChat />
+					) : tab === "problems" ? (
 						<Text style={{ color: colors.muted }}>{t(helpKey)}</Text>
 					) : !uuid.trim() ? (
 						<View style={{ gap: 8 }}>

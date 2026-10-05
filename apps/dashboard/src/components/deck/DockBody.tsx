@@ -21,6 +21,7 @@ import { useDeviceHub } from "../../hooks/useDeviceHub.ts";
 import { useT } from "../../hooks/useLocale.tsx";
 import { useWorkbench } from "../../hooks/useWorkbench.tsx";
 import { unwrapAction } from "../../lib/action.ts";
+import SupportChat from "../SupportChat.tsx";
 
 export default function DockBody() {
 	const t = useT();
@@ -58,6 +59,10 @@ export default function DockBody() {
 		setVerifyResults([]);
 		setConsoleStatus("idle");
 	}, [setConsoleStatus, setLivePins, setVerifyResults, uuid]);
+
+	if (dockTab === "support") {
+		return <SupportChat />;
+	}
 
 	if (!uuid) {
 		return <span>{t("deck.dock.needBoard")}</span>;

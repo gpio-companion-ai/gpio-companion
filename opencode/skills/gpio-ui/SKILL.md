@@ -51,7 +51,7 @@ Response: `delivered=1`.
 | Type | Body | Effect |
 | --- | --- | --- |
 | `navigate` | `{"type":"navigate","target":"project"}` | Jump to a known place |
-| `dock` | `{"type":"dock","tab":"console"}` | Open the bottom dock on console, gpio, flash, actions, or problems |
+| `dock` | `{"type":"dock","tab":"console"}` | Open the bottom dock on console, gpio, flash, actions, problems, ssh, or support |
 | `palette` | `{"type":"palette","open":true}` | Open or close the command palette |
 | `toast` | `{"type":"toast","text":"..."}` | Short text (max 160 chars) |
 | `preview` | see below | Open a board file in the Code view |

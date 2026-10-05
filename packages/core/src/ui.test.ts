@@ -285,6 +285,7 @@ describe("closed sets", () => {
 			"problems",
 			"actions",
 			"ssh",
+			"support",
 		]);
 		expect(UI_MAX_SOCKETS).toBe(8);
 	});

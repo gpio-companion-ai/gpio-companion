@@ -1,5 +1,5 @@
 import Button from "@shpaw415/mui-lite/Button";
-import { onOpenSupportChat, type SupportChatState } from "gpio-companion";
+import type { SupportChatState } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
 import { useEffect, useState } from "react";
 import { useBoardSelection } from "../hooks/useBoardSelection.tsx";
@@ -34,18 +34,12 @@ export default function SupportChat() {
 	const { uuid } = useBoardSelection();
 	const { boards } = useWorkbench();
 	const board = boards.find((item) => item.uuid === uuid);
-	const [open, setOpen] = useState(false);
 	const [state, setState] = useState<SupportChatState>(EMPTY);
 	const [text, setText] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
 
-	useEffect(() => onOpenSupportChat(() => setOpen(true)), []);
-
 	useEffect(() => {
-		if (!open) {
-			return;
-		}
 		let cancelled = false;
 		void supportRequest("/api/support-chat")
 			.then((next) => {
@@ -65,7 +59,7 @@ export default function SupportChat() {
 		return () => {
 			cancelled = true;
 		};
-	}, [open]);
+	}, []);
 
 	async function send(restart = false) {
 		const body = restart ? t("profile.bugNew") : text.trim();
@@ -100,25 +94,10 @@ export default function SupportChat() {
 	const completed = state.status === "completed";
 
 	return (
-		<>
-			<button
-				type="button"
-				className="support-chat-fab"
-				onClick={() => setOpen((value) => !value)}
-			>
-				{t("profile.bugTitle")}
-			</button>
-			{open ? (
-				<section
-					className="support-chat-panel"
-					aria-label={t("profile.bugChatTitle")}
-				>
-					<header className="flex items-center justify-between gap-2 px-3 py-2">
-						<strong>{t("profile.bugChatTitle")}</strong>
-						<button type="button" onClick={() => setOpen(false)}>
-							{t("profile.bugClose")}
-						</button>
-					</header>
+		<section className="support-chat-panel" aria-label={t("profile.bugChatTitle")}>
+			<header className="flex items-center justify-between gap-2 px-3 py-2">
+				<strong>{t("profile.bugChatTitle")}</strong>
+			</header>
 					<div className="support-chat-log">
 						<p className="support-chat-bubble agent">
 							{t("profile.bugGreeting")}
@@ -175,8 +154,6 @@ export default function SupportChat() {
 							</Button>
 						</form>
 					)}
-				</section>
-			) : null}
-		</>
+		</section>
 	);
 }
