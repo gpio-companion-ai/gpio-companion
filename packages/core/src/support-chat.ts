@@ -34,10 +34,25 @@ export type SupportChatSummary = {
 	incomplete: boolean;
 };
 
+export type SupportChatToolStatus = "running" | "done" | "error";
+
+export type SupportChatLiveTool = {
+	id: string;
+	name: string;
+	text: string;
+	status: SupportChatToolStatus;
+};
+
+export type SupportChatLive = {
+	draft: string;
+	tools: SupportChatLiveTool[];
+};
+
 export type SupportChatState = {
 	status: SupportChatStatus;
 	messages: SupportChatMessage[];
 	summary?: SupportChatSummary;
+	live?: SupportChatLive;
 };
 
 export type SupportChatTurn = {

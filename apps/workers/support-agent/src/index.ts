@@ -11,6 +11,8 @@ import {
 	partialSummary,
 	SUPPORT_CHAT_MESSAGE_CAP,
 	SUPPORT_CHAT_MODEL_MAX,
+	type SupportChatLive,
+	type SupportChatLiveTool,
 	type SupportChatMessage,
 	type SupportChatState,
 	type SupportChatSummary,
@@ -63,6 +65,7 @@ export type Env = {
 };
 
 const CHAT_KEY = "support-chat";
+const LIVE_KEY = "support-live";
 const MODEL = "@cf/zai-org/glm-5.3-flash";
 
 function emptyChat(): StoredChat {
@@ -92,6 +95,7 @@ export class SupportAgent extends DurableObject<Env> {
 	private board = "";
 	private mail: MailConfig | null = null;
 	private notes: SupportChatMessage[] = [];
+	private live: SupportChatLive = { draft: "", tools: [] };
 	private generation = 0;
 	private turnGeneration = 0;
 
@@ -189,16 +193,191 @@ export class SupportAgent extends DurableObject<Env> {
 		await this.ctx.storage.put(CHAT_KEY, chat);
 	}
 
-	private view(chat: StoredChat): SupportChatState {
+	private view(chat: StoredChat, live?: SupportChatLive): SupportChatState {
+		const active =
+			live && (live.draft.length > 0 || live.tools.length > 0) ? live : undefined;
 		return {
 			status: chat.summary
 				? "completed"
-				: chat.messages.length
+				: chat.messages.length || active
 					? "chatting"
 					: "idle",
 			messages: chat.messages,
 			...(chat.summary ? { summary: chat.summary } : {}),
+			...(active ? { live: active } : {}),
 		};
+	}
+
+	private resetLive(): void {
+		this.live = { draft: "", tools: [] };
+	}
+
+	private async readLive(): Promise<SupportChatLive | undefined> {
+		const stored = await this.ctx.storage.get<SupportChatLive>(LIVE_KEY);
+		if (!stored?.draft && !stored?.tools?.length) {
+			return undefined;
+		}
+		return stored;
+	}
+
+	private async persistLive(): Promise<void> {
+		if (!this.live.draft && this.live.tools.length === 0) {
+			await this.ctx.storage.delete(LIVE_KEY);
+			return;
+		}
+		await this.ctx.storage.put(LIVE_KEY, this.live);
+	}
+
+	private async clearLive(): Promise<void> {
+		this.resetLive();
+		await this.ctx.storage.delete(LIVE_KEY);
+	}
+
+	private upsertTool(
+		id: string,
+		name: string,
+		text: string | undefined,
+		status: SupportChatLiveTool["status"],
+	): void {
+		const current = this.live.tools.find((tool) => tool.id === id);
+		if (!current) {
+			this.live.tools.push({ id, name, text: text ?? "", status });
+			return;
+		}
+		current.name = name || current.name;
+		current.status = status;
+		if (text !== undefined) {
+			current.text = text;
+		}
+	}
+
+	private applyOutput(
+		id: string,
+		name: string,
+		output:
+			| { trimStart?: number; append?: string }
+			| { set: string }
+			| undefined,
+	): void {
+		const current = this.live.tools.find((tool) => tool.id === id);
+		if (!current) {
+			const text =
+				output && "set" in output ? output.set : (output?.append ?? "");
+			this.upsertTool(id, name, text, "running");
+			return;
+		}
+		if (!output) {
+			return;
+		}
+		if ("set" in output) {
+			current.text = output.set;
+			return;
+		}
+		if (output.trimStart) {
+			current.text = current.text.slice(output.trimStart);
+		}
+		if (output.append) {
+			current.text += output.append;
+		}
+	}
+
+	private draftFromMessage(message: {
+		content?: { type?: string; text?: string }[];
+	}): string {
+		return (message.content ?? [])
+			.filter((block) => block.type === "text" && block.text)
+			.map((block) => block.text ?? "")
+			.join("");
+	}
+
+	private applyLive(raw: unknown): void {
+		if (!raw || typeof raw !== "object") {
+			return;
+		}
+		const event = raw as {
+			type?: string;
+			changes?: readonly {
+				type?: string;
+				delta?: string;
+				block?: { text?: string };
+				message?: { content?: { type?: string; text?: string }[] };
+			}[];
+			toolCallId?: string;
+			toolName?: string;
+			output?: { trimStart?: number; append?: string } | { set: string };
+			generation?: {
+				message?: { content?: { type?: string; text?: string }[] };
+			};
+			tools?: readonly {
+				callId: string;
+				name: string;
+				status: string;
+				output?: string;
+			}[];
+		};
+		if (event.type === "snapshot") {
+			const text = event.generation?.message
+				? this.draftFromMessage(event.generation.message)
+				: "";
+			if (text) {
+				this.live.draft = text;
+			}
+			for (const slot of event.tools ?? []) {
+				this.upsertTool(
+					slot.callId,
+					slot.name,
+					slot.output,
+					slot.status === "done" ? "done" : "running",
+				);
+			}
+			return;
+		}
+		if (event.type === "message_update") {
+			for (const change of event.changes ?? []) {
+				if (change.type === "text_delta" && change.delta) {
+					this.live.draft += change.delta;
+				}
+				if (
+					change.type === "text_start" &&
+					change.block?.text &&
+					!this.live.draft
+				) {
+					this.live.draft = change.block.text;
+				}
+				if (change.type === "message" && change.message) {
+					const text = this.draftFromMessage(change.message);
+					if (text) {
+						this.live.draft = text;
+					}
+				}
+			}
+			return;
+		}
+		if (event.type === "tool_execution_start" && event.toolCallId) {
+			this.upsertTool(
+				event.toolCallId,
+				event.toolName || "tool",
+				undefined,
+				"running",
+			);
+			return;
+		}
+		if (event.type === "tool_execution_update" && event.toolCallId) {
+			this.applyOutput(
+				event.toolCallId,
+				event.toolName || "tool",
+				event.output,
+			);
+			return;
+		}
+		if (event.type === "tool_execution_end" && event.toolCallId) {
+			this.upsertTool(
+				event.toolCallId,
+				event.toolName || "tool",
+				undefined,
+				"done",
+			);
+		}
 	}
 
 	private async dispatch(
@@ -254,7 +433,7 @@ export class SupportAgent extends DurableObject<Env> {
 	}
 
 	private async snapshot(): Promise<SupportChatState> {
-		return this.view(await this.load());
+		return this.view(await this.load(), await this.readLive());
 	}
 
 	private async cancelChat(): Promise<SupportChatState & { refund: boolean }> {
@@ -268,11 +447,41 @@ export class SupportAgent extends DurableObject<Env> {
 		}
 		const chat = emptyChat();
 		await this.save(chat);
+		await this.clearLive();
 		return { ...this.view(chat), refund };
 	}
 
 	private cancelled(generation: number): boolean {
 		return generation !== this.generation;
+	}
+
+	private async streamPrompt(
+		prompt: string,
+		generation: number,
+	): Promise<{ text?: string }> {
+		const receipt = await this.harness.submit(prompt);
+		const stream = await this.harness.session().events().catch(() => null);
+		if (stream) {
+			this.applyLive(stream.snapshot);
+			await this.persistLive();
+			stream.start(async (events) => {
+				if (this.cancelled(generation)) {
+					return;
+				}
+				for (const event of events) {
+					this.applyLive(event);
+				}
+				await this.persistLive();
+			});
+		}
+		try {
+			return await this.harness.wait(receipt.operationId);
+		} finally {
+			if (stream) {
+				await stream.stop().catch(() => undefined);
+			}
+			await this.clearLive();
+		}
 	}
 
 	private async handleTurn(turn: SupportChatTurn): Promise<SupportChatState> {
@@ -313,7 +522,7 @@ export class SupportAgent extends DurableObject<Env> {
 					: text;
 			chat.messages.push({ id: crypto.randomUUID(), role: "user", text });
 			await this.save(chat);
-			const result = await this.harness.prompt(prompt);
+			const result = await this.streamPrompt(prompt, generation);
 			if (this.cancelled(generation)) {
 				return this.snapshot();
 			}
@@ -334,10 +543,12 @@ export class SupportAgent extends DurableObject<Env> {
 			) {
 				await this.forceComplete(chat);
 			}
+			await this.clearLive();
 			return this.view(await this.load());
 		} finally {
 			this.mail = null;
 			this.notes = [];
+			await this.clearLive();
 		}
 	}
 

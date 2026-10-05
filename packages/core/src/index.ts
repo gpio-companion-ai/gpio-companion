@@ -1069,6 +1069,8 @@ export {
 	SUPPORT_CHAT_TEXT_MAX,
 	SUPPORT_OV_EXCERPT_MAX,
 	SUPPORT_OV_ROOT,
+	type SupportChatLive,
+	type SupportChatLiveTool,
 	type SupportChatMessage,
 	type SupportChatRole,
 	type SupportChatState,
