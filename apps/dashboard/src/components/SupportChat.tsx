@@ -1,7 +1,7 @@
 import Button from "@shpaw415/mui-lite/Button";
 import type { SupportChatState } from "gpio-companion";
 import { translateError } from "gpio-companion/i18n";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useBoardSelection } from "../hooks/useBoardSelection.tsx";
 import { useLocale, useT } from "../hooks/useLocale.tsx";
 import { useWorkbench } from "../hooks/useWorkbench.tsx";
@@ -38,6 +38,7 @@ export default function SupportChat() {
 	const [text, setText] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
+	const requestGen = useRef(0);
 
 	useEffect(() => {
 		let cancelled = false;
@@ -66,6 +67,7 @@ export default function SupportChat() {
 		if (!body && !restart) {
 			return;
 		}
+		const gen = ++requestGen.current;
 		setBusy(true);
 		setError("");
 		try {
@@ -80,14 +82,50 @@ export default function SupportChat() {
 					restart,
 				}),
 			});
+			if (requestGen.current !== gen) {
+				return;
+			}
 			setState(next);
 			setText("");
 		} catch (caught) {
+			if (requestGen.current !== gen) {
+				return;
+			}
 			setError(
 				caught instanceof Error ? caught.message : "support agent is not bound",
 			);
 		} finally {
-			setBusy(false);
+			if (requestGen.current === gen) {
+				setBusy(false);
+			}
+		}
+	}
+
+	async function cancelReport() {
+		const gen = ++requestGen.current;
+		setBusy(true);
+		setError("");
+		try {
+			const next = await supportRequest("/api/support-chat", {
+				method: "POST",
+				body: JSON.stringify({ cancel: true }),
+			});
+			if (requestGen.current !== gen) {
+				return;
+			}
+			setState(next);
+			setText("");
+		} catch (caught) {
+			if (requestGen.current !== gen) {
+				return;
+			}
+			setError(
+				caught instanceof Error ? caught.message : "support agent is not bound",
+			);
+		} finally {
+			if (requestGen.current === gen) {
+				setBusy(false);
+			}
 		}
 	}
 
@@ -97,6 +135,16 @@ export default function SupportChat() {
 		<section className="support-chat-panel" aria-label={t("profile.bugChatTitle")}>
 			<header className="flex items-center justify-between gap-2 px-3 py-2">
 				<strong>{t("profile.bugChatTitle")}</strong>
+				{!completed && (state.status === "chatting" || busy) ? (
+					<Button
+						type="button"
+						variant="text"
+						size="small"
+						onClick={() => void cancelReport()}
+					>
+						{t("profile.bugCancel")}
+					</Button>
+				) : null}
 			</header>
 					<div className="support-chat-log">
 						<p className="support-chat-bubble agent">

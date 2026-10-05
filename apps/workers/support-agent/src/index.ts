@@ -92,6 +92,8 @@ export class SupportAgent extends DurableObject<Env> {
 	private board = "";
 	private mail: MailConfig | null = null;
 	private notes: SupportChatMessage[] = [];
+	private generation = 0;
+	private turnGeneration = 0;
 
 	private readonly ai = createAI({ binding: this.env.AI });
 	private readonly registry = createRegistry();
@@ -140,6 +142,9 @@ export class SupportAgent extends DurableObject<Env> {
 			if (url.pathname === "/turn" && request.method === "POST") {
 				const body = (await request.json()) as SupportChatTurn;
 				return Response.json(await this.handleTurn(body));
+			}
+			if (url.pathname === "/cancel" && request.method === "POST") {
+				return Response.json(await this.cancelChat());
 			}
 			if (url.pathname === "/dispatch" && request.method === "POST") {
 				const body = (await request.json()) as AgentDispatch;
@@ -252,10 +257,30 @@ export class SupportAgent extends DurableObject<Env> {
 		return this.view(await this.load());
 	}
 
+	private async cancelChat(): Promise<SupportChatState & { refund: boolean }> {
+		const current = await this.load();
+		const refund = !current.summary && !current.sentId;
+		this.generation += 1;
+		try {
+			await this.harness.session().reset("cancelled");
+		} catch {
+			undefined;
+		}
+		const chat = emptyChat();
+		await this.save(chat);
+		return { ...this.view(chat), refund };
+	}
+
+	private cancelled(generation: number): boolean {
+		return generation !== this.generation;
+	}
+
 	private async handleTurn(turn: SupportChatTurn): Promise<SupportChatState> {
 		if (!this.env.AI) {
 			throw new Error("workers ai is not bound");
 		}
+		const generation = this.generation;
+		this.turnGeneration = generation;
 		const surface = supportSurface(turn.surface);
 		this.locale = supportLocale(turn.locale);
 		this.surface = surface;
@@ -289,6 +314,9 @@ export class SupportAgent extends DurableObject<Env> {
 			chat.messages.push({ id: crypto.randomUUID(), role: "user", text });
 			await this.save(chat);
 			const result = await this.harness.prompt(prompt);
+			if (this.cancelled(generation)) {
+				return this.snapshot();
+			}
 			chat = await this.load();
 			chat.messages.push(...this.notes);
 			const answer = result.text?.trim();
@@ -336,6 +364,9 @@ export class SupportAgent extends DurableObject<Env> {
 		summary: SupportChatSummary,
 		messages: SupportChatMessage[],
 	): Promise<string> {
+		if (this.turnGeneration !== this.generation) {
+			throw new Error("bug report was cancelled");
+		}
 		const mail = this.mail;
 		if (!mail?.accountId || !mail.token) {
 			throw new Error("support email is not configured");

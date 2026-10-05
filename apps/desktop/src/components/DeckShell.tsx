@@ -7,7 +7,10 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
 import Typography from "@shpaw415/mui-lite/Typography";
-import { onOpenSupportChat } from "gpio-companion-support";
+import {
+	consumeSupportChatOpen,
+	onOpenSupportChat,
+} from "gpio-companion-support";
 import {
 	browserDiagnosticsBody,
 	installBrowserDiagnosticsHere,
@@ -402,10 +405,13 @@ export default function DeckShell({
 
 	useEffect(() => {
 		return onOpenSupportChat(() => {
+			consumeSupportChatOpen();
+			onNavigate("devices");
+			onDeviceTab("code");
 			setDockTab("support");
 			setDockOpen(true);
 		});
-	}, [setDockOpen, setDockTab]);
+	}, [onDeviceTab, onNavigate, setDockOpen, setDockTab]);
 
 	useEffect(() => {
 		if (isEasy && (dockTab === "problems" || dockTab === "ssh")) {

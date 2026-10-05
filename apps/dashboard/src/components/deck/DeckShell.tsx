@@ -27,10 +27,11 @@ import Dialog, {
 import IconButton from "@shpaw415/mui-lite/IconButton";
 import Paper from "@shpaw415/mui-lite/Paper";
 import Snackbar from "@shpaw415/mui-lite/Snackbar";
-import { onOpenSupportChat } from "gpio-companion";
 import {
 	browserDiagnosticsBody,
+	consumeSupportChatOpen,
 	installBrowserDiagnosticsHere,
+	onOpenSupportChat,
 	type UiAppCommand,
 	type UiModalCommand,
 	type UiNavigateTarget,
@@ -230,6 +231,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	const paletteInputRef = useRef<HTMLInputElement>(null);
 	const paletteTriggerRef = useRef<HTMLButtonElement>(null);
 	const mobileDockInit = useRef(false);
+	const supportDockHold = useRef(false);
 	const dragRef = useRef<{ y: number; height: number } | null>(null);
 	const section = sectionFor(pathname);
 	const selectedBoard = boards.find(
@@ -580,10 +582,17 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 
 	useEffect(() => {
 		return onOpenSupportChat(() => {
+			consumeSupportChatOpen();
+			supportDockHold.current = true;
 			setDockTab("support");
 			setDockOpen(true);
+			if (!isCodePath(pathname)) {
+				navigate(codeHrefPreservingSession());
+			} else {
+				supportDockHold.current = false;
+			}
 		});
-	}, [setDockOpen, setDockTab]);
+	}, [pathname, setDockOpen, setDockTab]);
 
 	useEffect(() => {
 		if (mode === "easy" && (dockTab === "problems" || dockTab === "ssh")) {
@@ -594,10 +603,17 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 	useEffect(() => {
 		if (!mobile) {
 			mobileDockInit.current = false;
+			supportDockHold.current = false;
 			return;
 		}
 		if (pathname.startsWith("/devices/code")) {
 			mobileDockInit.current = true;
+			if (supportDockHold.current) {
+				supportDockHold.current = false;
+				setDockTab("support");
+				setDockOpen(true);
+				return;
+			}
 			setDockOpen(false);
 			return;
 		}
@@ -606,7 +622,7 @@ export default function DeckShell({ children }: { children: ReactNode }) {
 		}
 		mobileDockInit.current = true;
 		setDockOpen(false);
-	}, [mobile, pathname, setDockOpen]);
+	}, [mobile, pathname, setDockOpen, setDockTab]);
 
 	// biome-ignore lint/correctness/useExhaustiveDependencies: reset the highlighted command when the filter or dialog changes
 	useEffect(() => {

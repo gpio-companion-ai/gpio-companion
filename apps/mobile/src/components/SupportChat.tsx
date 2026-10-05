@@ -1,6 +1,6 @@
 import { translateError } from "gpio-companion-i18n";
 import type { SupportChatState } from "gpio-companion-support";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
 	Pressable,
 	ScrollView,
@@ -37,6 +37,7 @@ export default function SupportChat() {
 	const [text, setText] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState("");
+	const requestGen = useRef(0);
 
 	useEffect(() => {
 		if (!token) {
@@ -72,6 +73,7 @@ export default function SupportChat() {
 		if (!body && !restart) {
 			return;
 		}
+		const gen = ++requestGen.current;
 		setBusy(true);
 		setError("");
 		try {
@@ -83,14 +85,56 @@ export default function SupportChat() {
 				boardModel: board?.status?.model ?? "",
 				restart,
 			});
+			if (requestGen.current !== gen) {
+				return;
+			}
 			setState(next);
 			setText("");
 		} catch (caught) {
+			if (requestGen.current !== gen) {
+				return;
+			}
 			setError(
 				caught instanceof Error ? caught.message : "support agent is not bound",
 			);
 		} finally {
-			setBusy(false);
+			if (requestGen.current === gen) {
+				setBusy(false);
+			}
+		}
+	}
+
+	async function cancelReport() {
+		if (!token) {
+			setError(t("common.signInFirst"));
+			return;
+		}
+		const gen = ++requestGen.current;
+		setBusy(true);
+		setError("");
+		try {
+			const next = await supportChatSend(token, {
+				text: "",
+				surface: "mobile",
+				locale,
+				cancel: true,
+			});
+			if (requestGen.current !== gen) {
+				return;
+			}
+			setState(next);
+			setText("");
+		} catch (caught) {
+			if (requestGen.current !== gen) {
+				return;
+			}
+			setError(
+				caught instanceof Error ? caught.message : "support agent is not bound",
+			);
+		} finally {
+			if (requestGen.current === gen) {
+				setBusy(false);
+			}
 		}
 	}
 
@@ -98,9 +142,23 @@ export default function SupportChat() {
 
 	return (
 		<View style={{ flex: 1 }}>
-			<Text style={{ color: colors.text, fontWeight: "600", marginBottom: 8 }}>
-				{t("profile.bugChatTitle")}
-			</Text>
+			<View
+				style={{
+					flexDirection: "row",
+					alignItems: "center",
+					justifyContent: "space-between",
+					marginBottom: 8,
+				}}
+			>
+				<Text style={{ color: colors.text, fontWeight: "600" }}>
+					{t("profile.bugChatTitle")}
+				</Text>
+				{!completed && (state.status === "chatting" || busy) ? (
+					<Pressable onPress={() => void cancelReport()}>
+						<Text style={{ color: colors.text }}>{t("profile.bugCancel")}</Text>
+					</Pressable>
+				) : null}
+			</View>
 			<ScrollView contentContainerStyle={{ gap: 8, paddingBottom: 8 }}>
 						<Text style={{ color: colors.text }}>
 							{t("profile.bugGreeting")}

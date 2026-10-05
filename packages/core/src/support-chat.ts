@@ -58,15 +58,24 @@ export type SupportChatTurn = {
 
 type Listener = () => void;
 const openListeners = new Set<Listener>();
+let supportChatPending = false;
 
 export function openSupportChat(): void {
+	supportChatPending = true;
 	for (const listener of openListeners) {
 		listener();
 	}
 }
 
+export function consumeSupportChatOpen(): void {
+	supportChatPending = false;
+}
+
 export function onOpenSupportChat(listener: Listener): () => void {
 	openListeners.add(listener);
+	if (supportChatPending) {
+		listener();
+	}
 	return () => {
 		openListeners.delete(listener);
 	};

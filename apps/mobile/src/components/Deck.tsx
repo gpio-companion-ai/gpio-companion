@@ -1,6 +1,9 @@
 import MaterialIcons from "@expo/vector-icons/MaterialIcons";
 import { usePathname, useRouter } from "expo-router";
-import { onOpenSupportChat } from "gpio-companion-support";
+import {
+	consumeSupportChatOpen,
+	onOpenSupportChat,
+} from "gpio-companion-support";
 import type { UiModalCommand } from "gpio-companion-ui";
 import {
 	browserDiagnosticsBody,
@@ -1638,6 +1641,7 @@ function DeckDock({ isEasy }: { isEasy: boolean }) {
 
 	useEffect(() => {
 		return onOpenSupportChat(() => {
+			consumeSupportChatOpen();
 			setTab("support");
 			setCollapsed(false);
 		});

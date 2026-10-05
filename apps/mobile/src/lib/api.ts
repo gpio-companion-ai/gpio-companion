@@ -559,6 +559,7 @@ export function supportChatSend(
 		boardUuid?: string;
 		boardModel?: string;
 		restart?: boolean;
+		cancel?: boolean;
 	},
 ) {
 	return request<SupportChatState>(token, "/api/mobile/support-chat", {

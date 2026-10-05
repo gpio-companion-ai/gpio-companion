@@ -270,6 +270,7 @@ export const en = {
 		bugGreeting: "Thanks for reporting a bug. Tell me what happened.",
 		bugThanks: "Thanks for the bug report. Support has it.",
 		bugNew: "Start a new report",
+		bugCancel: "Cancel report",
 		bugClose: "Close",
 		bugCompleted: "Report complete",
 		experienceTitle: "Experience",

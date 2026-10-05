@@ -275,6 +275,7 @@ export const fr = {
 		bugGreeting: "Merci de signaler un bug. Dites-moi ce qui s’est passé.",
 		bugThanks: "Merci pour le rapport de bug. Le support l’a reçu.",
 		bugNew: "Nouveau rapport",
+		bugCancel: "Annuler le rapport",
 		bugClose: "Fermer",
 		bugCompleted: "Rapport terminé",
 		experienceTitle: "Expérience",

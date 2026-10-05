@@ -1,4 +1,4 @@
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { openSupportChat } from "gpio-companion-support";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { findNodeHandle, Linking, type ScrollView, View } from "react-native";
@@ -24,6 +24,7 @@ import { useAuth } from "../lib/auth.tsx";
 import { useBoardSelection } from "../lib/board-selection.tsx";
 import { dashboardUrl } from "../lib/config.ts";
 import { type ProfileSection, useDeckNav } from "../lib/deck-nav.tsx";
+import { useDeviceHub } from "../lib/device-hub.tsx";
 import { translateError, useT } from "../lib/locale.tsx";
 import Keys from "./Keys.tsx";
 
@@ -201,6 +202,8 @@ export default function Profile() {
 
 function BugReportCard({ token }: { token: string | null }) {
 	const t = useT();
+	const router = useRouter();
+	const { setTab } = useDeviceHub();
 	const { uuid } = useBoardSelection();
 	const boardsQuery = useCachedQuery(CACHE_KEYS.userBoards, () => {
 		if (!token) {
@@ -224,7 +227,11 @@ function BugReportCard({ token }: { token: string | null }) {
 			) : null}
 			<PrimaryButton
 				label={t("profile.bugOpen")}
-				onPress={() => openSupportChat()}
+				onPress={() => {
+					setTab("code");
+					router.navigate("/");
+					openSupportChat();
+				}}
 			/>
 		</Paper>
 	);

@@ -1058,6 +1058,7 @@ export {
 	assertOvUri,
 	clipExcerpt,
 	type OvCall,
+	consumeSupportChatOpen,
 	onOpenSupportChat,
 	openSupportChat,
 	ovRequest,
