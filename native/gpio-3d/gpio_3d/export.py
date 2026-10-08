@@ -152,13 +152,18 @@ def load_part_mesh(directory, file):
     return mesh
 
 
-def inspect_dir(directory):
+def inspect_dir(directory, name=None):
     from gpio_3d.mesh import count_bodies
 
     directory = Path(directory)
     manifest = load_manifest(directory / MANIFEST)
-    print(f"{directory} {len(manifest['parts'])} parts")
-    for part in manifest["parts"]:
+    parts = manifest["parts"]
+    if name:
+        parts = [part for part in parts if part.get("name") == name]
+        if not parts:
+            raise Gpio3dError(f"no part named {name}")
+    print(f"{directory} {len(parts)} parts")
+    for part in parts:
         mesh = load_part_mesh(directory, part["file"])
         size = mesh.extents
         fits = ",".join(part.get("fits", []))
@@ -167,3 +172,43 @@ def inspect_dir(directory):
             f"{part['name']} {part['file']} fits {fits} bbox {size[0]:.1f}x{size[1]:.1f}x{size[2]:.2f}mm "
             f"volume {mesh.volume:.0f}mm3 watertight {watertight} bodies {count_bodies(mesh)} tris {len(mesh.faces)}"
         )
+
+
+def hex_base(color):
+    if not isinstance(color, str) or len(color) != 7 or not color.startswith("#"):
+        return (236, 225, 210)
+    try:
+        return tuple(int(color[i:i + 2], 16) for i in (1, 3, 5))
+    except ValueError:
+        return (236, 225, 210)
+
+
+def preview_dir(directory, name=None, out=None, size=520, elev=18.0, turn=0.0):
+    from gpio_3d.render import render_png
+
+    directory = Path(directory)
+    manifest = load_manifest(directory / MANIFEST)
+    parts = manifest["parts"]
+    if name:
+        parts = [part for part in parts if part.get("name") == name]
+        if not parts:
+            raise Gpio3dError(f"no part named {name}")
+    preview_root = directory.parent / ".gpio-3d" / "preview"
+    for part in parts:
+        stl = Path(part["file"]).with_suffix(".stl")
+        if not (directory / stl).is_file():
+            raise Gpio3dError(f"missing {stl}")
+        if out:
+            target = Path(out)
+            if len(parts) > 1:
+                target = target.with_name(f"{target.stem}-{part['name']}{target.suffix or '.png'}")
+        else:
+            target = preview_root / f"{part['name']}.png"
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            render_png(directory / stl, target, size=size, elev=elev, turn=turn, base=hex_base(part.get("color")))
+        except OSError as exc:
+            raise Gpio3dError(
+                f"preview could not write {target}; check who owns {target.parent} (was it created by root?)"
+            ) from exc
+        print(f"preview {part['name']} {target}")

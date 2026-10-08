@@ -3,7 +3,7 @@ import json
 import sys
 
 from gpio_3d.errors import Gpio3dError
-from gpio_3d.export import inspect_dir, model_dir, write_part
+from gpio_3d.export import inspect_dir, model_dir, preview_dir, write_part
 from gpio_3d.mesh import clip_mesh, shroud_mesh, spacer_mesh
 from gpio_3d.recipe import library_source, parse_recipe, read_raw, save_recipe
 
@@ -38,7 +38,17 @@ def main(argv=None):
 
     inspect = sub.add_parser("inspect")
     inspect.add_argument("dir")
+    inspect.add_argument("--name")
     inspect.set_defaults(func=run_inspect)
+
+    preview = sub.add_parser("preview")
+    preview.add_argument("dir")
+    preview.add_argument("--name")
+    preview.add_argument("--out")
+    preview.add_argument("--size", type=int, default=520)
+    preview.add_argument("--elev", type=float, default=18.0)
+    preview.add_argument("--turn", type=float, default=0.0)
+    preview.set_defaults(func=run_preview)
 
     args = parser.parse_args(argv)
     try:
@@ -96,7 +106,11 @@ def run_build(args):
 
 
 def run_inspect(args):
-    inspect_dir(args.dir)
+    inspect_dir(args.dir, args.name)
+
+
+def run_preview(args):
+    preview_dir(args.dir, args.name, args.out, max(120, min(args.size, 2048)), args.elev, args.turn)
 
 
 if __name__ == "__main__":

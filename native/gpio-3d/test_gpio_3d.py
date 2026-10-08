@@ -974,5 +974,141 @@ class CharacterOpsTest(unittest.TestCase):
         self.assertEqual(buffer.getvalue(), "")
 
 
+class Round3Test(unittest.TestCase):
+    def test_inspect_name_filter(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            clip = run_cli(
+                [
+                    "clip", "--name", "header-clip", "--cols", "4", "--rows", "2",
+                    "--thickness", "2", "--fits", "companion-header", "--dir", str(model),
+                ],
+                parent,
+            )
+            self.assertEqual(clip.returncode, 0, clip.stderr)
+            piped = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "-", "--dir", str(model)],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                input=json.dumps(
+                    {
+                        "name": "plate",
+                        "units": "mm",
+                        "fits": ["companion-header"],
+                        "ops": [{"op": "box", "size": [30, 12, 4]}],
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(piped.returncode, 0, piped.stderr)
+            report = run_cli(["inspect", str(model), "--name", "plate"], parent)
+            self.assertEqual(report.returncode, 0, report.stderr)
+            self.assertIn("1 parts", report.stdout)
+            self.assertIn("plate", report.stdout)
+            self.assertNotIn("header-clip", report.stdout)
+            missing = run_cli(["inspect", str(model), "--name", "nope"], parent)
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("no part named nope", missing.stderr)
+
+    def test_patch_edits_one_ring_point(self):
+        import io
+        from contextlib import redirect_stderr
+
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            recipe = {
+                "name": "horn",
+                "units": "mm",
+                "fits": ["companion-header"],
+                "ops": [
+                    {
+                        "op": "loft",
+                        "bottom": [[-6, 0], [6, 0], [0, 8]],
+                        "top": [[-1.5, 0], [1.5, 0], [0, 2]],
+                        "height": 12,
+                    }
+                ],
+            }
+            first = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "-", "--dir", str(model), "--save", "horn"],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                input=json.dumps(recipe),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            before = json.loads((parent / ".gpio-3d" / "horn.json").read_text())
+            buffer = io.StringIO()
+            with redirect_stderr(buffer):
+                patched = subprocess.run(
+                    [sys.executable, "-m", "gpio_3d", "build", "horn", "--dir", str(model),
+                     "--patch", '{"ops":{"0":{"bottom":{"0":[-9,2]}}}}'],
+                    cwd=parent,
+                    env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+            self.assertEqual(patched.returncode, 0, patched.stderr)
+            after = json.loads((parent / ".gpio-3d" / "horn.json").read_text())
+            self.assertEqual(after["ops"][0]["bottom"][0], [-9, 2])
+            self.assertEqual(after["ops"][0]["bottom"][1], [6, 0])
+            out_of_range = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "horn", "--dir", str(model),
+                 "--patch", '{"ops":{"0":{"bottom":{"99":[0,0]}}}}'],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(out_of_range.returncode, 0)
+            self.assertIn("out of range", out_of_range.stderr)
+
+    def test_preview_writes_pngs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            clip = run_cli(
+                [
+                    "clip", "--name", "tinted", "--cols", "4", "--rows", "2",
+                    "--thickness", "2", "--fits", "companion-header",
+                    "--color", "#3366cc", "--dir", str(model),
+                ],
+                parent,
+            )
+            self.assertEqual(clip.returncode, 0, clip.stderr)
+            all_parts = run_cli(["preview", str(model)], parent)
+            self.assertEqual(all_parts.returncode, 0, all_parts.stderr)
+            self.assertIn("preview tinted", all_parts.stdout)
+            first = model.parent / ".gpio-3d" / "preview" / "tinted.png"
+            self.assertTrue(first.is_file())
+            self.assertTrue(first.read_bytes().startswith(b"\x89PNG"))
+            single = run_cli(
+                ["preview", str(model), "--name", "tinted", "--out", str(parent / "one.png"), "--turn", "35"],
+                parent,
+            )
+            self.assertEqual(single.returncode, 0, single.stderr)
+            second = parent / "one.png"
+            self.assertTrue(second.read_bytes().startswith(b"\x89PNG"))
+            missing = run_cli(["preview", str(model), "--name", "nope"], parent)
+            self.assertNotEqual(missing.returncode, 0)
+            import shutil
+
+            blocked_dir = model.parent / ".gpio-3d" / "preview"
+            shutil.rmtree(blocked_dir, ignore_errors=True)
+            blocked_dir.write_text("not a dir")
+            blocked = run_cli(["preview", str(model), "--name", "tinted"], parent)
+            self.assertNotEqual(blocked.returncode, 0)
+            self.assertIn("preview could not write", blocked.stderr)
+            self.assertNotIn("Traceback", blocked.stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

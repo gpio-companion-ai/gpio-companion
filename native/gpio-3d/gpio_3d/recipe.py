@@ -61,30 +61,34 @@ def apply_patch(data, patch):
 
 
 def merge_patch_field(current, value):
-    if key_is_ops_index_map(value):
+    if key_is_index_map(value):
         if not isinstance(current, list) or len(current) == 0:
-            raise Gpio3dError("--patch ops object needs an existing ops list")
-        ops = list(current)
+            raise Gpio3dError("--patch object needs an existing list")
+        items = list(current)
         for index_key, changes in value.items():
             index = int(index_key)
-            if index < 0 or index >= len(ops):
-                raise Gpio3dError(f"--patch ops index {index_key} is out of range")
-            if not isinstance(changes, dict):
-                raise Gpio3dError(f"--patch ops[{index_key}] must be an object")
-            if not isinstance(ops[index], dict):
-                raise Gpio3dError(f"--patch ops[{index_key}] is not an object")
-            ops[index] = {**ops[index], **changes}
-        return ops
+            if index < 0 or index >= len(items):
+                raise Gpio3dError(f"--patch index {index_key} is out of range")
+            items[index] = merge_one(items[index], changes)
+        return items
     return value
 
 
-def key_is_ops_index_map(value):
+def merge_one(current, changes):
+    if isinstance(current, dict) and isinstance(changes, dict):
+        merged = dict(current)
+        for key, value in changes.items():
+            merged[key] = merge_patch_field(merged.get(key), value)
+        return merged
+    if isinstance(current, list) and key_is_index_map(changes):
+        return merge_patch_field(current, changes)
+    return changes
+
+
+def key_is_index_map(value):
     if not isinstance(value, dict) or not value:
         return False
-    return all(
-        isinstance(key, str) and key.isdigit() and isinstance(item, dict)
-        for key, item in value.items()
-    )
+    return all(isinstance(key, str) and key.isdigit() for key in value)
 
 
 def parse_recipe(raw, patch=None):

@@ -58,10 +58,14 @@ gpio-3d build stand --dir ~/projects/<repo>/model --patch '{"color": "#22cc88"}'
 ```
 
 `ops` patches one op in place when given an object of index keys — merge
-`{"count": 16}` into `ops[1]` without resending the array:
+`{"count": 16}` into `ops[1]` without resending the array. The same index
+form reaches inside an op for arrays like loft rings — merge one point of
+`ops[1]`'s bottom ring without resending it:
 
 ```sh
+gpio-3d build stand --dir ~/projects/<repo>/model --patch '{"color": "#22cc88"}'
 gpio-3d build valve-knob --dir ~/projects/<repo>/model --patch '{"ops": {"1": {"count": 16}}}'
+gpio-3d build horn --dir ~/projects/<repo>/model --patch '{"ops": {"0": {"bottom": {"0": [-9, 2]}}}}'
 ```
 
 Building a saved recipe by name writes the patched state back to that library
@@ -195,10 +199,17 @@ bun ~/.config/opencode/skills/gpio-3d/validate-manifest.ts ~/projects/<repo>/mod
 
 ## Measuring
 
-`gpio-3d inspect <model-dir>` prints every manifest part with its bbox, volume, watertightness, body count, and triangle count. Run it before committing when exact size matters:
+`gpio-3d inspect <model-dir>` prints every manifest part with its bbox, volume, watertightness, body count, and triangle count; `--name <part>` limits it to one part. Run it before committing when exact size matters:
 
 ```sh
 gpio-3d inspect ~/projects/<repo>/model
+gpio-3d inspect ~/projects/<repo>/model --name header-clip
+```
+
+`gpio-3d preview <model-dir>` renders every part to a shaded PNG (`.gpio-3d/preview/<part>.png`) so you can eyeball organic shapes between builds — pick a part with `--name`, aim the camera with `--turn`/`--elev` degrees, size with `--size`, or write elsewhere with `--out`:
+
+```sh
+gpio-3d preview ~/projects/<repo>/model --name wizard --turn 35
 ```
 
 For deeper analysis the bundled venv has trimesh and numpy importable — system `python3` does not. Companion Pis: `/usr/local/lib/gpio-companion/gpio-3d/bin/python`. open-bot desktops: `/opt/gpio-3d/venv/bin/python`. Note `mesh.contains` and `mesh.section` need scipy/rtree, which are not installed; parse the STL or use the bbox instead.
