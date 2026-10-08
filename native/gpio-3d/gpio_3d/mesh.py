@@ -28,6 +28,7 @@ SOLIDS = (
     "capsule",
     "revolve",
     "extrude",
+    "loft",
 )
 
 FIELDS = {
@@ -40,9 +41,10 @@ FIELDS = {
     "capsule": {"radius", "height"},
     "revolve": {"profile", "angle"},
     "extrude": {"points", "holes", "height", "twist", "taper"},
+    "loft": {"bottom", "top", "height"},
 }
 
-PLACED = {"at", "rotate"}
+PLACED = {"at", "rotate", "scale"}
 
 
 def op_error(label, kinds):
@@ -134,6 +136,84 @@ def rotate_about_center(mesh, angles, label):
     mesh.apply_transform(matrix)
     mesh.apply_translation(center)
     return mesh
+
+
+def scale3(value, label):
+    if not isinstance(value, list) or len(value) != 3:
+        raise Gpio3dError(f"{label} must be [x, y, z] scale factors")
+    factors = []
+    for index, item in enumerate(value):
+        if isinstance(item, bool) or not isinstance(item, (int, float)):
+            raise Gpio3dError(f"{label}[{index}] must be a number")
+        number = float(item)
+        if not math.isfinite(number) or number < 0.05 or number > 20:
+            raise Gpio3dError(f"{label}[{index}] must be between 0.05 and 20")
+        factors.append(number)
+    if all(factor == 1.0 for factor in factors):
+        return None
+    return factors
+
+
+def scale_about_center(mesh, factors, label):
+    if factors is None:
+        return mesh
+    matrix = np.eye(4)
+    matrix[0, 0], matrix[1, 1], matrix[2, 2] = factors
+    center = mesh.bounds.mean(axis=0)
+    mesh.apply_translation(-center)
+    mesh.apply_transform(matrix)
+    mesh.apply_translation(center)
+    return mesh
+
+
+def resample_ring(points, count):
+    pts = np.asarray(points, dtype=np.float64)
+    if np.array_equal(pts[0], pts[-1]):
+        pts = pts[:-1]
+    if len(pts) < 3:
+        raise Gpio3dError("ring needs at least 3 distinct points")
+    segments = np.linalg.norm(np.roll(pts, -1, axis=0) - pts, axis=1)
+    total = float(segments.sum())
+    if total <= 0:
+        raise Gpio3dError("ring has no length")
+    cumulative = np.concatenate([[0.0], np.cumsum(segments)])
+    targets = np.linspace(0.0, total, count, endpoint=False)
+    xs = pts[:, 0]
+    ys = pts[:, 1]
+    x = np.interp(targets, cumulative, np.concatenate([xs, [xs[0]]]))
+    y = np.interp(targets, cumulative, np.concatenate([ys, [ys[0]]]))
+    return list(zip(x.tolist(), y.tolist()))
+
+
+def ring_winding(points):
+    doubled = points + [points[0]]
+    area = 0.0
+    for (x0, y0), (x1, y1) in zip(doubled, doubled[1:]):
+        area += x0 * y1 - x1 * y0
+    return area
+
+
+def to_manifold(mesh, label):
+    import manifold3d
+
+    solid = manifold3d.Mesh(
+        np.ascontiguousarray(mesh.vertices, dtype=np.float32),
+        np.ascontiguousarray(mesh.faces, dtype=np.uint32),
+    )
+    try:
+        return manifold3d.Manifold(solid)
+    except Exception as exc:
+        raise Gpio3dError(f"{label} is not a valid solid") from exc
+
+
+def from_manifold(manifold, label):
+    raw = manifold.to_mesh()
+    result = trimesh.Trimesh(
+        vertices=np.asarray(raw.vert_properties)[:, :3],
+        faces=np.asarray(raw.tri_verts),
+        process=False,
+    )
+    return as_mesh(result, label)
 
 
 def point2(value, label):
@@ -324,6 +404,29 @@ def float_check(value, label):
     return number
 
 
+def loft_mesh(op, label):
+    from manifold3d import CrossSection, FillRule, Manifold
+
+    bottom = resample_ring(ring2(op.get("bottom"), f"{label}.bottom"), 96)
+    top = resample_ring(ring2(op.get("top"), f"{label}.top"), 96)
+    height = mm(op.get("height"), f"{label}.height")
+    if ring_winding(top) * ring_winding(bottom) < 0:
+        top = top[::-1]
+    slab = max(0.4, min(1.0, height / 24))
+    layers = min(40, max(2, int(math.ceil(height / slab)) + 1))
+    slabs = []
+    for index in range(layers):
+        t = index / (layers - 1)
+        ring = np.asarray(bottom) + (np.asarray(top) - np.asarray(bottom)) * t
+        section = CrossSection([ring], fillrule=FillRule.EvenOdd)
+        slabs.append(section.extrude(slab).translate((0.0, 0.0, t * height - slab / 2)))
+    try:
+        result = Manifold.batch_hull(slabs)
+    except Exception as exc:
+        raise Gpio3dError(f"{label} did not loft") from exc
+    return from_manifold(result, label)
+
+
 def revolve_mesh(op, label):
     profile = op.get("profile")
     if not isinstance(profile, list) or len(profile) < 3 or len(profile) > MAX_POINTS:
@@ -442,8 +545,14 @@ def shape_solid(shape, op, label):
         solid = extrude_mesh(op, label)
         if "at" in op:
             move_center(solid, center3(op.get("at"), f"{label}.at"))
+    elif shape == "loft":
+        solid = loft_mesh(op, label)
+        if "at" in op:
+            move_center(solid, center3(op.get("at"), f"{label}.at"))
     else:
         raise Gpio3dError(f"{label} must be one of {', '.join(SOLIDS)}")
+    if "scale" in op:
+        scale_about_center(solid, scale3(op.get("scale"), f"{label}.scale"), label)
     if "rotate" in op:
         rotate_about_center(solid, rotate(op.get("rotate"), f"{label}.rotate"), label)
     return solid
@@ -511,7 +620,7 @@ def count_ops(ops):
     total = 0
     for op in ops:
         total += 1
-        if isinstance(op, dict) and op.get("op") in {"pattern", "mirror"}:
+        if isinstance(op, dict) and op.get("op") in {"pattern", "mirror", "hull"}:
             nested = op.get("ops")
             if isinstance(nested, list):
                 total += count_ops(nested)
@@ -588,6 +697,21 @@ def compose(mesh, op, label):
             raise Gpio3dError(f"{label} needs a mesh first")
         return subtract(mesh, [tool], label)
     return tool if mesh is None else unite(mesh, tool, label)
+
+
+def hull_with(mesh, op, label):
+    reject(op, {"op", "ops"}, label)
+    group = group_solid(op.get("ops"), label)
+    parts = []
+    if mesh is not None:
+        parts.append(to_manifold(mesh, label))
+    parts.append(to_manifold(group, label))
+    try:
+        import manifold3d
+
+        return from_manifold(manifold3d.Manifold.batch_hull(parts), label)
+    except Exception as exc:
+        raise Gpio3dError(f"{label} failed") from exc
 
 
 def text_op(mesh, op, label):
@@ -694,6 +818,8 @@ def apply_op(mesh, op, index):
     label = f"ops[{index}]"
     if kind in {"pattern", "mirror"}:
         return compose(mesh, op, label)
+    if kind == "hull":
+        return hull_with(mesh, op, label)
     if kind == "text":
         return text_op(mesh, op, label)
     if kind == "hole-grid":
@@ -716,7 +842,7 @@ def apply_op(mesh, op, index):
         reject(op, {"op"} | FIELDS[kind] | PLACED, label)
         solid = shape_solid(kind, op, label)
         return solid if mesh is None else unite(mesh, solid, label)
-    raise op_error(label, set(SOLIDS) | {"hole-grid", "cut", "intersect", "pattern", "mirror", "text"})
+    raise op_error(label, set(SOLIDS) | {"hole-grid", "cut", "intersect", "pattern", "mirror", "hull", "text"})
 
 
 def cut(mesh, op, label):

@@ -877,5 +877,102 @@ class InspectTest(unittest.TestCase):
             self.assertIn("bodies 1", report.stdout)
 
 
+class CharacterOpsTest(unittest.TestCase):
+    def test_scale_flattens_and_stretches_solids(self):
+        scaled = apply_ops([{"op": "sphere", "radius": 4, "scale": [1, 1, 0.5]}])
+        self.assertAlmostEqual(scaled.extents[0], 8.0, delta=0.1)
+        self.assertAlmostEqual(scaled.extents[2], 4.0, delta=0.1)
+        sphere = apply_ops([{"op": "sphere", "radius": 4}])
+        self.assertAlmostEqual(scaled.volume, sphere.volume / 2, delta=sphere.volume / 40)
+        moved = apply_ops(
+            [{"op": "box", "size": [10, 10, 10], "at": [50, 0, 5], "scale": [2, 1, 1]}]
+        )
+        self.assertAlmostEqual(moved.bounds.mean(axis=0)[0], 50.0, places=3)
+        self.assertAlmostEqual(moved.extents[0], 20.0, delta=0.05)
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "sphere", "radius": 4, "scale": [1, 0, 1]}])
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "sphere", "radius": 4, "scale": [1, 1]}])
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "sphere", "radius": 4, "scale": [1, 1, "big"]}])
+
+    def test_loft_interpolates_two_rings(self):
+        circle = [[6 * math.cos(2 * math.pi * i / 48), 6 * math.sin(2 * math.pi * i / 48)] for i in range(48)]
+        small = [[2 * math.cos(2 * math.pi * i / 24), 2 * math.sin(2 * math.pi * i / 24)] for i in range(24)]
+        mesh = apply_ops([{"op": "loft", "bottom": circle, "top": small, "height": 10}])
+        self.assertTrue(mesh.is_watertight)
+        expected = math.pi * 10 / 3 * (36 + 12 + 4)
+        self.assertAlmostEqual(mesh.volume, expected, delta=expected * 0.12)
+        reversed_top = apply_ops(
+            [{"op": "loft", "bottom": circle, "top": small[::-1], "height": 10}]
+        )
+        self.assertTrue(reversed_top.is_watertight)
+        self.assertAlmostEqual(reversed_top.volume, expected, delta=expected * 0.12)
+        triangle = [[0, 0], [8, 0], [4, 7]]
+        square = [[0, 0], [6, 0], [6, 6], [0, 6]]
+        mixed = apply_ops([{"op": "loft", "bottom": triangle, "top": square, "height": 5}])
+        self.assertTrue(mixed.is_watertight)
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "loft", "bottom": circle, "top": small}])
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "loft", "bottom": [[0, 0]], "top": small, "height": 5}])
+
+    def test_loft_works_as_a_cut_shape(self):
+        mesh = apply_ops(
+            [
+                {"op": "box", "size": [20, 20, 10]},
+                {
+                    "op": "cut",
+                    "shape": "loft",
+                    "bottom": [[8, 8], [12, 8], [12, 12], [8, 12]],
+                    "top": [[9, 9], [11, 9], [11, 11], [9, 11]],
+                    "height": 10,
+                },
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertGreater(mesh.volume, 3800)
+        self.assertLess(mesh.volume, 3990)
+
+    def test_hull_wraps_the_part_and_a_group(self):
+        box = apply_ops([{"op": "box", "size": [10, 10, 10]}])
+        sphere = apply_ops([{"op": "sphere", "radius": 6}])
+        combined = apply_ops(
+            [
+                {"op": "box", "size": [10, 10, 10]},
+                {"op": "hull", "ops": [{"op": "sphere", "radius": 6, "at": [10, 10, 10]}]},
+            ]
+        )
+        self.assertTrue(combined.is_watertight)
+        self.assertGreater(combined.volume, box.volume)
+        self.assertLess(combined.volume, box.volume + sphere.volume * 4 / 3 * math.pi)
+        alone = apply_ops(
+            [{"op": "hull", "ops": [{"op": "sphere", "radius": 6, "at": [3, 0, 0]}]}]
+        )
+        self.assertTrue(alone.is_watertight)
+        self.assertAlmostEqual(alone.volume, sphere.volume, delta=sphere.volume / 20)
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "box", "size": [10, 10, 10]}, {"op": "hull", "ops": [{"op": "cut", "shape": "box", "size": [1, 1, 1]}]}])
+        with self.assertRaises(Gpio3dError):
+            apply_ops([{"op": "box", "size": [10, 10, 10]}, {"op": "hull", "ops": []}])
+
+    def test_build_accepts_a_character_recipe(self):
+        import io
+        from contextlib import redirect_stderr
+
+        buffer = io.StringIO()
+        with redirect_stderr(buffer):
+            mesh = apply_ops(
+                [
+                    {"op": "revolve", "profile": [[0, 0], [9, 0], [8, 6], [4, 14], [0, 16]]},
+                    {"op": "sphere", "radius": 9, "at": [0, 0, 24], "scale": [1, 0.9, 1.05]},
+                    {"op": "mirror", "axis": "x", "ops": [{"op": "capsule", "radius": 2, "height": 9, "rotate": [0, 55, 30], "at": [10, 0, 11]}]},
+                    {"op": "hull", "ops": [{"op": "sphere", "radius": 3, "at": [0, 0, 16.5]}]},
+                ]
+            )
+        self.assertTrue(mesh.is_watertight)
+        self.assertEqual(buffer.getvalue(), "")
+
+
 if __name__ == "__main__":
     unittest.main()

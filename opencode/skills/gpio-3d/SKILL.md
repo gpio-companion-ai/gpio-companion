@@ -72,7 +72,7 @@ resolves before file paths. `--save` names must be kebab-case.
 
 ## Recipe ops
 
-`units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center) and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). `at` translates the solid so its bbox center lands on that point — for `extrude` and `revolve` the profile is authored in absolute coordinates, so passing `at` moves the profile from where you drew it; omit `at` to keep authored coordinates. A recipe has at most 100 ops total.
+`units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center), `scale` (`[x, y, z]` factors from 0.05 to 20, applied about the solid's center — ellipsoid heads, flattened feet), and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). `at` translates the solid so its bbox center lands on that point — for `extrude` and `revolve` the profile is authored in absolute coordinates, so passing `at` moves the profile from where you drew it; omit `at` to keep authored coordinates. A recipe has at most 100 ops total.
 
 The recipe may also set `color`: a `#rrggbb` hex string that tints the part in the 3D viewer only. It never changes the printable STL — pick a color that makes the part easy to tell apart on screen, not for printing. The presets set it with `--color`.
 
@@ -87,6 +87,7 @@ Solids (the first one starts the part; later ones union onto it):
 - `capsule` — `radius`, `height`; `height` is the overall length including both rounded ends, so it must be at least `2 × radius`; stands on the floor along z.
 - `revolve` — `profile: [[radius, height], ...]` spun around the z axis; start and end the profile at radius `0` for a closed solid (a closed loop makes a ring). Optional `angle` (degrees, `0`–`360`) leaves a flat side.
 - `extrude` — `points: [[x, y], ...]` (3–200 points), optional `holes` (up to 20 rings of the same shape), `height`. Optional `twist` (degrees) and `taper` (top scale, `0`–`10`).
+- `loft` — `bottom` and `top` rings (`[[x, y], ...]`, 3–200 points each, point counts may differ — both are resampled) and `height`. Interpolates one ring into the other organically (tapered torsos, horns, funnel necks). Winding is normalized automatically; the hull-based interpolation is approximate (a few percent proud of the ideal surface), which is fine for character work, not for precision fits.
 
 Modifiers:
 
@@ -95,6 +96,7 @@ Modifiers:
 - `hole-grid` — `cols`, `rows`, `diameter` (under 2.54 mm); punches the pin grid from the origin.
 - `pattern` — `count` (2–200) and `ops` (a list of solid ops only); repeats the group. Linear: `axis` (`x`, `y`, `z`) plus `step` (mm). Polar: `around: [x, y]` plus `degrees` per copy. Default `mode` is `add`; `"mode": "cut"` subtracts every copy instead (vent grids, slots).
 - `mirror` — `axis` (`x`, `y`, or `z`) and `ops` (solid ops only); adds the group plus its flip across that axis's plane through the origin. Build one half touching the origin, mirror the other. Also accepts `"mode": "cut"`.
+- `hull` — `ops` (solid ops only); stretches a skin over the part and the group — smooth necks joining a head to a body, blended limb roots, capes. With no part yet it is just the hull of the group.
 - `text` — `value` (1–40 characters, one line), `size` (mm cap height), `depth` (mm), and `at` (required). `mode` is `engrave` (default; `at` is the face and the text cuts `depth` below it) or `emboss` (`at` is the base and the text grows `depth` above it). `face` picks the surface: `top` (default), `bottom`, `front` (`-y`), `back` (`+y`), `left` (`-x`), `right` (`+x`); `at` sits on that surface and the cut runs into the part along its normal. `valign` positions the text block along its height axis (`center` default — the block is centered on `at`; `baseline` — the type baseline sits at `at`; `top` — the block's top edge sits at `at`). On a `top`/`bottom` face the height axis is world `y`; on walls it is world `z`. `align` (`left`, `center`, `right` — where `at` sits along the text line) and `bold` are optional. DejaVu Sans is built in; accents work. Use one `text` op per part.
 - A cut or engrave that misses the part prints a `gpio-3d: warning` on stderr and leaves the mesh unchanged; a cut that traps an enclosed void warns too. Read the warnings, do not ignore them.
 
