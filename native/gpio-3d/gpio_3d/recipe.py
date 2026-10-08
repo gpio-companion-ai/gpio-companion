@@ -39,6 +39,14 @@ def read_raw(source, directory):
     return path.read_text()
 
 
+def library_source(source, directory):
+    if not re.fullmatch(NAME, source or ""):
+        return None
+    if (library_dir(directory) / f"{source}.json").is_file():
+        return source
+    return None
+
+
 def apply_patch(data, patch):
     if patch is None:
         return data
@@ -48,8 +56,35 @@ def apply_patch(data, patch):
     for key, value in patch.items():
         if key not in ALLOWED:
             raise Gpio3dError(f"--patch has unknown field {key}")
-        merged[key] = value
+        merged[key] = merge_patch_field(merged.get(key), value)
     return merged
+
+
+def merge_patch_field(current, value):
+    if key_is_ops_index_map(value):
+        if not isinstance(current, list) or len(current) == 0:
+            raise Gpio3dError("--patch ops object needs an existing ops list")
+        ops = list(current)
+        for index_key, changes in value.items():
+            index = int(index_key)
+            if index < 0 or index >= len(ops):
+                raise Gpio3dError(f"--patch ops index {index_key} is out of range")
+            if not isinstance(changes, dict):
+                raise Gpio3dError(f"--patch ops[{index_key}] must be an object")
+            if not isinstance(ops[index], dict):
+                raise Gpio3dError(f"--patch ops[{index_key}] is not an object")
+            ops[index] = {**ops[index], **changes}
+        return ops
+    return value
+
+
+def key_is_ops_index_map(value):
+    if not isinstance(value, dict) or not value:
+        return False
+    return all(
+        isinstance(key, str) and key.isdigit() and isinstance(item, dict)
+        for key, item in value.items()
+    )
 
 
 def parse_recipe(raw, patch=None):

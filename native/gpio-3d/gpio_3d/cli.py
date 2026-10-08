@@ -5,7 +5,7 @@ import sys
 from gpio_3d.errors import Gpio3dError
 from gpio_3d.export import inspect_dir, model_dir, write_part
 from gpio_3d.mesh import clip_mesh, shroud_mesh, spacer_mesh
-from gpio_3d.recipe import parse_recipe, read_raw, save_recipe
+from gpio_3d.recipe import library_source, parse_recipe, read_raw, save_recipe
 
 
 def main(argv=None):
@@ -92,7 +92,7 @@ def run_build(args):
     directory = model_dir(args.dir)
     data, mesh = parse_recipe(read_raw(args.recipe, directory), patch)
     write_part(mesh, data["name"], data["fits"], directory, data["color"])
-    save_recipe(directory, data, args.save)
+    save_recipe(directory, data, library_source(args.recipe, directory) or args.save)
 
 
 def run_inspect(args):

@@ -762,6 +762,65 @@ class RecipeLibraryTest(unittest.TestCase):
             )
             self.assertNotEqual(bad.returncode, 0)
 
+    def test_patch_merges_a_single_nested_op_field(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            recipe = {
+                "name": "vented",
+                "units": "mm",
+                "fits": ["companion-header"],
+                "ops": [
+                    {"op": "box", "size": [30, 10, 2]},
+                    {
+                        "op": "pattern",
+                        "mode": "cut",
+                        "count": 3,
+                        "axis": "x",
+                        "step": 4,
+                        "ops": [{"op": "cylinder", "radius": 1.5, "height": 4, "at": [4, 5, 1]}],
+                    },
+                ],
+            }
+            first = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "-", "--dir", str(model), "--save", "vented"],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                input=json.dumps(recipe),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            patched = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "vented", "--dir", str(model),
+                 "--patch", '{"ops": {"1": {"count": 6}}}'],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(patched.returncode, 0, patched.stderr)
+            import trimesh
+
+            with_volume = trimesh.load(str(model / "vented.stl"), force="mesh").volume
+            self.assertTrue(abs(with_volume - (600 - 6 * math.pi * 1.5 * 1.5 * 2)) < 4.0)
+            saved = json.loads((parent / ".gpio-3d" / "vented.json").read_text())
+            self.assertEqual(saved["ops"][1]["count"], 6)
+            self.assertEqual(saved["ops"][1]["step"], 4)
+            out_of_range = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "vented", "--dir", str(model),
+                 "--patch", '{"ops": {"9": {"count": 2}}}'],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(out_of_range.returncode, 0)
+            self.assertIn("out of range", out_of_range.stderr)
+
     def test_an_unknown_recipe_name_falls_back_to_paths(self):
         with tempfile.TemporaryDirectory() as tmp:
             parent = Path(tmp)

@@ -57,12 +57,22 @@ is a small diff instead of a full re-paste:
 gpio-3d build stand --dir ~/projects/<repo>/model --patch '{"color": "#22cc88"}'
 ```
 
+`ops` patches one op in place when given an object of index keys — merge
+`{"count": 16}` into `ops[1]` without resending the array:
+
+```sh
+gpio-3d build valve-knob --dir ~/projects/<repo>/model --patch '{"ops": {"1": {"count": 16}}}'
+```
+
+Building a saved recipe by name writes the patched state back to that library
+file, so the library always holds the latest iteration.
+
 Saved recipes are read back by name (`gpio-3d build stand`), which also
 resolves before file paths. `--save` names must be kebab-case.
 
 ## Recipe ops
 
-`units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center) and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). A recipe has at most 100 ops total.
+`units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center) and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). `at` translates the solid so its bbox center lands on that point — for `extrude` and `revolve` the profile is authored in absolute coordinates, so passing `at` moves the profile from where you drew it; omit `at` to keep authored coordinates. A recipe has at most 100 ops total.
 
 The recipe may also set `color`: a `#rrggbb` hex string that tints the part in the 3D viewer only. It never changes the printable STL — pick a color that makes the part easy to tell apart on screen, not for printing. The presets set it with `--color`.
 
