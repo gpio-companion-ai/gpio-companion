@@ -1,10 +1,11 @@
 import argparse
+import json
 import sys
 
 from gpio_3d.errors import Gpio3dError
-from gpio_3d.export import model_dir, write_part
+from gpio_3d.export import inspect_dir, model_dir, write_part
 from gpio_3d.mesh import clip_mesh, shroud_mesh, spacer_mesh
-from gpio_3d.recipe import load_recipe
+from gpio_3d.recipe import parse_recipe, read_raw, save_recipe
 
 
 def main(argv=None):
@@ -31,7 +32,13 @@ def main(argv=None):
     build = sub.add_parser("build")
     build.add_argument("recipe")
     build.add_argument("--dir", required=True)
+    build.add_argument("--save")
+    build.add_argument("--patch")
     build.set_defaults(func=run_build)
+
+    inspect = sub.add_parser("inspect")
+    inspect.add_argument("dir")
+    inspect.set_defaults(func=run_inspect)
 
     args = parser.parse_args(argv)
     try:
@@ -76,6 +83,21 @@ def run_shroud(args):
 
 
 def run_build(args):
+    patch = None
+    if args.patch:
+        try:
+            patch = json.loads(args.patch)
+        except json.JSONDecodeError as exc:
+            raise Gpio3dError("--patch must be valid JSON") from exc
     directory = model_dir(args.dir)
-    name, fits, color, mesh = load_recipe(args.recipe, directory)
-    write_part(mesh, name, fits, directory, color)
+    data, mesh = parse_recipe(read_raw(args.recipe, directory), patch)
+    write_part(mesh, data["name"], data["fits"], directory, data["color"])
+    save_recipe(directory, data, args.save)
+
+
+def run_inspect(args):
+    inspect_dir(args.dir)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

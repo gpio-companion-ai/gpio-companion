@@ -583,5 +583,240 @@ class CliTest(unittest.TestCase):
             self.assertTrue(glb.startswith(b"glTF"))
 
 
+class TextPlacementTest(unittest.TestCase):
+    def test_valign_moves_the_glyph_block(self):
+        center = apply_ops(
+            [{"op": "text", "value": "HI", "size": 6, "depth": 1, "mode": "emboss", "at": [0, 0, 0]}]
+        )
+        baseline = apply_ops(
+            [{"op": "text", "value": "HI", "size": 6, "depth": 1, "mode": "emboss", "valign": "baseline", "at": [0, 0, 0]}]
+        )
+        top = apply_ops(
+            [{"op": "text", "value": "HI", "size": 6, "depth": 1, "mode": "emboss", "valign": "top", "at": [0, 0, 0]}]
+        )
+        self.assertAlmostEqual(center.bounds[0][1], -3.0, delta=0.6)
+        self.assertAlmostEqual(baseline.bounds[0][1], 0.0, delta=0.05)
+        self.assertAlmostEqual(top.bounds[1][1], 0.0, delta=0.05)
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [{"op": "text", "value": "HI", "size": 6, "depth": 1, "mode": "emboss", "valign": "middle"}]
+            )
+
+    def test_text_engraves_a_vertical_face(self):
+        plain = apply_ops([{"op": "box", "size": [40, 10, 20]}])
+        front = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 20]},
+                {"op": "text", "value": "OB", "size": 5, "depth": 1, "at": [20, 0, 10], "face": "front"},
+            ]
+        )
+        self.assertTrue(front.is_watertight)
+        self.assertLess(front.volume, plain.volume)
+        removed = plain.volume - front.volume
+        self.assertGreater(removed, 1.0)
+        self.assertLess(removed, 30.0)
+        right = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 20]},
+                {"op": "text", "value": "X", "size": 5, "depth": 1, "at": [40, 5, 10], "face": "right"},
+            ]
+        )
+        self.assertTrue(right.is_watertight)
+        self.assertLess(right.volume, plain.volume)
+        back = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 20]},
+                {"op": "text", "value": "B", "size": 5, "depth": 1, "at": [20, 10, 10], "face": "back"},
+            ]
+        )
+        self.assertTrue(back.is_watertight)
+        self.assertLess(back.volume, plain.volume)
+        with self.assertRaises(Gpio3dError):
+            apply_ops(
+                [
+                    {"op": "box", "size": [40, 10, 20]},
+                    {"op": "text", "value": "B", "size": 5, "depth": 1, "at": [20, 10, 10], "face": "up"},
+                ]
+            )
+
+    def test_top_face_engraving_is_unchanged(self):
+        legacy = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 3]},
+                {"op": "text", "value": "HI", "size": 6, "depth": 1, "at": [20, 5, 3]},
+            ]
+        )
+        explicit = apply_ops(
+            [
+                {"op": "box", "size": [40, 10, 3]},
+                {"op": "text", "value": "HI", "size": 6, "depth": 1, "at": [20, 5, 3], "face": "top", "valign": "center"},
+            ]
+        )
+        self.assertAlmostEqual(legacy.volume, explicit.volume, delta=0.5)
+
+
+class WarningTest(unittest.TestCase):
+    def build_with_stderr(self, ops):
+        import io
+        from contextlib import redirect_stderr
+
+        buffer = io.StringIO()
+        with redirect_stderr(buffer):
+            mesh = apply_ops(ops)
+        return mesh, buffer.getvalue()
+
+    def test_a_missing_cut_warns_but_succeeds(self):
+        mesh, stderr = self.build_with_stderr(
+            [
+                {"op": "box", "size": [20, 10, 4]},
+                {"op": "cut", "shape": "cylinder", "radius": 1.5, "height": 30, "axis": "x", "at": [10, 5, 9]},
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertIn("missed the solid", stderr)
+
+    def test_an_enclosed_void_warns(self):
+        mesh, stderr = self.build_with_stderr(
+            [
+                {"op": "box", "size": [20, 20, 10]},
+                {"op": "cut", "shape": "box", "size": [6, 6, 4], "at": [10, 10, 5]},
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertIn("enclosed void", stderr)
+
+    def test_text_off_the_face_warns(self):
+        mesh, stderr = self.build_with_stderr(
+            [
+                {"op": "box", "size": [40, 10, 3]},
+                {"op": "text", "value": "OOOO", "size": 6, "depth": 1, "at": [44, 5, 3]},
+            ]
+        )
+        self.assertTrue(mesh.is_watertight)
+        self.assertIn("text volume", stderr)
+
+    def test_a_clean_build_prints_no_warnings(self):
+        _, stderr = self.build_with_stderr(
+            [
+                {"op": "box", "size": [40, 10, 3]},
+                {"op": "cut", "shape": "cylinder", "radius": 1.5, "height": 6, "at": [8, 5, 1.5]},
+                {"op": "text", "value": "OK", "size": 5, "depth": 1, "at": [28, 5, 3]},
+            ]
+        )
+        self.assertEqual(stderr, "")
+
+
+class RecipeLibraryTest(unittest.TestCase):
+    def test_save_build_and_patch_a_named_recipe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            recipe = {
+                "name": "stand",
+                "units": "mm",
+                "fits": ["companion-header"],
+                "ops": [{"op": "box", "size": [20, 10, 2]}],
+            }
+            first = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "-", "--dir", str(model), "--save", "stand"],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                input=json.dumps(recipe),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(first.returncode, 0, first.stderr)
+            library = parent / ".gpio-3d"
+            self.assertTrue((library / "stand.json").is_file())
+            self.assertTrue((library / "last.json").is_file())
+            second = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "stand", "--dir", str(model),
+                 "--patch", '{"color": "#112233", "ops": [{"op": "box", "size": [30, 10, 2]}]}'],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(second.returncode, 0, second.stderr)
+            manifest = json.loads((model / "manifest.json").read_text())
+            self.assertEqual(manifest["parts"][0]["color"], "#112233")
+            rerun = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "last", "--dir", str(model)],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(rerun.returncode, 0, rerun.stderr)
+            bad = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "stand", "--dir", str(model),
+                 "--patch", '{"color": "red"}'],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(bad.returncode, 0)
+
+    def test_an_unknown_recipe_name_falls_back_to_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            missing = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "stand", "--dir", str(model)],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertNotEqual(missing.returncode, 0)
+            self.assertIn("missing recipe", missing.stderr)
+
+
+class InspectTest(unittest.TestCase):
+    def test_inspect_reports_every_part(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            parent = Path(tmp)
+            model = parent / "model"
+            clip = run_cli(
+                [
+                    "clip", "--name", "header-clip", "--cols", "4", "--rows", "2",
+                    "--thickness", "2", "--fits", "companion-header", "--dir", str(model),
+                ],
+                parent,
+            )
+            self.assertEqual(clip.returncode, 0, clip.stderr)
+            self.assertIn("bbox", clip.stdout)
+            build = subprocess.run(
+                [sys.executable, "-m", "gpio_3d", "build", "-", "--dir", str(model)],
+                cwd=parent,
+                env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONDONTWRITEBYTECODE": "1"},
+                input=json.dumps(
+                    {
+                        "name": "plate",
+                        "units": "mm",
+                        "fits": ["companion-header"],
+                        "ops": [{"op": "box", "size": [30, 12, 4]}],
+                    }
+                ),
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(build.returncode, 0, build.stderr)
+            report = run_cli(["inspect", str(model)], parent)
+            self.assertEqual(report.returncode, 0, report.stderr)
+            self.assertIn("2 parts", report.stdout)
+            self.assertIn("header-clip", report.stdout)
+            self.assertIn("watertight yes", report.stdout)
+            self.assertIn("fits companion-header", report.stdout)
+            self.assertIn("bodies 1", report.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()

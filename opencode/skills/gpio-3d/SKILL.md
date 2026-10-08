@@ -47,6 +47,19 @@ gpio-3d build - --dir ~/projects/<repo>/model <<'EOF'
 EOF
 ```
 
+Every successful `build` also refreshes `.gpio-3d/last.json` next to `model/`.
+Rerun it with `gpio-3d build last --dir ...`. `--save <name>` keeps a copy as
+`.gpio-3d/<name>.json`, and `--patch '<json>'` merges top-level fields
+(`name`, `fits`, `color`, `ops`) over the recipe before building, so iteration
+is a small diff instead of a full re-paste:
+
+```sh
+gpio-3d build stand --dir ~/projects/<repo>/model --patch '{"color": "#22cc88"}'
+```
+
+Saved recipes are read back by name (`gpio-3d build stand`), which also
+resolves before file paths. `--save` names must be kebab-case.
+
 ## Recipe ops
 
 `units` is `mm` only. Every solid op accepts `at` (`[x, y, z]`, the solid's center) and `rotate` (`[degX, degY, degZ]`, spins the solid about its own center). A recipe has at most 100 ops total.
@@ -72,7 +85,8 @@ Modifiers:
 - `hole-grid` — `cols`, `rows`, `diameter` (under 2.54 mm); punches the pin grid from the origin.
 - `pattern` — `count` (2–200) and `ops` (a list of solid ops only); repeats the group. Linear: `axis` (`x`, `y`, `z`) plus `step` (mm). Polar: `around: [x, y]` plus `degrees` per copy. Default `mode` is `add`; `"mode": "cut"` subtracts every copy instead (vent grids, slots).
 - `mirror` — `axis` (`x`, `y`, or `z`) and `ops` (solid ops only); adds the group plus its flip across that axis's plane through the origin. Build one half touching the origin, mirror the other. Also accepts `"mode": "cut"`.
-- `text` — `value` (1–40 characters, one line), `size` (mm cap height), `depth` (mm), and `at` (required). `mode` is `engrave` (default; `at` is the face and the text cuts `depth` below it) or `emboss` (`at` is the base and the text grows `depth` above it). Optional `align` (`left`, `center`, `right` — where `at` sits in x) and `bold`. DejaVu Sans is built in; accents work. Use one `text` op per part.
+- `text` — `value` (1–40 characters, one line), `size` (mm cap height), `depth` (mm), and `at` (required). `mode` is `engrave` (default; `at` is the face and the text cuts `depth` below it) or `emboss` (`at` is the base and the text grows `depth` above it). `face` picks the surface: `top` (default), `bottom`, `front` (`-y`), `back` (`+y`), `left` (`-x`), `right` (`+x`); `at` sits on that surface and the cut runs into the part along its normal. `valign` positions the text block along its height axis (`center` default — the block is centered on `at`; `baseline` — the type baseline sits at `at`; `top` — the block's top edge sits at `at`). On a `top`/`bottom` face the height axis is world `y`; on walls it is world `z`. `align` (`left`, `center`, `right` — where `at` sits along the text line) and `bold` are optional. DejaVu Sans is built in; accents work. Use one `text` op per part.
+- A cut or engrave that misses the part prints a `gpio-3d: warning` on stderr and leaves the mesh unchanged; a cut that traps an enclosed void warns too. Read the warnings, do not ignore them.
 
 Pitch is 2.54 mm. Do not add `pitch`, a file path, or any other field. Do not nest `pattern` or `mirror` inside another `pattern` or `mirror`; one level only.
 
@@ -108,6 +122,8 @@ You run that board command yourself. **Never** tell the user board commands.
 If `connected` is true and the user did not ask for the companion header, fit the USB board from `fqbn`: `arduino-uno`, `arduino-nano`, or `arduino-mega`. Otherwise fit `companion-header`. Load `gpio-pinout-raspberrypi` or `gpio-pinout-orangepi` and size to that header (40-pin Raspberry Pi layout, or the shorter Orange Pi header). A part may list more than one board when the same 2.54 mm geometry fits each of them. Do not invent other board ids.
 
 ## Output
+
+Every write prints `<name> <glb> <stl> bbox WxDxHmm` — use the bbox to catch size mistakes before committing.
 
 One branch may hold every part that belongs together. A later part is another `gpio-3d` call in that checkout's `model/`. The command keeps other names. It replaces a part only when `--name` matches. Do not delete another part unless the user names it.
 
@@ -164,6 +180,16 @@ No other files in `model/`. Do not put the recipe there.
 ```sh
 bun ~/.config/opencode/skills/gpio-3d/validate-manifest.ts ~/projects/<repo>/model
 ```
+
+## Measuring
+
+`gpio-3d inspect <model-dir>` prints every manifest part with its bbox, volume, watertightness, body count, and triangle count. Run it before committing when exact size matters:
+
+```sh
+gpio-3d inspect ~/projects/<repo>/model
+```
+
+For deeper analysis the bundled venv has trimesh and numpy importable — system `python3` does not. Companion Pis: `/usr/local/lib/gpio-companion/gpio-3d/bin/python`. open-bot desktops: `/opt/gpio-3d/venv/bin/python`. Note `mesh.contains` and `mesh.section` need scipy/rtree, which are not installed; parse the STL or use the bbox instead.
 
 Then `git add model/`, commit, `git push` the feature branch. Do not merge `main` until the user asks to save.
 

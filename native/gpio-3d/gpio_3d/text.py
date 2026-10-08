@@ -146,7 +146,7 @@ def _glyph(value, bold):
     if not contours:
         raise Gpio3dError("text produced no glyphs")
     shift_x = {"left": -min_x, "center": -(min_x + max_x) / 2, "right": -max_x}[value["align"]]
-    shift_y = -(min_y + max_y) / 2
+    shift_y = {"center": -(min_y + max_y) / 2, "baseline": 0.0, "top": -max_y}[value["valign"]]
     shifted = []
     for contour in contours:
         moved = []
@@ -195,3 +195,13 @@ def check_value(value):
         if ord(char) < 32 or ord(char) == 127:
             raise Gpio3dError("text must not have control characters")
     return value
+
+
+def check_valign(valign):
+    from gpio_3d.constants import TEXT_VALIGNS
+
+    if valign is None:
+        return "center"
+    if valign not in TEXT_VALIGNS:
+        raise Gpio3dError(f"text valign must be one of {', '.join(TEXT_VALIGNS)}")
+    return valign

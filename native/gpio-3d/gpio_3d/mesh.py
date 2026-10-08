@@ -1,4 +1,5 @@
 import math
+import sys
 
 import numpy as np
 import trimesh
@@ -12,9 +13,10 @@ from gpio_3d.constants import (
     MAX_POINTS,
     MAX_ROWS,
     PITCH_MM,
+    TEXT_FACES,
 )
 from gpio_3d.errors import Gpio3dError
-from gpio_3d.text import check_value, text_mesh, text_rings
+from gpio_3d.text import check_value, check_valign, text_mesh, text_rings
 
 SOLIDS = (
     "box",
@@ -453,6 +455,45 @@ def reject(op, allowed, label):
             raise Gpio3dError(f"{label} has unknown field {key}")
 
 
+FACE_AXES = {
+    "top": ((1, 0, 0), (0, 1, 0), (0, 0, 1)),
+    "bottom": ((1, 0, 0), (0, -1, 0), (0, 0, -1)),
+    "front": ((1, 0, 0), (0, 0, 1), (0, -1, 0)),
+    "back": ((-1, 0, 0), (0, 0, 1), (0, 1, 0)),
+    "left": ((0, -1, 0), (0, 0, 1), (-1, 0, 0)),
+    "right": ((0, 1, 0), (0, 0, 1), (1, 0, 0)),
+}
+
+
+def face_matrix(face):
+    x_axis, y_axis, normal = FACE_AXES[face]
+    matrix = np.eye(4)
+    matrix[:3, 0] = x_axis
+    matrix[:3, 1] = y_axis
+    matrix[:3, 2] = normal
+    return matrix
+
+
+def count_bodies(mesh):
+    parent = list(range(len(mesh.faces)))
+
+    def find(index):
+        while parent[index] != index:
+            parent[index] = parent[parent[index]]
+            index = parent[index]
+        return index
+
+    seen = {}
+    for index, face in enumerate(mesh.faces):
+        for a, b in ((face[0], face[1]), (face[1], face[2]), (face[2], face[0])):
+            key = (a, b) if a < b else (b, a)
+            if key in seen:
+                parent[find(index)] = find(seen[key])
+            else:
+                seen[key] = index
+    return len({find(index) for index in range(len(mesh.faces))})
+
+
 def move_center(mesh, at):
     center = mesh.bounds.mean(axis=0)
     mesh.apply_translation((at[0] - center[0], at[1] - center[1], at[2] - center[2]))
@@ -550,34 +591,58 @@ def compose(mesh, op, label):
 
 
 def text_op(mesh, op, label):
-    reject(op, {"op", "value", "size", "depth", "mode", "align", "bold", "at", "rotate"}, label)
+    reject(op, {"op", "value", "size", "depth", "mode", "align", "valign", "face", "bold", "at", "rotate"}, label)
     mode = op.get("mode", "engrave")
     if mode not in {"engrave", "emboss"}:
         raise Gpio3dError(f"{label}.mode must be engrave or emboss")
     align = op.get("align", "center")
     if align not in {"left", "center", "right"}:
         raise Gpio3dError(f"{label}.align must be left, center, or right")
+    valign = check_valign(op.get("valign"))
+    face = op.get("face", "top")
+    if face not in TEXT_FACES:
+        raise Gpio3dError(f"{label}.face must be one of {', '.join(TEXT_FACES)}")
     bold = op.get("bold", False)
     if not isinstance(bold, bool):
         raise Gpio3dError(f"{label}.bold must be true or false")
     if "at" not in op:
         raise Gpio3dError(f"{label} needs at")
     value = check_value(op.get("value"))
-    spec = {"text": value, "size": mm(op.get("size"), f"{label}.size"), "align": align, "bold": bold}
+    spec = {
+        "text": value,
+        "size": mm(op.get("size"), f"{label}.size"),
+        "align": align,
+        "valign": valign,
+        "bold": bold,
+    }
     depth = mm(op.get("depth"), f"{label}.depth")
     solid = text_mesh(text_rings(spec), depth)
     at = center3(op.get("at"), f"{label}.at")
     if mode == "engrave":
-        solid.apply_translation((at[0], at[1], at[2] - depth))
-    else:
-        solid.apply_translation((at[0], at[1], at[2]))
+        solid.apply_translation((0.0, 0.0, -depth))
+    solid.apply_transform(face_matrix(face))
+    solid.apply_translation(at)
     if "rotate" in op:
         rotate_about_center(solid, rotate(op.get("rotate"), f"{label}.rotate"), label)
     if mode == "emboss":
         return solid if mesh is None else unite(mesh, solid, label)
     if mesh is None:
         raise Gpio3dError(f"{label} needs a mesh first")
-    return subtract(mesh, [solid], label)
+    before = mesh.volume
+    result = subtract(mesh, [solid], label)
+    removed = before - result.volume
+    glyph = solid.volume
+    if removed <= max(1e-3, before * 1e-6):
+        print(
+            f"gpio-3d: warning: {label} engraved {removed:.3f} mm3 of {glyph:.3f} mm3 text; it missed the part entirely",
+            file=sys.stderr,
+        )
+    elif glyph > 0 and removed < 0.5 * glyph:
+        print(
+            f"gpio-3d: warning: {label} engraved only {100.0 * removed / glyph:.0f}% of the text volume; the text may hang off the face",
+            file=sys.stderr,
+        )
+    return result
 
 
 def apply_ops(ops):
@@ -585,7 +650,38 @@ def apply_ops(ops):
         raise Gpio3dError(f"recipe has more than {MAX_OPS} ops")
     mesh = None
     for index, op in enumerate(ops):
+        kind = op.get("op") if isinstance(op, dict) else None
+        default_mode = "engrave" if kind == "text" else "add"
+        mode = op.get("mode", default_mode) if isinstance(op, dict) else "add"
+        before = mesh.volume if mesh is not None else None
+        before_bodies = count_bodies(mesh) if mesh is not None else 0
+        removing = (
+            kind in {"cut", "hole-grid", "intersect"}
+            or (kind in {"pattern", "mirror"} and mode == "cut")
+            or (kind == "text" and mode == "engrave")
+        )
         mesh = apply_op(mesh, op, index)
+        if mesh is None or before is None:
+            continue
+        after = mesh.volume
+        delta = before - after
+        epsilon = max(1e-3, before * 1e-6)
+        if removing and delta <= epsilon:
+            print(
+                f"gpio-3d: warning: ops[{index}] {kind} removed {max(delta, 0.0):.3f} mm3; it may have missed the solid",
+                file=sys.stderr,
+            )
+        elif not removing and -delta <= epsilon:
+            print(
+                f"gpio-3d: warning: ops[{index}] {kind} added {max(-delta, 0.0):.3f} mm3; it may be inside the part",
+                file=sys.stderr,
+            )
+        after_bodies = count_bodies(mesh)
+        if removing and after_bodies > before_bodies:
+            print(
+                f"gpio-3d: warning: ops[{index}] {kind} left an enclosed void inside the part",
+                file=sys.stderr,
+            )
     if mesh is None:
         raise Gpio3dError("recipe needs a box, cylinder, header-bar, or another solid")
     if mesh.volume <= 0:

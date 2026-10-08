@@ -75,7 +75,8 @@ def write_part(mesh, name, fits, directory, color=None):
     (directory / glb_name).write_bytes(glb)
     (directory / stl_name).write_bytes(stl)
     upsert_manifest(directory, name, glb_name, fits, color)
-    print(f"{name} {glb_name} {stl_name}")
+    size = mesh.extents
+    print(f"{name} {glb_name} {stl_name} bbox {size[0]:.1f}x{size[1]:.1f}x{size[2]:.2f}mm")
 
 
 def upsert_manifest(directory, name, glb_name, fits, color=None):
@@ -134,3 +135,35 @@ def remove_old(directory, file, parts, index):
         target = directory / f"{stem}{suffix}"
         if target.is_file():
             target.unlink()
+
+
+def load_part_mesh(directory, file):
+    import trimesh
+
+    path = Path(directory) / file
+    if not path.is_file():
+        raise Gpio3dError(f"missing {file}")
+    try:
+        mesh = trimesh.load(path, force="mesh", process=False)
+    except Exception as exc:
+        raise Gpio3dError(f"{file} did not load") from exc
+    if not isinstance(mesh, trimesh.Trimesh) or len(mesh.faces) == 0:
+        raise Gpio3dError(f"{file} is not one mesh")
+    return mesh
+
+
+def inspect_dir(directory):
+    from gpio_3d.mesh import count_bodies
+
+    directory = Path(directory)
+    manifest = load_manifest(directory / MANIFEST)
+    print(f"{directory} {len(manifest['parts'])} parts")
+    for part in manifest["parts"]:
+        mesh = load_part_mesh(directory, part["file"])
+        size = mesh.extents
+        fits = ",".join(part.get("fits", []))
+        watertight = "yes" if mesh.is_watertight else "no"
+        print(
+            f"{part['name']} {part['file']} fits {fits} bbox {size[0]:.1f}x{size[1]:.1f}x{size[2]:.2f}mm "
+            f"volume {mesh.volume:.0f}mm3 watertight {watertight} bodies {count_bodies(mesh)} tris {len(mesh.faces)}"
+        )
